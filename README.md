@@ -23,13 +23,12 @@ This project builds an end-to-end pipeline to:
 
 ```
 ├── data_pipeline.py        # Fetch from API → clean → save to SQLite
-├── preprocessing.py        # Feature engineering → encode → scale → train/val/test split
 ├── eda_visualisation.py    # 17 EDA plots for feature selection analysis
 ├── README.md
 └── .gitignore
 ```
 
-> **Note:** `hdb_resale.db` and generated folders (`eda_plots/`, `processed_data/`) are excluded from the repository. Regenerate them by running the scripts in order.
+> **Note:** `hdb_resale.db` and generated folders (`eda_plots/`) are excluded from the repository. Regenerate them by running the scripts in order.
 
 ---
 

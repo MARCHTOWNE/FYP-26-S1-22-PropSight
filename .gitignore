@@ -1,0 +1,27 @@
+# Database (too large for GitHub — regenerate by running data_pipeline.py)
+*.db
+*.sqlite
+*.sqlite3
+
+# Generated data files
+processed_data/
+eda_plots/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# ML artefacts
+*.pkl
+*.parquet
+*.npz
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/

@@ -1,0 +1,15 @@
+{
+  "triggered_by": "cron",
+  "started_at": "2026-03-06T07:34:19.816517+00:00",
+  "finished_at": "2026-03-06T07:35:41.120130+00:00",
+  "new_data_found": true,
+  "steps_run": [
+    "check_for_new_data",
+    "api_fetcher.run_fetch"
+  ],
+  "failed_step": "api_fetcher.run_fetch",
+  "old_metrics": null,
+  "new_metrics": null,
+  "promoted": false,
+  "new_run_dir": null
+}

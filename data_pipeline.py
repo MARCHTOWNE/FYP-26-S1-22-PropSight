@@ -1,45 +1,39 @@
 """
 data_pipeline.py
 ================
-Full pipeline for HDB Resale Flat Prices:
-  1. Fetch all 5 datasets from data.gov.sg API (1990 – present)
-  2. Combine into one unified DataFrame
-  3. Clean using Singapore HDB domain logic
-  4. Save to SQLite with consistent data types
+Single responsibility: read raw CSVs from /raw, consolidate, clean,
+validate, and write the authoritative dataset to hdb_resale.db.
 
-Datasets (chronological):
-  1990-1999  : d_ebc5ab87086db484f88045b47411ebc5
-  2000-2012  : d_43f493c6c50d54243cc1eab0df142d6a
-  2012-2014  : d_2d5ff9ea31397b66239f245f57751537
-  2015-2016  : d_ea9ed51da2787afaf8e51f827c304208
-  2017-now   : d_8b84c4ee58e3cfc0ece0d773c8ca6abc
+Design decisions:
+  - All API fetching has been moved to api_fetcher.py.
+  - full_address is derived here and stored in the DB for use by geocoding.py.
+  - Nullable columns (latitude, longitude, dist_mrt, dist_cbd, dist_school,
+    dist_mall) are created in this step so downstream scripts can UPDATE
+    them without altering the table schema.
+  - geocode_cache and upload_audit tables are never dropped on re-runs.
+  - district_summary is dropped and rebuilt each run for accuracy.
+
+Execution order context:
+  Step 2 of 6. Reads: raw/*.csv. Writes: hdb_resale.db (resale_prices).
+  Previous step: api_fetcher.py. Next step: geocoding.py.
 
 Run:
     python data_pipeline.py
 """
 
-import io
+import datetime
+import os
 import re
 import sqlite3
-import time
 
 import pandas as pd
-import requests
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-DATASET_IDS = [
-    "d_ebc5ab87086db484f88045b47411ebc5",  # 1990–1999
-    "d_43f493c6c50d54243cc1eab0df142d6a",  # 2000–Feb 2012
-    "d_2d5ff9ea31397b66239f245f57751537",  # Mar 2012–Dec 2014
-    "d_ea9ed51da2787afaf8e51f827c304208",  # Jan 2015–Dec 2016
-    "d_8b84c4ee58e3cfc0ece0d773c8ca6abc",  # Jan 2017–present
-]
-
-OPEN_API_BASE = "https://api-open.data.gov.sg/v1/public/api/datasets"
-DB_PATH = "hdb_resale.db"
+RAW_DIR    = "raw"
+DB_PATH    = "hdb_resale.db"
 TABLE_NAME = "resale_prices"
 
 # Columns kept from raw API data (in order)
@@ -57,7 +51,9 @@ RAW_COLUMNS = [
     "resale_price",
 ]
 
-# Explicit SQLite dtype mapping — all columns are NOT NULL for data integrity
+# Explicit SQLite dtype mapping
+# Non-nullable columns enforce data integrity; nullable columns are filled
+# by downstream scripts (geocoding.py, proximity_features.py).
 SQLITE_DTYPES = {
     "month":                  "TEXT    NOT NULL",
     "year":                   "INTEGER NOT NULL",
@@ -74,6 +70,13 @@ SQLITE_DTYPES = {
     "remaining_lease":        "REAL    NOT NULL",  # years (e.g. 61.33)
     "remaining_lease_months": "REAL    NOT NULL",
     "resale_price":           "REAL    NOT NULL",
+    "full_address":           "TEXT",              # nullable — derived from block + street_name
+    "latitude":               "REAL",              # nullable — filled by geocoding.py
+    "longitude":              "REAL",              # nullable — filled by geocoding.py
+    "dist_mrt":               "REAL",              # nullable — filled by proximity_features.py
+    "dist_cbd":               "REAL",              # nullable — filled by proximity_features.py
+    "dist_school":            "REAL",              # nullable — filled by proximity_features.py
+    "dist_mall":              "REAL",              # nullable — filled by proximity_features.py
 }
 
 # Canonical flat_type values
@@ -99,59 +102,89 @@ FLAT_MODEL_ALIASES = {
     "Type S2":               "Type S2",
 }
 
+# Columns intentionally left nullable (filled by external processes)
+NULLABLE_COLS: set[str] = {
+    "full_address",
+    "latitude", "longitude",
+    "dist_mrt", "dist_cbd", "dist_school", "dist_mall",
+}
+
 # HDB floor-area sanity bounds (sqm) — used for logging only, rows are kept
 FLOOR_AREA_MIN = 28.0   # smaller than any known 1-room unit
 FLOOR_AREA_MAX = 320.0  # larger than any known multi-gen unit
 
+# Key columns used to detect duplicate records during admin ingestion
+_ADMIN_DEDUP_KEY = ["month", "block", "street_name", "flat_type", "storey_range"]
+
+# Validation thresholds for validate_data()
+PRICE_PER_SQM_MIN = 1_000    # SGD — below this is almost certainly corrupt data
+PRICE_PER_SQM_MAX = 20_000   # SGD — above this is almost certainly corrupt data
+
+FLAT_TYPE_AREA_BOUNDS = {
+    "1 Room":           (28,  45),
+    "2 Room":           (45,  60),
+    "3 Room":           (60,  90),
+    "4 Room":           (90,  115),
+    "5 Room":           (110, 150),
+    "Executive":        (130, 200),
+    "Multi-Generation": (155, 320),
+}
+
+VALID_TOWNS = {
+    "ANG MO KIO", "BEDOK", "BISHAN", "BUKIT BATOK", "BUKIT MERAH",
+    "BUKIT PANJANG", "BUKIT TIMAH", "CENTRAL AREA", "CHOA CHU KANG",
+    "CLEMENTI", "GEYLANG", "HOUGANG", "JURONG EAST", "JURONG WEST",
+    "KALLANG/WHAMPOA", "MARINE PARADE", "PASIR RIS", "PUNGGOL",
+    "QUEENSTOWN", "SEMBAWANG", "SENGKANG", "SERANGOON", "TAMPINES",
+    "TOA PAYOH", "WOODLANDS", "YISHUN",
+}
+
+LEASE_MISMATCH_TOLERANCE = 2    # years — accounts for rounding in source data
+HDB_FIRST_YEAR           = 1960  # no HDB flats existed before this year
+
 
 # ---------------------------------------------------------------------------
-# Step 1: Fetch from API
+# Step 1: Load raw CSVs from /raw
 # ---------------------------------------------------------------------------
 
-def _get_with_retry(url: str, timeout: int = 60, max_retries: int = 5) -> requests.Response:
-    """HTTP GET with exponential backoff on 429 Too Many Requests."""
-    for attempt in range(max_retries):
-        resp = requests.get(url, timeout=timeout)
-        if resp.status_code == 429:
-            wait = 2 ** attempt * 5  # 5, 10, 20, 40, 80 s
-            print(f"    Rate limited (429). Waiting {wait}s ... (retry {attempt + 1}/{max_retries})")
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        return resp
-    # Final attempt — let it raise naturally
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    return resp
-
-
-def fetch_dataset(dataset_id: str) -> pd.DataFrame:
+def load_raw_csvs(raw_dir: str = RAW_DIR) -> list[pd.DataFrame]:
     """
-    Downloads one dataset from data.gov.sg v1 API.
-    Initiates an async export, polls until ready, then streams the CSV.
+    Scan RAW_DIR for all .csv files, read each into a DataFrame, and apply
+    standardize_columns() to normalise schema across the 5 source datasets.
+
+    Parameters:
+        raw_dir: Path to the directory containing raw CSVs from api_fetcher.py.
+
+    Returns:
+        List of DataFrames, one per CSV file found.
+
+    Raises:
+        FileNotFoundError: If RAW_DIR is missing or contains no .csv files.
     """
-    print(f"  Fetching: {dataset_id}")
-    init_resp = _get_with_retry(f"{OPEN_API_BASE}/{dataset_id}/initiate-download")
-    download_url = init_resp.json().get("data", {}).get("url")
+    if not os.path.isdir(raw_dir):
+        raise FileNotFoundError(
+            f"RAW_DIR '{raw_dir}' does not exist. "
+            "Run api_fetcher.py first to download the raw data."
+        )
 
-    if not download_url:
-        print("    Export not ready — polling ...")
-        for attempt in range(30):
-            time.sleep(3)
-            poll_resp = _get_with_retry(f"{OPEN_API_BASE}/{dataset_id}/poll-download")
-            poll_data = poll_resp.json().get("data", {})
-            if poll_data.get("status") == "DOWNLOAD_SUCCESS":
-                download_url = poll_data["url"]
-                break
-            print(f"    Poll attempt {attempt + 1}/30 ...")
-        else:
-            raise TimeoutError(f"Export for {dataset_id} did not complete.")
+    csv_files = sorted(
+        f for f in os.listdir(raw_dir) if f.lower().endswith(".csv")
+    )
+    if not csv_files:
+        raise FileNotFoundError(
+            f"RAW_DIR '{raw_dir}' contains no .csv files. "
+            "Run api_fetcher.py first to download the raw data."
+        )
 
-    csv_resp = requests.get(download_url, timeout=300)
-    csv_resp.raise_for_status()
-    df = pd.read_csv(io.StringIO(csv_resp.text))
-    print(f"    Rows: {len(df):,}  Columns: {list(df.columns)}")
-    return df
+    frames: list[pd.DataFrame] = []
+    for filename in csv_files:
+        path = os.path.join(raw_dir, filename)
+        df = pd.read_csv(path)
+        df = standardize_columns(df)
+        print(f"  Loaded: {filename}  ({len(df):,} rows)")
+        frames.append(df)
+
+    return frames
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +218,31 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def combine_datasets(dataframes: list[pd.DataFrame]) -> pd.DataFrame:
+    """
+    Concatenate all raw DataFrames and remove cross-dataset duplicates.
+
+    Duplicate detection uses the minimal set of transaction-identifying
+    fields; rows that are identical on all seven are considered the same
+    transaction and only the first occurrence is kept.
+
+    Parameters:
+        dataframes: List of standardized DataFrames from load_raw_csvs().
+
+    Returns:
+        Single combined DataFrame with duplicates removed.
+    """
     combined = pd.concat(dataframes, ignore_index=True)
     print(f"\n  Combined: {len(combined):,} rows × {combined.shape[1]} columns")
+
+    # Drop rows that are identical across all transaction-identifying fields
+    _DEDUP_COLS = [
+        "month", "block", "street_name", "flat_type",
+        "storey_range", "floor_area_sqm", "resale_price",
+    ]
+    before = len(combined)
+    combined = combined.drop_duplicates(subset=_DEDUP_COLS)
+    removed = before - len(combined)
+    print(f"  Duplicates removed: {removed:,}  Rows remaining: {len(combined):,}")
     return combined
 
 
@@ -226,6 +282,19 @@ def _derive_lease_months(sale_year, lease_start, sale_month) -> float:
 
 
 def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Apply domain-specific cleaning rules to the combined raw DataFrame.
+
+    Derives year, month_num, storey_midpoint, remaining_lease_months,
+    full_address, and initialises nullable downstream columns. Drops rows
+    with a null resale_price only — all other nulls are handled or logged.
+
+    Parameters:
+        df: Combined raw DataFrame from combine_datasets() or standardize_columns().
+
+    Returns:
+        Cleaned DataFrame with the canonical column set.
+    """
     print("\n  Cleaning data ...")
     original_len = len(df)
 
@@ -266,6 +335,13 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # ------------------------------------------------------------------
     df["block"]       = df["block"].astype(str).str.strip().str.upper()
     df["street_name"] = df["street_name"].astype(str).str.strip().str.title()
+
+    # ------------------------------------------------------------------
+    # full_address — derived for OneMap geocoding lookups
+    # ------------------------------------------------------------------
+    df["full_address"] = (
+        df["block"].str.strip() + " " + df["street_name"].str.strip() + " SINGAPORE"
+    )
 
     # ------------------------------------------------------------------
     # storey_range — kept as text; derive storey_midpoint
@@ -329,7 +405,14 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         filled = missing_mask.sum() - df["remaining_lease_months"].isna().sum()
         print(f"    remaining_lease_months: derived {filled:,} missing values from lease_commence_date.")
 
-    # Step 3: remaining_lease in years (REAL) — simply divide months by 12
+    # Step 3: cap at the maximum possible HDB lease (99 years = 1 188 months),
+    # then convert to years. Values above 1188 indicate a bad source string or
+    # a lease_commence_date before the sale month — both are data errors.
+    _MAX_LEASE_MONTHS = 99 * 12  # 1188
+    over_cap = (df["remaining_lease_months"] > _MAX_LEASE_MONTHS).sum()
+    if over_cap > 0:
+        print(f"    WARNING: {over_cap:,} rows had remaining_lease_months > 1188 — capped at 99 years.")
+    df["remaining_lease_months"] = df["remaining_lease_months"].clip(upper=_MAX_LEASE_MONTHS)
     df["remaining_lease"] = (df["remaining_lease_months"] / 12).round(2)
 
     still_null = df["remaining_lease_months"].isna().sum()
@@ -346,6 +429,16 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         print(f"    Dropped {dropped:,} rows with null resale_price.")
 
     # ------------------------------------------------------------------
+    # Initialise nullable columns filled by downstream scripts
+    # ------------------------------------------------------------------
+    df["latitude"]   = None   # filled by geocoding.py
+    df["longitude"]  = None   # filled by geocoding.py
+    df["dist_mrt"]   = None   # filled by proximity_features.py
+    df["dist_cbd"]   = None   # filled by proximity_features.py
+    df["dist_school"] = None  # filled by proximity_features.py
+    df["dist_mall"]  = None   # filled by proximity_features.py
+
+    # ------------------------------------------------------------------
     # Final column order (original columns + derived columns)
     # ------------------------------------------------------------------
     final_cols = [
@@ -355,6 +448,9 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "floor_area_sqm", "flat_model",
         "lease_commence_date", "remaining_lease", "remaining_lease_months",
         "resale_price",
+        "full_address",
+        "latitude", "longitude",
+        "dist_mrt", "dist_cbd", "dist_school", "dist_mall",
     ]
     df = df[final_cols]
 
@@ -367,14 +463,166 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Step 4b: Domain validation
+# ---------------------------------------------------------------------------
+
+def validate_data(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Apply domain-specific hard and soft validation rules to the cleaned DataFrame.
+
+    Hard rules (H1–H7): rows that are physically or logically impossible are
+    dropped. Each rule is applied independently and its drop count is logged.
+
+    Soft rules (S1–S5): rows that are suspicious but possibly valid are flagged
+    with a WARNING count in the summary. No rows are removed by soft rules.
+
+    Parameters:
+        df: Cleaned DataFrame from clean_data().
+
+    Returns:
+        DataFrame with hard-rule violations removed. Soft-rule rows are kept.
+    """
+    print("\n  Validating data ...")
+    before = len(df)
+
+    # ------------------------------------------------------------------
+    # Pre-compute helper series used by multiple rules
+    # ------------------------------------------------------------------
+    # Cast Int64 (nullable integer) columns to float64 so that .notna()
+    # returns a plain numpy bool array instead of a pandas BooleanArray.
+    # Mixing BooleanArray with numpy bool via & raises TypeError in pandas.
+    _year             = pd.to_numeric(df["year"], errors="coerce")
+    _lcd              = pd.to_numeric(df["lease_commence_date"], errors="coerce")
+    _remaining_lease  = pd.to_numeric(df["remaining_lease"], errors="coerce")
+
+    # Parse storey_range "XX TO YY" into lower and upper integers for H7
+    _storey_lo = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)[0]
+    _storey_hi = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)[1]
+    storey_lo = pd.to_numeric(_storey_lo, errors="coerce")
+    storey_hi = pd.to_numeric(_storey_hi, errors="coerce")
+
+    # ------------------------------------------------------------------
+    # HARD RULES — build boolean keep mask; False = drop
+    # ------------------------------------------------------------------
+
+    # H1 — remaining_lease > 99 years (impossible for an HDB lease)
+    h1_mask = df["remaining_lease"] > 99
+    h1_count = h1_mask.sum()
+
+    # H2 — remaining_lease < 0 (cannot have negative lease remaining)
+    h2_mask = df["remaining_lease"] < 0
+    h2_count = h2_mask.sum()
+
+    # H3 — lease_commence_date > year (flat cannot be sold before lease started)
+    h3_mask = (
+        _lcd.notna() &
+        _year.notna() &
+        (_lcd > _year)
+    )
+    h3_count = h3_mask.sum()
+
+    # H4 — lease_commence_date < HDB_FIRST_YEAR (no HDB flats existed this early)
+    h4_mask = (
+        _lcd.notna() &
+        (_lcd < HDB_FIRST_YEAR)
+    )
+    h4_count = h4_mask.sum()
+
+    # H5 — resale_price <= 0 (a zero or negative price is corrupt data)
+    h5_mask = df["resale_price"] <= 0
+    h5_count = h5_mask.sum()
+
+    # H6 — floor_area_sqm <= 0 (physically impossible floor area)
+    h6_mask = df["floor_area_sqm"] <= 0
+    h6_count = h6_mask.sum()
+
+    # H7 — storey upper bound < storey lower bound (malformed storey_range)
+    h7_mask = storey_hi.notna() & storey_lo.notna() & (storey_hi < storey_lo)
+    h7_count = h7_mask.sum()
+
+    # Combine all hard-rule masks and drop offending rows
+    drop_mask = h1_mask | h2_mask | h3_mask | h4_mask | h5_mask | h6_mask | h7_mask
+    df = df[~drop_mask].copy()
+    total_hard_dropped = before - len(df)
+
+    # ------------------------------------------------------------------
+    # SOFT RULES — log WARNING counts, no rows removed
+    # ------------------------------------------------------------------
+
+    # S1 — remaining_lease vs derived value mismatch > LEASE_MISMATCH_TOLERANCE
+    _expected_lease = (99 - (_year - _lcd)).where(_year.notna() & _lcd.notna())
+    s1_mask = (
+        _expected_lease.notna() &
+        _remaining_lease.notna() &
+        (_remaining_lease - _expected_lease).abs() > LEASE_MISMATCH_TOLERANCE
+    )
+    s1_count = s1_mask.sum()
+
+    # S2 — price per sqm outside [PRICE_PER_SQM_MIN, PRICE_PER_SQM_MAX]
+    _price_per_sqm = df["resale_price"] / df["floor_area_sqm"]
+    s2_mask = (
+        _price_per_sqm.notna() &
+        ((_price_per_sqm < PRICE_PER_SQM_MIN) | (_price_per_sqm > PRICE_PER_SQM_MAX))
+    )
+    s2_count = s2_mask.sum()
+
+    # S3 — floor_area_sqm outside FLAT_TYPE_AREA_BOUNDS for its flat_type
+    #       rows with unmapped flat_type are silently skipped
+    s3_mask = pd.Series(False, index=df.index)
+    for flat_type, (lo, hi) in FLAT_TYPE_AREA_BOUNDS.items():
+        type_rows = df["flat_type"] == flat_type
+        out_of_bounds = type_rows & (
+            (df["floor_area_sqm"] < lo) | (df["floor_area_sqm"] > hi)
+        )
+        s3_mask |= out_of_bounds
+    s3_count = s3_mask.sum()
+
+    # S4 — town not in VALID_TOWNS
+    s4_mask = ~df["town"].isin(VALID_TOWNS)
+    s4_count = s4_mask.sum()
+
+    # S5 — year < HDB_FIRST_YEAR (sale predates HDB programme)
+    s5_mask = _year.notna() & (_year < HDB_FIRST_YEAR)
+    s5_count = s5_mask.sum()
+
+    # ------------------------------------------------------------------
+    # Summary
+    # ------------------------------------------------------------------
+    sep = "  " + "─" * 50
+    print(sep)
+    print("  Validation Summary")
+    print(sep)
+    print("  HARD drops:")
+    print(f"    H1 remaining_lease > 99 yrs       : {h1_count:>8,} rows dropped")
+    print(f"    H2 remaining_lease < 0            : {h2_count:>8,} rows dropped")
+    print(f"    H3 lease_commence > sale_year     : {h3_count:>8,} rows dropped")
+    print(f"    H4 lease_commence < {HDB_FIRST_YEAR}          : {h4_count:>8,} rows dropped")
+    print(f"    H5 resale_price <= 0              : {h5_count:>8,} rows dropped")
+    print(f"    H6 floor_area_sqm <= 0            : {h6_count:>8,} rows dropped")
+    print(f"    H7 storey range corrupt           : {h7_count:>8,} rows dropped")
+    print(f"    Total hard dropped                : {total_hard_dropped:>8,} rows")
+    print("  SOFT flags (kept):")
+    print(f"    S1 remaining_lease mismatch > {LEASE_MISMATCH_TOLERANCE}yr : {s1_count:>8,} rows flagged")
+    print(f"    S2 price/sqm outside {PRICE_PER_SQM_MIN // 1000}k–{PRICE_PER_SQM_MAX // 1000}k      : {s2_count:>8,} rows flagged")
+    print(f"    S3 floor area outside type bounds : {s3_count:>8,} rows flagged")
+    print(f"    S4 unrecognised town              : {s4_count:>8,} rows flagged")
+    print(f"    S5 sale year before {HDB_FIRST_YEAR}          : {s5_count:>8,} rows flagged")
+    print(f"\n  Rows before validation : {before:>9,}")
+    print(f"  Rows after  validation : {len(df):>9,}")
+    print(sep)
+
+    return df
+
+
+# ---------------------------------------------------------------------------
 # Step 5: Enforce no nulls before saving
 # ---------------------------------------------------------------------------
 
 def _enforce_not_null(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Guarantees every column is non-null before writing to SQLite.
+    Guarantees every non-nullable column is non-null before writing to SQLite.
     - storey_midpoint: filled with per-flat_type median (rare parse failures)
-    - All other columns must already be complete; raises if not.
+    - All other non-nullable columns must already be complete; raises if not.
     """
     # storey_midpoint can be NaN when storey_range is malformed
     null_storey = df["storey_midpoint"].isna()
@@ -383,9 +631,10 @@ def _enforce_not_null(df: pd.DataFrame) -> pd.DataFrame:
         df.loc[null_storey, "storey_midpoint"] = median_by_type[null_storey]
         print(f"    storey_midpoint: filled {null_storey.sum():,} nulls with per-flat_type median.")
 
-    # Any remaining nulls in any column are a pipeline error — fail loudly
+    # Any remaining nulls in non-nullable columns are a pipeline error — fail loudly
     remaining_nulls = df.isnull().sum()
     remaining_nulls = remaining_nulls[remaining_nulls > 0]
+    remaining_nulls = remaining_nulls[~remaining_nulls.index.isin(NULLABLE_COLS)]
     if not remaining_nulls.empty:
         raise ValueError(
             f"Columns still have nulls before save:\n{remaining_nulls.to_string()}\n"
@@ -399,6 +648,20 @@ def _enforce_not_null(df: pd.DataFrame) -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def save_to_sqlite(df: pd.DataFrame) -> None:
+    """
+    Write the cleaned DataFrame to hdb_resale.db and maintain all
+    auxiliary tables required by the pipeline.
+
+    Tables created/updated:
+      - resale_prices     : dropped and recreated each run
+      - geocode_cache     : created if absent; never dropped
+      - district_summary  : dropped and recreated each run
+      - pipeline_meta     : created if absent; rows upserted each run
+      - upload_audit      : created if absent; never dropped
+
+    Parameters:
+        df: Cleaned DataFrame from clean_data() + _enforce_not_null().
+    """
     print(f"\n  Saving to {DB_PATH} → table '{TABLE_NAME}' ...")
     conn = sqlite3.connect(DB_PATH)
 
@@ -410,7 +673,31 @@ def save_to_sqlite(df: pd.DataFrame) -> None:
     conn.execute(f'CREATE TABLE "{TABLE_NAME}" ({col_defs})')
     conn.commit()
 
-    # Write data
+    # geocode_cache — never dropped; survives pipeline re-runs
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS geocode_cache (
+            full_address  TEXT PRIMARY KEY,
+            latitude      REAL NOT NULL,
+            longitude     REAL NOT NULL,
+            fetched_at    TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+    # upload_audit — permanent audit trail for FR8 admin uploads; never dropped
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS upload_audit (
+            id            INTEGER PRIMARY KEY AUTOINCREMENT,
+            uploaded_at   TEXT NOT NULL,
+            uploaded_by   TEXT NOT NULL,
+            filename      TEXT NOT NULL,
+            rows_inserted INTEGER NOT NULL,
+            status        TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+
+    # Write resale_prices data
     df.to_sql(TABLE_NAME, conn, if_exists="append", index=False)
 
     # Indexes for fast querying
@@ -418,15 +705,77 @@ def save_to_sqlite(df: pd.DataFrame) -> None:
     conn.execute(f'CREATE INDEX IF NOT EXISTS idx_town  ON "{TABLE_NAME}"(town)')
     conn.execute(f'CREATE INDEX IF NOT EXISTS idx_flat  ON "{TABLE_NAME}"(flat_type)')
     conn.commit()
-    conn.close()
     print(f"  Saved {len(df):,} rows.")
+
+    # district_summary — drop and recreate each run for accuracy
+    conn.execute("DROP TABLE IF EXISTS district_summary")
+    summary = (
+        df.groupby(["town", "flat_type", "year"])
+        .agg(
+            median_price=("resale_price", "median"),
+            avg_price=("resale_price", "mean"),
+            transaction_count=("resale_price", "count"),
+            avg_floor_area=("floor_area_sqm", "mean"),
+            avg_remaining_lease=("remaining_lease", "mean"),
+        )
+        .reset_index()
+    )
+    summary.to_sql("district_summary", conn, if_exists="replace", index=False)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ds_town_year ON district_summary(town, year)"
+    )
+    conn.commit()
+    print(f"  district_summary: {len(summary):,} aggregated rows saved.")
+
+    # pipeline_meta — persists across runs; upserted on each run
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pipeline_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    meta_entries = [
+        ("last_fetched_month", str(df["month"].max())),
+        ("last_run_at",        datetime.datetime.utcnow().isoformat()),
+        ("total_rows",         str(len(df))),
+    ]
+    for key, value in meta_entries:
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_meta (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+    conn.commit()
+    conn.close()
+
+
+def get_pipeline_meta(db_path: str) -> dict:
+    """
+    Reads all rows from the pipeline_meta table and returns them as a plain dict.
+
+    Used by retrain_pipeline.py to decide whether new data exists without
+    running the full pipeline.
+
+    Parameters:
+        db_path: Path to the SQLite database file.
+
+    Returns:
+        A dict mapping each key to its value string (e.g. {'total_rows': '892345'}).
+        Returns an empty dict if the table does not yet exist (pipeline not run).
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        rows = conn.execute("SELECT key, value FROM pipeline_meta").fetchall()
+        return dict(rows)
+    except sqlite3.OperationalError:
+        # pipeline_meta table absent — pipeline has never been run
+        return {}
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
-# Step 6: Summary
+# Step 7: Summary
 # ---------------------------------------------------------------------------
 
 def print_summary(df: pd.DataFrame) -> None:
+    """Print a human-readable pipeline summary to stdout."""
     print("\n" + "=" * 60)
     print("PIPELINE SUMMARY")
     print("=" * 60)
@@ -449,25 +798,168 @@ def print_summary(df: pd.DataFrame) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Admin upload path (FR8)
+# ---------------------------------------------------------------------------
+
+def ingest_admin_csv(csv_path: str, db_path: str, uploaded_by: str) -> int:
+    """
+    Controlled entry point for FR8 (Admin Data Management).
+
+    Reads a CSV uploaded via the admin panel, cleans it using the same logic
+    as the main pipeline, and appends only genuinely new records to the DB.
+    Rebuilds district_summary and pipeline_meta after each successful insert.
+    Writes a row to upload_audit for every call (success or partial).
+
+    Steps:
+        a. Reads csv_path using standardize_columns().
+        b. Runs clean_data() on it.
+        c. Runs _enforce_not_null() on it.
+        d. Appends only rows where (month, block, street_name, flat_type,
+           storey_range) does not already exist in the DB.
+        e. Updates district_summary and pipeline_meta.
+        f. Writes a row to upload_audit.
+        g. Returns number of new rows inserted.
+
+    Parameters:
+        csv_path:    Filesystem path to the CSV file to ingest.
+        db_path:     Path to the SQLite database file to write to.
+        uploaded_by: Identifier of the admin user performing the upload
+                     (written to the upload_audit table for traceability).
+
+    Returns:
+        Number of new rows inserted into resale_prices (0 if none were new).
+
+    Raises:
+        Exception: Re-raises any I/O or database error after logging it.
+    """
+    filename = os.path.basename(csv_path)
+    uploaded_at = datetime.datetime.utcnow().isoformat()
+
+    # a. Read and standardize
+    try:
+        raw = pd.read_csv(csv_path)
+    except Exception as exc:
+        print(f"  [ingest_admin_csv] ERROR reading '{csv_path}': {exc}")
+        raise
+
+    df = standardize_columns(raw)
+
+    # b. Clean
+    df = clean_data(df)
+
+    # c. Enforce not-null (nullable cols are intentionally skipped)
+    df = _enforce_not_null(df)
+
+    # d. Check which rows already exist in the DB
+    conn = sqlite3.connect(db_path)
+    try:
+        try:
+            existing = pd.read_sql(
+                f'SELECT {", ".join(_ADMIN_DEDUP_KEY)} FROM "{TABLE_NAME}"', conn
+            )
+            existing = existing.drop_duplicates(subset=_ADMIN_DEDUP_KEY)
+        except Exception:
+            # resale_prices table absent — all rows are new
+            existing = pd.DataFrame(columns=_ADMIN_DEDUP_KEY)
+
+        merged = df.merge(existing, on=_ADMIN_DEDUP_KEY, how="left", indicator=True)
+        new_mask = (merged["_merge"] == "left_only").values
+        new_rows = df[new_mask].copy()
+    except Exception as exc:
+        conn.close()
+        print(f"  [ingest_admin_csv] ERROR checking existing rows: {exc}")
+        raise
+
+    inserted = len(new_rows)
+    print(
+        f"  [ingest_admin_csv] New rows to insert: {inserted:,}  "
+        f"(skipped {len(df) - inserted:,} already-existing rows)"
+    )
+
+    status = "success"
+    if inserted > 0:
+        # Append only the new rows
+        new_rows.to_sql(TABLE_NAME, conn, if_exists="append", index=False)
+
+        # e. Rebuild district_summary from the full updated table
+        all_df = pd.read_sql(f'SELECT * FROM "{TABLE_NAME}"', conn)
+        conn.execute("DROP TABLE IF EXISTS district_summary")
+        summary = (
+            all_df.groupby(["town", "flat_type", "year"])
+            .agg(
+                median_price=("resale_price", "median"),
+                avg_price=("resale_price", "mean"),
+                transaction_count=("resale_price", "count"),
+                avg_floor_area=("floor_area_sqm", "mean"),
+                avg_remaining_lease=("remaining_lease", "mean"),
+            )
+            .reset_index()
+        )
+        summary.to_sql("district_summary", conn, if_exists="replace", index=False)
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_ds_town_year ON district_summary(town, year)"
+        )
+
+        # Update pipeline_meta to reflect the new totals
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS pipeline_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        meta_entries = [
+            ("last_fetched_month", str(all_df["month"].max())),
+            ("last_run_at",        datetime.datetime.utcnow().isoformat()),
+            ("total_rows",         str(len(all_df))),
+        ]
+        for key, value in meta_entries:
+            conn.execute(
+                "INSERT OR REPLACE INTO pipeline_meta (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+
+    # f. Write upload_audit row (always — even when inserted == 0)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS upload_audit ("
+        "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
+        "  uploaded_at TEXT NOT NULL,"
+        "  uploaded_by TEXT NOT NULL,"
+        "  filename    TEXT NOT NULL,"
+        "  rows_inserted INTEGER NOT NULL,"
+        "  status      TEXT NOT NULL"
+        ")"
+    )
+    conn.execute(
+        "INSERT INTO upload_audit (uploaded_at, uploaded_by, filename, rows_inserted, status) "
+        "VALUES (?, ?, ?, ?, ?)",
+        (uploaded_at, uploaded_by, filename, inserted, status),
+    )
+    conn.commit()
+    conn.close()
+
+    print(
+        f"  [ingest_admin_csv] Inserted {inserted:,} rows. "
+        f"district_summary and pipeline_meta updated. "
+        f"upload_audit row written (uploaded_by={uploaded_by!r})."
+    )
+    return inserted
+
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    """
+    Load raw CSVs from /raw, consolidate, clean, validate, and write to SQLite.
+    Requires api_fetcher.py to have been run first.
+    """
     print("=" * 60)
     print("HDB Resale — Data Pipeline")
     print("=" * 60)
+    print(f"\n  Reading raw CSVs from: {RAW_DIR}/")
 
-    # Fetch all datasets with a brief pause between requests
-    raw_frames = []
-    for i, dataset_id in enumerate(DATASET_IDS):
-        df = fetch_dataset(dataset_id)
-        df = standardize_columns(df)
-        raw_frames.append(df)
-        if i < len(DATASET_IDS) - 1:
-            time.sleep(3)
-
+    raw_frames = load_raw_csvs()
     combined = combine_datasets(raw_frames)
     cleaned  = clean_data(combined)
+    cleaned  = validate_data(cleaned)
     cleaned  = _enforce_not_null(cleaned)
 
     save_to_sqlite(cleaned)

@@ -29,20 +29,25 @@ Split:
   - Val   : 2021–2022
   - Test  : ≥ 2023
 
-Outputs → model_assets/
+Outputs → model_assets/<run_timestamp>/
   X_train / X_val / X_test  (.parquet)
   y_train / y_val / y_test  (.parquet)
   target_encoders.pkl
   scaler.pkl
   feature_cols.txt
+  outlier_bounds.json
+  run_manifest.json
+  metrics.json (stub — populate with real MAE after model training)
 
 Run:
     python feature_engineering.py
 """
 
+import json
 import os
 import pickle
 import sqlite3
+from datetime import datetime
 
 import numpy as np
 import pandas as pd
@@ -57,6 +62,12 @@ TABLE_NAME = "resale_prices"
 OUTPUT_DIR = "model_assets"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+# Quantiles for prediction interval support.
+# Model trained three times using quantile regression:
+# Q10 (lower bound), Q50 (point estimate), Q90 (upper bound).
+# Supports FR2: system returns a value range, not a single price.
+QUANTILES = [0.10, 0.50, 0.90]
 
 # HDB mature estates (official designation)
 MATURE_ESTATES = {
@@ -83,8 +94,15 @@ SCALE_COLS = [
     "month_sin",
     "month_cos",
     "year",
+    "dist_mrt",    # km to nearest MRT station (from proximity_features.py)
+    "dist_cbd",    # km to Raffles Place CBD anchor
+    "dist_school", # km to nearest primary school
+    "dist_mall",   # km to nearest shopping mall
 ]
 
+# Model trained three times using quantile regression:
+# Q10 (lower bound), Q50 (point estimate), Q90 (upper bound).
+# Supports FR2: system returns a value range, not a single price.
 # Final feature columns fed to the ML model
 FEATURE_COLS = [
     "flat_type_ordinal",   # ordinal int
@@ -99,6 +117,10 @@ FEATURE_COLS = [
     "month_cos",           # scaled cyclical
     "year",                # scaled
     "is_mature_estate",    # binary 0/1
+    "dist_mrt",            # scaled km — proximity signal
+    "dist_cbd",            # scaled km — centrality signal
+    "dist_school",         # scaled km — amenity signal
+    "dist_mall",           # scaled km — amenity signal
 ]
 
 TARGET_COL = "log_price"   # log1p(resale_price)
@@ -114,9 +136,13 @@ def load_data() -> pd.DataFrame:
     df = pd.read_sql(f"SELECT * FROM {TABLE_NAME}", conn)
     conn.close()
 
-    numeric = ["floor_area_sqm", "storey_midpoint", "remaining_lease",
-               "remaining_lease_months", "lease_commence_date",
-               "resale_price", "year", "month_num"]
+    numeric = [
+        "floor_area_sqm", "storey_midpoint", "remaining_lease",
+        "remaining_lease_months", "lease_commence_date",
+        "resale_price", "year", "month_num",
+        "latitude", "longitude",
+        "dist_mrt", "dist_cbd", "dist_school", "dist_mall",
+    ]
     for col in numeric:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -135,8 +161,24 @@ def load_data() -> pd.DataFrame:
 # ---------------------------------------------------------------------------
 
 def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Remove price outliers using 1.5×IQR per flat_type group.
+
+    EDA Plot 17 showed genuine anomalies above the whiskers in every flat_type
+    group — these are removed rather than capped to keep the distribution clean.
+
+    Also serialises IQR bounds to model_assets/outlier_bounds.json for use
+    at inference time to apply consistent outlier handling on new predictions.
+
+    Parameters:
+        df: Cleaned DataFrame with resale_price and flat_type columns.
+
+    Returns:
+        DataFrame with outlier rows removed.
+    """
     before = len(df)
     keep = pd.Series(True, index=df.index)
+    bounds: dict[str, dict[str, float]] = {}
 
     for ft, idx in df.groupby("flat_type").groups.items():
         prices = df.loc[idx, "resale_price"]
@@ -144,11 +186,19 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
         iqr = q3 - q1
         lo, hi = q1 - 1.5 * iqr, q3 + 1.5 * iqr
         keep[idx] = prices.between(lo, hi)
+        bounds[str(ft)] = {"lower": round(float(lo), 2), "upper": round(float(hi), 2)}
 
     df = df[keep].copy()
     print(f"\nOutlier removal: dropped {before - len(df):,} rows "
           f"({(before - len(df)) / before * 100:.1f}%). "
           f"Remaining: {len(df):,}")
+
+    # Serialise bounds for inference-time outlier handling
+    bounds_path = os.path.join(OUTPUT_DIR, "outlier_bounds.json")
+    with open(bounds_path, "w") as f:
+        json.dump(bounds, f, indent=2)
+    print(f"  outlier_bounds.json saved to {bounds_path}")
+
     return df
 
 
@@ -267,28 +317,77 @@ def save_artefacts(
     test: pd.DataFrame,
     target_encoders: dict,
     scaler: StandardScaler,
-) -> None:
-    print(f"\nSaving artefacts to '{OUTPUT_DIR}/' ...")
+) -> str:
+    """
+    Save all ML artefacts into a timestamped versioned run directory.
+
+    Creates model_assets/<YYYYMMDD_HHMMSS>/ for each run and writes
+    model_assets/latest.txt pointing to the new directory. Also saves
+    run_manifest.json as an audit trail (NFR Transparency & Explainability).
+
+    Parameters:
+        train, val, test:   Split DataFrames after encoding and scaling.
+        target_encoders:    Dict of target-encoding maps fitted on train.
+        scaler:             Fitted StandardScaler instance.
+
+    Returns:
+        Path to the created run directory.
+    """
+    run_dir = os.path.join(OUTPUT_DIR, datetime.utcnow().strftime("%Y%m%d_%H%M%S"))
+    os.makedirs(run_dir, exist_ok=True)
+    print(f"\nSaving artefacts to '{run_dir}/' ...")
 
     for name, split in [("train", train), ("val", val), ("test", test)]:
         X = split[FEATURE_COLS]
         y = split[[TARGET_COL, "resale_price"]]  # keep raw price for evaluation
 
-        X.to_parquet(os.path.join(OUTPUT_DIR, f"X_{name}.parquet"), index=False)
-        y.to_parquet(os.path.join(OUTPUT_DIR, f"y_{name}.parquet"), index=False)
+        X.to_parquet(os.path.join(run_dir, f"X_{name}.parquet"), index=False)
+        y.to_parquet(os.path.join(run_dir, f"y_{name}.parquet"), index=False)
         print(f"  X_{name}.parquet {X.shape}   y_{name}.parquet {y.shape}")
 
-    with open(os.path.join(OUTPUT_DIR, "target_encoders.pkl"), "wb") as f:
+    with open(os.path.join(run_dir, "target_encoders.pkl"), "wb") as f:
         pickle.dump(target_encoders, f)
     print("  target_encoders.pkl")
 
-    with open(os.path.join(OUTPUT_DIR, "scaler.pkl"), "wb") as f:
+    with open(os.path.join(run_dir, "scaler.pkl"), "wb") as f:
         pickle.dump(scaler, f)
     print("  scaler.pkl")
 
-    with open(os.path.join(OUTPUT_DIR, "feature_cols.txt"), "w") as f:
+    with open(os.path.join(run_dir, "feature_cols.txt"), "w") as f:
         f.write("\n".join(FEATURE_COLS))
     print("  feature_cols.txt")
+
+    # Run manifest — audit trail for NFR Transparency & Explainability
+    manifest = {
+        "run_at":       datetime.utcnow().isoformat(),
+        "train_rows":   len(train),
+        "val_rows":     len(val),
+        "test_rows":    len(test),
+        "feature_cols": FEATURE_COLS,
+        "scale_cols":   SCALE_COLS,
+    }
+    with open(os.path.join(run_dir, "run_manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2)
+    print("  run_manifest.json")
+
+    # Stub metrics.json — populate with real MAE after model training step
+    metrics_stub = {
+        "q10_test_mae": None,
+        "q50_test_mae": None,
+        "q90_test_mae": None,
+        "note": "Populate with actual model metrics after training.",
+    }
+    with open(os.path.join(run_dir, "metrics.json"), "w") as f:
+        json.dump(metrics_stub, f, indent=2)
+    print("  metrics.json (stub)")
+
+    # Update latest.txt to point to this run (overwrite each time)
+    latest_path = os.path.join(OUTPUT_DIR, "latest.txt")
+    with open(latest_path, "w") as f:
+        f.write(run_dir)
+    print(f"  latest.txt → {run_dir}")
+
+    return run_dir
 
 
 # ---------------------------------------------------------------------------
@@ -325,9 +424,9 @@ def main() -> None:
     train, val, test, scaler = scale_features(train, val, test)
 
     print_summary(train)
-    save_artefacts(train, val, test, target_encoders, scaler)
+    run_dir = save_artefacts(train, val, test, target_encoders, scaler)
 
-    print(f"\nDone. ML-ready data saved to: {OUTPUT_DIR}/")
+    print(f"\nDone. ML-ready data saved to: {run_dir}/")
 
 
 if __name__ == "__main__":

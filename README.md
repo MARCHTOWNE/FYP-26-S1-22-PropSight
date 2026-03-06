@@ -164,34 +164,32 @@ These features are written back to `resale_prices`.
 ---
 
 ### `feature_engineering.py`
-
-Builds a clean feature-ready dataset from the enriched database.
-
-Main responsibilities:
-
-* remove price outliers by flat type
-* engineer derived features
-* remove rows with missing required fields
-* apply time-based train/validation/test split
-* target-encode categorical variables
-* scale numeric features
-* save processed artefacts to `model_assets/<timestamp>/`
-
-Derived features include:
-
-* `flat_age`
-* `month_sin`
-* `month_cos`
-* `is_mature_estate`
-* `flat_type_ordinal`
-* `log_price`
+Transforms the enriched HDB resale database into clean, feature-ready train/val/test splits.
 
 Split strategy:
+- Train: ≤ 2020
+- Val: 2021–2022
+- Test: ≥ 2023
 
-* Train: year ≤ 2020
-* Validation: 2021–2022
-* Test: year ≥ 2023
+Key decisions:
+- `log1p(resale_price)` as target to reduce right skew
+- Ordinal encoding for `flat_type`
+- Target encoding for `town` and `flat_model` (fit on train only to reduce leakage)
+- `StandardScaler` for numeric features (fit on train only)
+- IQR outlier removal by `flat_type`, with bounds saved to `outlier_bounds.json`
+- Cyclical encoding for month using `month_sin` and `month_cos`
+- Removal of rows with missing required fields so saved datasets contain no null values
+- Saves processed artefacts to `model_assets/<YYYYMMDD_HHMMSS>/`
 
+Outputs:
+- `X_train.parquet`, `X_val.parquet`, `X_test.parquet`
+- `y_train.parquet`, `y_val.parquet`, `y_test.parquet`
+- `scaler.pkl`
+- `target_encoders.pkl`
+- `outlier_bounds.json`
+- `feature_cols.txt`
+- `run_manifest.json`
+- `metrics.json` (stub)
 ---
 
 ### `eda_visualisation.py`

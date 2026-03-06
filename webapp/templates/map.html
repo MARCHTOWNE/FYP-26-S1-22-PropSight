@@ -1,0 +1,653 @@
+{% extends "base.html" %}
+{% block title %}Map — HDB Resale Analytics{% endblock %}
+
+{% block extra_head %}
+<style>
+    .map-page {
+        position: relative;
+        min-height: calc(100vh - 76px);
+        background:
+            radial-gradient(circle at 10% 10%, rgba(34, 197, 94, 0.08), transparent 18%),
+            radial-gradient(circle at 90% 16%, rgba(249, 115, 22, 0.09), transparent 18%),
+            #08111f;
+    }
+
+    .map-layout {
+        position: relative;
+        height: calc(100vh - 110px);
+        min-height: 700px;
+        border-radius: 24px;
+        overflow: hidden;
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        box-shadow: 0 24px 50px rgba(2, 6, 23, 0.32);
+    }
+
+    #map {
+        height: 100%;
+        width: 100%;
+        border-radius: 24px;
+        box-shadow: none;
+    }
+
+    .map-sidebar {
+        position: absolute;
+        top: 18px;
+        left: 18px;
+        z-index: 1000;
+        width: 360px;
+        max-width: calc(100% - 36px);
+        background: rgba(7, 13, 24, 0.86);
+        color: #e2e8f0;
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 20px;
+        backdrop-filter: blur(14px);
+        box-shadow: 0 18px 40px rgba(2, 6, 23, 0.42);
+        padding: 18px;
+    }
+
+    .map-kicker {
+        font-size: 0.68rem;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        margin-bottom: 0.35rem;
+    }
+
+    .map-sidebar h2 {
+        font-size: 1.45rem;
+        line-height: 1.08;
+        margin-bottom: 0.55rem;
+        color: #f8fafc;
+    }
+
+    .map-sidebar p {
+        color: #cbd5e1;
+        font-size: 0.92rem;
+        line-height: 1.55;
+        margin-bottom: 1rem;
+    }
+
+    .map-toolbar {
+        display: grid;
+        gap: 12px;
+    }
+
+    .map-stat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .map-stat {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(15, 23, 42, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.12);
+    }
+
+    .map-stat-label {
+        display: block;
+        font-size: 0.68rem;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.3rem;
+    }
+
+    .map-stat-value {
+        display: block;
+        font-family: 'Sora', sans-serif;
+        color: #f8fafc;
+        font-size: 1.05rem;
+        line-height: 1.1;
+    }
+
+    .map-mode-toggle {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .map-mode-toggle .btn {
+        border-radius: 12px;
+        padding: 0.7rem 0.8rem;
+        font-size: 0.88rem;
+        font-weight: 700;
+    }
+
+    .map-control-group {
+        display: grid;
+        gap: 8px;
+    }
+
+    .map-control-group label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+        font-weight: 700;
+    }
+
+    .map-select,
+    .map-range-wrap {
+        background: rgba(15, 23, 42, 0.84);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        border-radius: 14px;
+        color: #f8fafc;
+    }
+
+    .map-select {
+        padding: 0.72rem 0.8rem;
+    }
+
+    .map-select option {
+        color: #0f172a;
+    }
+
+    .map-range-wrap {
+        padding: 0.7rem 0.85rem;
+    }
+
+    .map-range-wrap input {
+        width: 100%;
+    }
+
+    .map-range-meta {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.77rem;
+        color: #cbd5e1;
+        margin-top: 0.4rem;
+    }
+
+    .map-insight {
+        padding: 12px 14px;
+        border-radius: 14px;
+        background: linear-gradient(135deg, rgba(14, 116, 144, 0.26), rgba(190, 24, 93, 0.18));
+        border: 1px solid rgba(125, 211, 252, 0.16);
+        color: #e2e8f0;
+        font-size: 0.86rem;
+        line-height: 1.5;
+    }
+
+    .map-legend-panel {
+        position: absolute;
+        right: 18px;
+        bottom: 18px;
+        z-index: 1000;
+        width: 260px;
+        background: rgba(7, 13, 24, 0.82);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        border-radius: 18px;
+        color: #e2e8f0;
+        padding: 14px;
+        backdrop-filter: blur(12px);
+        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.38);
+    }
+
+    .map-legend-title {
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+        margin-bottom: 0.7rem;
+    }
+
+    .legend-scale {
+        height: 14px;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #22c55e, #84cc16, #facc15, #fb923c, #f97316, #ef4444, #be123c);
+        margin-bottom: 0.55rem;
+    }
+
+    .legend-volume {
+        background: linear-gradient(90deg, #38bdf8, #22d3ee, #a3e635, #facc15, #f97316, #ef4444);
+    }
+
+    .legend-labels {
+        display: flex;
+        justify-content: space-between;
+        gap: 6px;
+        font-size: 0.74rem;
+        color: #cbd5e1;
+    }
+
+    .map-float-note {
+        position: absolute;
+        right: 18px;
+        top: 18px;
+        z-index: 1000;
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(7, 13, 24, 0.76);
+        border: 1px solid rgba(148, 163, 184, 0.16);
+        color: #f8fafc;
+        font-size: 0.82rem;
+        backdrop-filter: blur(10px);
+    }
+
+    .district-label {
+        font-size: 10px;
+        font-weight: 800;
+        color: #ffffff;
+        text-shadow: 0 0 4px rgba(2, 6, 23, 0.95), 0 0 10px rgba(2, 6, 23, 0.95);
+        white-space: nowrap;
+    }
+
+    .leaflet-popup-content-wrapper,
+    .leaflet-popup-tip {
+        background: rgba(15, 23, 42, 0.96);
+        color: #f8fafc;
+    }
+
+    .leaflet-popup-content {
+        font-size: 0.85rem;
+        line-height: 1.55;
+        color: #e2e8f0;
+    }
+
+    .leaflet-control-zoom a {
+        background: rgba(15, 23, 42, 0.9) !important;
+        color: #f8fafc !important;
+        border-color: rgba(148, 163, 184, 0.2) !important;
+    }
+
+    .leaflet-control-attribution {
+        background: rgba(15, 23, 42, 0.74) !important;
+        color: #cbd5e1 !important;
+    }
+
+    .leaflet-interactive.pulse {
+        animation: pulse-ring 1.8s ease-out infinite;
+    }
+
+    @keyframes pulse-ring {
+        0% { stroke-opacity: .95; }
+        50% { stroke-opacity: .42; }
+        100% { stroke-opacity: .95; }
+    }
+
+    @media (max-width: 991px) {
+        .map-layout {
+            min-height: 880px;
+            height: auto;
+        }
+
+        #map {
+            min-height: 880px;
+        }
+
+        .map-sidebar {
+            width: calc(100% - 24px);
+            left: 12px;
+            right: 12px;
+            top: 12px;
+            max-width: none;
+        }
+
+        .map-legend-panel {
+            right: 12px;
+            left: 12px;
+            bottom: 12px;
+            width: auto;
+        }
+
+        .map-float-note {
+            display: none;
+        }
+    }
+
+    @media (max-width: 767px) {
+        .map-stat-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .map-sidebar {
+            padding: 14px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="map-page py-3 py-lg-4">
+    <div class="container-fluid">
+        <div class="map-layout">
+            <div class="map-sidebar">
+                <div class="map-kicker">Spatial Market Explorer</div>
+                <h2>Interactive transaction heatmap for Singapore HDB resale.</h2>
+                <p>Switch between point-level transactions and district heat intensity to read price pressure and market activity faster.</p>
+
+                <div class="map-stat-grid">
+                    <div class="map-stat">
+                        <span class="map-stat-label">Records</span>
+                        <span class="map-stat-value" id="statRecords">0</span>
+                    </div>
+                    <div class="map-stat">
+                        <span class="map-stat-label">Average</span>
+                        <span class="map-stat-value" id="statAvgPrice">-</span>
+                    </div>
+                    <div class="map-stat">
+                        <span class="map-stat-label">Towns</span>
+                        <span class="map-stat-value" id="statTowns">-</span>
+                    </div>
+                </div>
+
+                <div class="map-toolbar">
+                    <div class="map-mode-toggle">
+                        <button class="btn btn-primary active" id="btnPins" onclick="showPins()">
+                            <i class="bi bi-pin-map me-1"></i> Pin-Level
+                        </button>
+                        <button class="btn btn-outline-light" id="btnHeatmap" onclick="showHeatmap()">
+                            <i class="bi bi-grid-3x3-gap me-1"></i> Heatmap
+                        </button>
+                    </div>
+
+                    <div class="map-control-group">
+                        <label for="townFilter">Town Filter</label>
+                        <select id="townFilter" class="form-select form-select-sm map-select">
+                            <option value="">All Towns</option>
+                            {% for t in towns %}
+                            <option value="{{ t }}">{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="map-control-group">
+                        <label for="metricSelect">Heat Metric</label>
+                        <select id="metricSelect" class="form-select form-select-sm map-select" style="display: none;">
+                            <option value="price">Average Price</option>
+                            <option value="volume">Transaction Volume</option>
+                        </select>
+                    </div>
+
+                    <div class="map-control-group">
+                        <label for="radiusRange">Heat Radius</label>
+                        <div class="map-range-wrap">
+                            <input id="radiusRange" type="range" min="800" max="2400" step="100" value="1400">
+                            <div class="map-range-meta">
+                                <span>Focused</span>
+                                <span id="radiusValue">1400 m</span>
+                                <span>Broad</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="map-insight" id="mapInsight">
+                        Pin mode shows individual resale transactions. Switch to heatmap mode to compare districts by pricing pressure.
+                    </div>
+                </div>
+            </div>
+
+            <div class="map-float-note">
+                <i class="bi bi-cursor-fill"></i>
+                <span>Click a district bubble to jump into town-level transactions</span>
+            </div>
+
+            <div id="map"></div>
+
+            <div class="map-legend-panel">
+                <div class="map-legend-title" id="legendTitle">Price Intensity</div>
+                <div class="legend-scale" id="legendScale"></div>
+                <div class="legend-labels" id="legendLabels">
+                    <span>Low</span>
+                    <span>Moderate</span>
+                    <span>High</span>
+                    <span>Extreme</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const map = L.map('map', { zoomControl: true }).setView([1.3521, 103.8198], 11);
+
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    subdomains: 'abcd',
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+}).addTo(map);
+
+let markers = L.layerGroup().addTo(map);
+let heatmapLayer = L.layerGroup();
+let currentMode = 'pins';
+
+const PRICE_COLORS = ['#22c55e', '#84cc16', '#facc15', '#fb923c', '#f97316', '#ef4444', '#be123c'];
+const VOL_COLORS = ['#38bdf8', '#22d3ee', '#a3e635', '#facc15', '#f97316', '#ef4444'];
+
+function updateStats(data) {
+    const records = data.length;
+    const avgPrice = records
+        ? '$' + Math.round(data.reduce((sum, d) => sum + Number(d.resale_price || d.avg_price || 0), 0) / records).toLocaleString()
+        : '-';
+    const townCount = new Set(data.map(d => d.town).filter(Boolean)).size || '-';
+
+    document.getElementById('statRecords').textContent = records.toLocaleString();
+    document.getElementById('statAvgPrice').textContent = avgPrice;
+    document.getElementById('statTowns').textContent = townCount;
+}
+
+function setInsight(text) {
+    document.getElementById('mapInsight').textContent = text;
+}
+
+function buildThresholds(values, buckets = 7) {
+    if (!values.length) return [];
+    const sorted = [...values].sort((a, b) => a - b);
+    const out = [];
+    for (let i = 1; i < buckets; i++) {
+        const pos = Math.floor((i / buckets) * (sorted.length - 1));
+        out.push(sorted[pos]);
+    }
+    return out;
+}
+
+function scaleColor(value, thresholds, palette) {
+    if (!Number.isFinite(value) || !thresholds.length) return palette[0];
+    let idx = thresholds.findIndex(t => value <= t);
+    if (idx === -1) idx = palette.length - 1;
+    return palette[Math.min(idx, palette.length - 1)];
+}
+
+function handleAuthFailure(resp) {
+    if (resp.status === 401) {
+        window.location.href = "{{ url_for('login') }}";
+        return true;
+    }
+    return false;
+}
+
+function updateLegend(metric) {
+    const title = document.getElementById('legendTitle');
+    const scale = document.getElementById('legendScale');
+    const labels = document.getElementById('legendLabels');
+
+    if (metric === 'volume') {
+        title.textContent = 'Transaction Volume';
+        scale.className = 'legend-scale legend-volume';
+        labels.innerHTML = '<span>Quiet</span><span>Active</span><span>Busy</span><span>Hot</span>';
+        return;
+    }
+
+    title.textContent = 'Price Intensity';
+    scale.className = 'legend-scale';
+    labels.innerHTML = '<span>Affordable</span><span>Mid</span><span>Premium</span><span>Peak</span>';
+}
+
+async function loadPins() {
+    const town = document.getElementById('townFilter').value;
+    const params = new URLSearchParams();
+    if (town) params.set('town', town);
+    params.set('limit', 1800);
+
+    const resp = await fetch('/api/transactions?' + params);
+    if (handleAuthFailure(resp)) return;
+    const data = await resp.json();
+
+    markers.clearLayers();
+    const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
+    const thresholds = buildThresholds(prices, PRICE_COLORS.length);
+
+    data.forEach(txn => {
+        if (!txn.latitude || !txn.longitude) return;
+
+        const price = Number(txn.resale_price);
+        const color = scaleColor(price, thresholds, PRICE_COLORS);
+        const radius = Math.max(4, Math.min(11, Number(txn.floor_area_sqm || 70) / 13));
+
+        const marker = L.circleMarker([txn.latitude, txn.longitude], {
+            radius,
+            fillColor: color,
+            color: 'rgba(255,255,255,0.75)',
+            weight: 0.8,
+            fillOpacity: 0.88,
+        });
+
+        marker.bindPopup(`
+            <strong>${txn.block} ${txn.street_name}</strong><br>
+            <b>$${Number(txn.resale_price).toLocaleString()}</b><br>
+            ${txn.flat_type} · ${txn.storey_range}<br>
+            ${txn.floor_area_sqm} sqm · ${txn.month}<br>
+            <span style="color:#93c5fd">${txn.town}</span>
+        `);
+
+        markers.addLayer(marker);
+    });
+
+    updateLegend('price');
+    updateStats(data);
+    setInsight(
+        town
+            ? `${town} is in pin mode. Every dot is an individual resale transaction colored by price intensity.`
+            : 'Pin mode shows individual resale transactions across Singapore. Warm colors indicate higher-priced deals.'
+    );
+}
+
+async function loadHeatmap() {
+    const resp = await fetch('/api/district_summary');
+    if (handleAuthFailure(resp)) return;
+    const data = await resp.json();
+    const metric = document.getElementById('metricSelect').value;
+    const radius = Number(document.getElementById('radiusRange').value);
+    const palette = metric === 'price' ? PRICE_COLORS : VOL_COLORS;
+    const values = data
+        .map(d => Number(metric === 'price' ? (d.recent_avg || d.avg_price) : d.total_txns))
+        .filter(Number.isFinite);
+    const thresholds = buildThresholds(values, palette.length);
+
+    heatmapLayer.clearLayers();
+
+    data.forEach(d => {
+        if (!d.lat || !d.lng) return;
+
+        const metricValue = Number(metric === 'price' ? (d.recent_avg || d.avg_price) : d.total_txns);
+        const color = scaleColor(metricValue, thresholds, palette);
+        const label = metric === 'price' ? 'Avg Price (2023+)' : 'Transactions';
+        const formatted = metric === 'price'
+            ? '$' + Math.round(metricValue).toLocaleString()
+            : Number(metricValue).toLocaleString();
+
+        const circle = L.circle([d.lat, d.lng], {
+            radius,
+            fillColor: color,
+            color,
+            weight: 1.6,
+            fillOpacity: 0.35,
+            className: 'pulse',
+        });
+
+        circle.bindPopup(`
+            <strong>${d.town}</strong><br>
+            ${label}: <b>${formatted}</b><br>
+            Overall Avg Price: $${Number(d.avg_price).toLocaleString()}<br>
+            Total Txns: ${Number(d.total_txns).toLocaleString()}<br>
+            <span style="color:#fcd34d">Click to inspect town transactions</span>
+        `);
+
+        circle.on('click', () => {
+            document.getElementById('townFilter').value = d.town;
+            showPins();
+        });
+
+        const labelMarker = L.marker([d.lat, d.lng], {
+            interactive: false,
+            icon: L.divIcon({
+                className: 'district-label',
+                html: `<div>${d.town}</div>`,
+                iconSize: [120, 16],
+                iconAnchor: [60, 8],
+            })
+        });
+
+        heatmapLayer.addLayer(circle);
+        heatmapLayer.addLayer(labelMarker);
+    });
+
+    updateLegend(metric);
+    updateStats(data);
+    setInsight(
+        metric === 'price'
+            ? 'Heatmap mode ranks districts by pricing pressure. Red zones indicate premium resale clusters.'
+            : 'Heatmap mode ranks districts by transaction volume. Warmer zones indicate stronger market activity.'
+    );
+}
+
+function setModeButtons(mode) {
+    const pinsBtn = document.getElementById('btnPins');
+    const heatBtn = document.getElementById('btnHeatmap');
+
+    if (mode === 'pins') {
+        pinsBtn.classList.add('active', 'btn-primary');
+        pinsBtn.classList.remove('btn-outline-light');
+        heatBtn.classList.remove('active', 'btn-primary');
+        heatBtn.classList.add('btn-outline-light');
+    } else {
+        heatBtn.classList.add('active', 'btn-primary');
+        heatBtn.classList.remove('btn-outline-light');
+        pinsBtn.classList.remove('active', 'btn-primary');
+        pinsBtn.classList.add('btn-outline-light');
+    }
+}
+
+function showPins() {
+    currentMode = 'pins';
+    setModeButtons('pins');
+    document.getElementById('metricSelect').style.display = 'none';
+    map.removeLayer(heatmapLayer);
+    markers.addTo(map);
+    loadPins();
+}
+
+function showHeatmap() {
+    currentMode = 'heatmap';
+    setModeButtons('heatmap');
+    document.getElementById('metricSelect').style.display = '';
+    map.removeLayer(markers);
+    heatmapLayer.addTo(map);
+    loadHeatmap();
+}
+
+document.getElementById('townFilter').addEventListener('change', () => {
+    if (currentMode === 'pins') {
+        loadPins();
+    }
+});
+
+document.getElementById('metricSelect').addEventListener('change', loadHeatmap);
+document.getElementById('radiusRange').addEventListener('input', (event) => {
+    document.getElementById('radiusValue').textContent = `${event.target.value} m`;
+    if (currentMode === 'heatmap') {
+        loadHeatmap();
+    }
+});
+
+showPins();
+</script>
+{% endblock %}

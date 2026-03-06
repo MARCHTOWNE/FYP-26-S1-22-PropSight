@@ -1,0 +1,480 @@
+{% extends "base.html" %}
+{% block title %}Analytics — HDB Resale Analytics{% endblock %}
+
+{% block extra_head %}
+<style>
+    .dashboard-hero {
+        background: linear-gradient(110deg, rgba(37,99,235,0.09), rgba(148,163,184,0.11));
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 16px;
+    }
+
+    .kpi-card {
+        border-radius: 14px;
+        padding: 1rem;
+        background: #fff;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+        height: 100%;
+    }
+
+    .kpi-label {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        margin-bottom: 2px;
+    }
+
+    .kpi-value {
+        font-size: 1.45rem;
+        font-weight: 800;
+        color: #1d4ed8;
+    }
+
+    .insight-box {
+        background: linear-gradient(135deg, #ffffff, #f8fbff);
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 14px;
+        padding: 1rem;
+        min-height: 120px;
+    }
+
+    .hint-text {
+        font-size: 0.8rem;
+        color: #64748b;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="dashboard-hero p-3 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+            <h4 class="mb-0"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Interactive Market Dashboard</h4>
+            <span class="hint-text"><i class="bi bi-mouse me-1"></i>Click a district bar to drill down into that town</span>
+        </div>
+
+        <div class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label fw-bold small mb-1">Town</label>
+                <select id="filterTown" class="form-select form-select-sm">
+                    <option value="">All Towns</option>
+                    {% for t in towns %}
+                    <option value="{{ t }}">{{ t }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small mb-1">Flat Type</label>
+                <select id="filterFlat" class="form-select form-select-sm">
+                    <option value="">All Types</option>
+                    <option>1 Room</option>
+                    <option>2 Room</option>
+                    <option>3 Room</option>
+                    <option>4 Room</option>
+                    <option>5 Room</option>
+                    <option>Executive</option>
+                    <option>Multi-Generation</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small mb-1">Trend Style</label>
+                <select id="trendStyle" class="form-select form-select-sm">
+                    <option value="line">Line + Area</option>
+                    <option value="bar">Bar</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small mb-1">Year From</label>
+                <select id="yearFrom" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label fw-bold small mb-1">Year To</label>
+                <select id="yearTo" class="form-select form-select-sm"></select>
+            </div>
+            <div class="col-md-1 d-grid">
+                <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Average Price</div><div id="kpiAvgPrice" class="kpi-value">-</div></div></div>
+        <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Transactions</div><div id="kpiTxn" class="kpi-value">-</div></div></div>
+        <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Price Momentum</div><div id="kpiMomentum" class="kpi-value">-</div></div></div>
+        <div class="col-md-3"><div class="kpi-card"><div class="kpi-label">Median-Like Midpoint</div><div id="kpiMid" class="kpi-value">-</div></div></div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-8">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-graph-up-arrow me-1 text-primary"></i>Price Trend</h6>
+                    <div class="chart-container"><canvas id="priceTrendChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-pie-chart me-1 text-primary"></i>Flat Type Share</h6>
+                    <div class="chart-container"><canvas id="flatTypeChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-lg-7">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-buildings me-1 text-primary"></i>District Comparison (Latest Year)</h6>
+                    <div style="height: 410px;"><canvas id="districtChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-lightbulb me-1 text-primary"></i>Dynamic Insights</h6>
+                    <div id="insightBox" class="insight-box">
+                        <div class="text-muted">Apply filters to generate insights from historical transactions.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-activity me-1 text-primary"></i>Transaction Volume by Year</h6>
+                    <div class="chart-container"><canvas id="volumeChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h6 class="card-title"><i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm by Town</h6>
+                    <div class="chart-container"><canvas id="psfChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart;
+let latestTrendData = [];
+
+const COLORS = ['#1d4ed8', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#1e293b', '#334155', '#64748b'];
+
+function getFilters() {
+    return {
+        town: document.getElementById('filterTown').value,
+        flat_type: document.getElementById('filterFlat').value,
+    };
+}
+
+function getYearRange() {
+    return {
+        from: Number(document.getElementById('yearFrom').value || 0),
+        to: Number(document.getElementById('yearTo').value || 9999),
+    };
+}
+
+function handleAuthFailure(resp) {
+    if (resp.status === 401) {
+        window.location.href = "{{ url_for('login') }}";
+        return true;
+    }
+    return false;
+}
+
+async function fetchJSON(url) {
+    const resp = await fetch(url);
+    if (handleAuthFailure(resp)) return [];
+    return resp.json();
+}
+
+function clipByYear(data) {
+    const { from, to } = getYearRange();
+    return data.filter(d => Number(d.year) >= from && Number(d.year) <= to);
+}
+
+function formatMoney(v) {
+    return '$' + Number(v || 0).toLocaleString();
+}
+
+function setKpis(data) {
+    if (!data.length) {
+        document.getElementById('kpiAvgPrice').textContent = '-';
+        document.getElementById('kpiTxn').textContent = '-';
+        document.getElementById('kpiMomentum').textContent = '-';
+        document.getElementById('kpiMid').textContent = '-';
+        return;
+    }
+
+    const avgPrice = Math.round(data.reduce((s, d) => s + Number(d.avg_price || 0), 0) / data.length);
+    const txns = data.reduce((s, d) => s + Number(d.txn_count || 0), 0);
+    const midpoint = Math.round((Number(data[0].min_price || 0) + Number(data[data.length - 1].max_price || 0)) / 2);
+
+    let momentum = 'Stable';
+    if (data.length >= 2) {
+        const prev = Number(data[data.length - 2].avg_price || 0);
+        const curr = Number(data[data.length - 1].avg_price || 0);
+        const change = prev ? ((curr - prev) / prev) * 100 : 0;
+        if (change > 3) momentum = `Rising ${change.toFixed(1)}%`;
+        else if (change < -3) momentum = `Cooling ${change.toFixed(1)}%`;
+        else momentum = `Stable ${change.toFixed(1)}%`;
+    }
+
+    document.getElementById('kpiAvgPrice').textContent = formatMoney(avgPrice);
+    document.getElementById('kpiTxn').textContent = txns.toLocaleString();
+    document.getElementById('kpiMomentum').textContent = momentum;
+    document.getElementById('kpiMid').textContent = formatMoney(midpoint);
+}
+
+function buildInsights(data, districtData) {
+    const box = document.getElementById('insightBox');
+    if (!data.length) {
+        box.innerHTML = '<div class="text-muted">No data in selected year range.</div>';
+        return;
+    }
+
+    const first = Number(data[0].avg_price || 0);
+    const last = Number(data[data.length - 1].avg_price || 0);
+    const trendPct = first ? ((last - first) / first) * 100 : 0;
+
+    const topDistrict = districtData[0] || null;
+    const lowDistrict = districtData[districtData.length - 1] || null;
+
+    const direction = trendPct > 3 ? 'uptrend' : (trendPct < -3 ? 'downtrend' : 'sideways trend');
+    box.innerHTML = `
+        <p class="mb-2"><strong>Market movement:</strong> Selected segment shows a <strong>${direction}</strong> of <strong>${trendPct.toFixed(1)}%</strong> across the chosen years.</p>
+        <p class="mb-2"><strong>Activity:</strong> ${data.reduce((s, d) => s + Number(d.txn_count || 0), 0).toLocaleString()} transactions in scope.</p>
+        <p class="mb-0"><strong>District spread:</strong> Highest latest avg price is <strong>${topDistrict ? topDistrict.town : '-'}</strong> (${topDistrict ? formatMoney(topDistrict.avg_price) : '-'}) while lower end is <strong>${lowDistrict ? lowDistrict.town : '-'}</strong> (${lowDistrict ? formatMoney(lowDistrict.avg_price) : '-'}).</p>
+    `;
+}
+
+function ensureYearSelectors(data) {
+    if (!data.length) return;
+    const years = [...new Set(data.map(d => Number(d.year)))].sort((a, b) => a - b);
+    const fromEl = document.getElementById('yearFrom');
+    const toEl = document.getElementById('yearTo');
+
+    if (fromEl.options.length) return;
+
+    years.forEach(y => {
+        fromEl.add(new Option(String(y), String(y)));
+        toEl.add(new Option(String(y), String(y)));
+    });
+
+    fromEl.value = String(years[0]);
+    toEl.value = String(years[years.length - 1]);
+}
+
+async function loadPriceTrend() {
+    const f = getFilters();
+    const params = new URLSearchParams();
+    if (f.town) params.set('town', f.town);
+    if (f.flat_type) params.set('flat_type', f.flat_type);
+
+    const raw = await fetchJSON('/api/price_trend_simple?' + params);
+    ensureYearSelectors(raw);
+    const data = clipByYear(raw);
+    latestTrendData = data;
+    setKpis(data);
+
+    const ctx = document.getElementById('priceTrendChart').getContext('2d');
+    const type = document.getElementById('trendStyle').value;
+
+    if (priceTrendChart) priceTrendChart.destroy();
+    priceTrendChart = new Chart(ctx, {
+        type,
+        data: {
+            labels: data.map(d => d.year),
+            datasets: [{
+                label: 'Average Price',
+                data: data.map(d => d.avg_price),
+                borderColor: '#2563eb',
+                backgroundColor: type === 'line' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.78)',
+                fill: type === 'line',
+                tension: 0.28,
+                borderRadius: 5,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: { callbacks: { label: c => formatMoney(c.parsed.y) } },
+                legend: { display: false }
+            },
+            scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
+        }
+    });
+
+    return data;
+}
+
+async function loadFlatType() {
+    const f = getFilters();
+    const params = new URLSearchParams();
+    if (f.town) params.set('town', f.town);
+
+    const data = await fetchJSON('/api/flat_type_breakdown?' + params);
+    const ctx = document.getElementById('flatTypeChart').getContext('2d');
+
+    if (flatTypeChart) flatTypeChart.destroy();
+    flatTypeChart = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: data.map(d => d.flat_type),
+            datasets: [{ data: data.map(d => d.txn_count), backgroundColor: COLORS }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 11, font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: c => {
+                            const d = data[c.dataIndex];
+                            return ` ${d.flat_type}: ${d.txn_count.toLocaleString()} txns (avg ${formatMoney(d.avg_price)})`;
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+async function loadDistrict() {
+    let data = await fetchJSON('/api/district_comparison');
+    const f = getFilters();
+    if (f.town) {
+        data = data.filter(d => d.town === f.town);
+    }
+
+    const ctx = document.getElementById('districtChart').getContext('2d');
+    if (districtChart) districtChart.destroy();
+
+    districtChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.town),
+            datasets: [{
+                label: 'Avg Price',
+                data: data.map(d => d.avg_price),
+                backgroundColor: data.map((_, i) => COLORS[i % COLORS.length]),
+                borderRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: c => ` ${formatMoney(c.parsed.x)}` } }
+            },
+            scales: { x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } },
+            onClick: (_, activeEls) => {
+                if (!activeEls.length) return;
+                const idx = activeEls[0].index;
+                const town = data[idx].town;
+                document.getElementById('filterTown').value = town;
+                refreshDashboard();
+            }
+        }
+    });
+
+    return data;
+}
+
+async function loadVolume() {
+    const data = latestTrendData;
+    const ctx = document.getElementById('volumeChart').getContext('2d');
+
+    if (volumeChart) volumeChart.destroy();
+    volumeChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.year),
+            datasets: [{
+                label: 'Transactions',
+                data: data.map(d => d.txn_count),
+                backgroundColor: 'rgba(59, 130, 246, 0.76)',
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
+}
+
+async function loadPSF() {
+    let data = await fetchJSON('/api/district_comparison');
+    const f = getFilters();
+    if (f.town) data = data.filter(d => d.town === f.town);
+    data.sort((a, b) => b.psf - a.psf);
+
+    const ctx = document.getElementById('psfChart').getContext('2d');
+
+    if (psfChart) psfChart.destroy();
+    psfChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels: data.map(d => d.town),
+            datasets: [{
+                label: '$/sqm',
+                data: data.map(d => d.psf),
+                backgroundColor: '#1d4ed8',
+                borderRadius: 4,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            indexAxis: 'y',
+            plugins: { legend: { display: false } },
+            scales: { x: { ticks: { callback: v => '$' + v.toLocaleString() } } }
+        }
+    });
+}
+
+async function refreshDashboard() {
+    const trendData = await loadPriceTrend();
+    await loadFlatType();
+    const districtData = await loadDistrict();
+    await loadVolume();
+    await loadPSF();
+    buildInsights(trendData, districtData);
+}
+
+['filterTown', 'filterFlat', 'trendStyle', 'yearFrom', 'yearTo'].forEach(id => {
+    document.getElementById(id).addEventListener('change', () => {
+        const from = Number(document.getElementById('yearFrom').value || 0);
+        const to = Number(document.getElementById('yearTo').value || 9999);
+        if (from > to) {
+            document.getElementById('yearTo').value = String(from);
+        }
+        refreshDashboard();
+    });
+});
+
+refreshDashboard();
+</script>
+{% endblock %}

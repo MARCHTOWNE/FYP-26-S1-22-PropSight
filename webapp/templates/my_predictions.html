@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Saved Predictions — HDB Resale Analytics{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h4 class="mb-4">
+        <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
+    </h4>
+
+    {% if predictions %}
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover table-predictions mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Town</th>
+                        <th>Flat Type</th>
+                        <th>Model</th>
+                        <th class="text-end">Area</th>
+                        <th>Storey</th>
+                        <th class="text-end">Predicted</th>
+                        <th class="text-end">Range</th>
+                        <th>Date</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in predictions %}
+                    <tr>
+                        <td>{{ p['town'] }}</td>
+                        <td>{{ p['flat_type'] }}</td>
+                        <td>{{ p['flat_model'] }}</td>
+                        <td class="text-end">{{ p['floor_area'] }} sqm</td>
+                        <td>{{ p['storey_range'] }}</td>
+                        <td class="text-end fw-bold text-primary">
+                            ${{ "{:,.0f}".format(p['predicted_price']) }}
+                        </td>
+                        <td class="text-end text-muted small">
+                            ${{ "{:,.0f}".format(p['price_low']) }} -
+                            ${{ "{:,.0f}".format(p['price_high']) }}
+                        </td>
+                        <td class="small text-muted">{{ p['created_at'][:10] }}</td>
+                        <td>
+                            <form method="POST"
+                                  action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
+                                  onsubmit="return confirm('Delete this prediction?')">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="bi bi-bookmark display-1 text-primary opacity-25"></i>
+            <h5 class="mt-3 text-muted">No saved predictions yet</h5>
+            <p class="text-muted">
+                Go to the <a href="{{ url_for('predict') }}">prediction page</a> to
+                create and save property valuations.
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

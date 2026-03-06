@@ -1,0 +1,294 @@
+{% extends "base.html" %}
+{% block title %}HDB Resale Analytics — Home{% endblock %}
+
+{% block content %}
+<section class="hero-editorial">
+    <div class="hero-overlay"></div>
+    <div class="container-fluid px-lg-5">
+        <div class="hero-inner">
+            <p class="section-eyebrow text-light">AI-Driven Proptech Platform</p>
+            <h1>Predict Singapore HDB resale values with spatial intelligence and market analytics.</h1>
+            <p class="hero-lead">
+                A data-first workflow combining machine learning, transaction heatmaps, and district-level analytics
+                to support confident property decisions.
+            </p>
+            <div class="cta-row">
+                {% if g.user %}
+                <a href="{{ url_for('predict') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
+                <a href="{{ url_for('analytics') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
+                <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<nav class="story-nav">
+    <div class="container">
+        <a href="#map-section">Map</a>
+        <a href="#predict-section">Predict</a>
+        <a href="#insights-section">Insights</a>
+        <a href="#tech-section">Technology</a>
+    </div>
+</nav>
+
+<section class="story-section bg-white angled-top" data-reveal>
+    <div class="container">
+        <div class="metric-grid">
+            <div class="metric-tile">
+                <small class="kicker">Dataset</small>
+                <span>970K+</span>
+                <small class="meta">Historical Transactions</small>
+            </div>
+            <div class="metric-tile">
+                <small class="kicker">Coverage</small>
+                <span>27</span>
+                <small class="meta">HDB Towns Covered</small>
+            </div>
+            <div class="metric-tile">
+                <small class="kicker">Period</small>
+                <span>1990-2026</span>
+                <small class="meta">Data Horizon</small>
+            </div>
+            <div class="metric-tile">
+                <small class="kicker">Accuracy</small>
+                <span>MAPE 6.5%</span>
+                <small class="meta">Model Reliability</small>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="map-section" class="story-section bg-soft accent-map" data-reveal>
+    <div class="container">
+        <div class="split-grid align-items-center mb-4">
+            <div>
+                <p class="section-eyebrow">Geospatial Insight</p>
+                <h2 class="section-title">Interactive Map of District Price Behaviour</h2>
+                <p class="section-subtitle">
+                    Explore market movement geographically using pin-level transactions and district heat layers.
+                    Shift from area discovery to deep transaction context in one flow.
+                </p>
+                {% if g.user %}
+                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Open Full Interactive Map</a>
+                {% else %}
+                <a href="{{ url_for('login') }}" class="btn btn-primary">Login to Explore Live Map</a>
+                {% endif %}
+            </div>
+            <div class="panel-card map-showcase shift-down">
+                {% if g.user %}
+                <div id="homeMap" class="home-map"></div>
+                {% else %}
+                <div class="map-gated-visual">
+                    <div class="map-gated-copy">
+                        <h5>Live map for registered users</h5>
+                        <p>Sign in to view district-level heat patterns and transaction pins.</p>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="predict-section" class="story-section bg-white accent-predict angled-bottom" data-reveal>
+    <div class="container">
+        <div class="split-grid align-items-start">
+            <div>
+                <p class="section-eyebrow">Price Prediction</p>
+                <h2 class="section-title">Structured valuation input with confidence-driven output</h2>
+                <p class="section-subtitle">
+                    Input core property attributes and produce an AI-estimated resale range, supported by trend context and benchmarks.
+                </p>
+            </div>
+            <div class="panel-card prediction-preview">
+                <form method="POST" action="{{ url_for('predict') }}" class="row g-2">
+                    <div class="col-12">
+                        <label class="form-label small">Town</label>
+                        <select class="form-select" name="town" required>
+                            <option value="">Select town...</option>
+                            {% for t in towns %}
+                            <option value="{{ t }}">{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Flat Type</label>
+                        <select class="form-select" name="flat_type" required>
+                            {% for ft in flat_types %}
+                            <option value="{{ ft }}">{{ ft }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label small">Flat Model</label>
+                        <select class="form-select" name="flat_model" required>
+                            {% for fm in flat_models %}
+                            <option value="{{ fm }}">{{ fm }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Floor Area</label>
+                        <input type="number" class="form-control" name="floor_area" min="30" max="300" placeholder="Optional">
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Storey</label>
+                        <select class="form-select" name="storey_range" required>
+                            {% for sr in storey_ranges %}
+                            <option value="{{ sr }}">{{ sr }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-4">
+                        <label class="form-label small">Lease Start</label>
+                        <input type="number" class="form-control" name="lease_commence" min="1960" max="2025" placeholder="Optional">
+                    </div>
+                    <div class="col-12 d-grid mt-2">
+                        {% if g.user %}
+                        <button class="btn btn-primary">Predict Estimated Price</button>
+                        {% else %}
+                        <a href="{{ url_for('login') }}" class="btn btn-primary">Login to Run Prediction</a>
+                        {% endif %}
+                    </div>
+                </form>
+                <div class="result-mock mt-3">
+                    <div>
+                        <small>Estimated Range</small>
+                        <strong>$480,000 - $535,000</strong>
+                    </div>
+                    <div>
+                        <small>Confidence</small>
+                        <strong>±6.5% MAPE</strong>
+                    </div>
+                    <div>
+                        <small>Trend Snapshot</small>
+                        <strong>Stable to Rising</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section id="insights-section" class="story-section bg-soft accent-insights" data-reveal>
+    <div class="container">
+        <p class="section-eyebrow">Market Intelligence</p>
+        <h2 class="section-title">Analytics dashboards for trend, volume, and district comparison</h2>
+        <p class="section-subtitle mb-4">Use card-based insights to compare towns, track yearly movements, and identify market shifts quickly.</p>
+
+        <div class="insight-grid">
+            <div class="panel-card insight-card-lg">
+                <small class="kicker">Trend</small>
+                <h6>Price Trend & Momentum</h6>
+                <p>Visualize long-term average price trajectories with dynamic filtering by town and flat type.</p>
+            </div>
+            <div class="panel-card">
+                <small class="kicker">Compare</small>
+                <h6>District Comparison</h6>
+                <p>Benchmark latest average prices and price-per-sqm across districts.</p>
+            </div>
+            <div class="panel-card">
+                <small class="kicker">Volume</small>
+                <h6>Transaction Volume</h6>
+                <p>Track yearly activity concentration to identify high-demand and cooling markets.</p>
+            </div>
+        </div>
+
+        <div class="mt-4">
+            {% if g.user %}
+            <a href="{{ url_for('analytics') }}" class="btn btn-primary">Open Analytics Dashboard</a>
+            {% else %}
+            <a href="{{ url_for('login') }}" class="btn btn-primary">Login to View Full Dashboard</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section id="tech-section" class="story-section bg-white" data-reveal>
+    <div class="container">
+        <div class="split-grid">
+            <div>
+                <p class="section-eyebrow">Platform Stack</p>
+                <h2 class="section-title">Built for explainable, data-driven real estate decisions</h2>
+            </div>
+            <div class="tech-list">
+                <div class="tech-item"><strong>Prediction Engine:</strong> XGBoost model with feature engineering and calibrated confidence range.</div>
+                <div class="tech-item"><strong>Spatial Layer:</strong> Leaflet map with transaction markers and district heat visualization.</div>
+                <div class="tech-item"><strong>Analytics Layer:</strong> Interactive charts for trend, district comparison, and market activity.</div>
+                <div class="tech-item"><strong>Access Flow:</strong> Guest discovery with authenticated access for detailed market analysis.</div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if not g.user %}
+<section class="story-section cta-strip" data-reveal>
+    <div class="container text-center">
+        <h3>Access full prediction, analytics, and geospatial market insights</h3>
+        <a href="{{ url_for('register') }}" class="btn btn-light btn-lg mt-2">Create Free Account</a>
+    </div>
+</section>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+const revealItems = document.querySelectorAll('[data-reveal]');
+const revealObs = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+        if (entry.isIntersecting) {
+            entry.target.classList.add('is-visible');
+            revealObs.unobserve(entry.target);
+        }
+    });
+}, { threshold: 0.12 });
+revealItems.forEach(el => revealObs.observe(el));
+</script>
+{% if g.user %}
+<script>
+const homeMap = L.map('homeMap', { zoomControl: false, attributionControl: false }).setView([1.3521, 103.8198], 11);
+
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 18
+}).addTo(homeMap);
+
+fetch('/api/district_summary')
+    .then(resp => {
+        if (resp.status === 401) {
+            window.location.href = "{{ url_for('login') }}";
+            return [];
+        }
+        return resp.json();
+    })
+    .then(data => {
+        if (!Array.isArray(data)) return;
+        const vals = data.map(d => Number(d.recent_avg || d.avg_price)).filter(Number.isFinite).sort((a, b) => a - b);
+        const idx = q => vals[Math.floor((vals.length - 1) * q)] || vals[vals.length - 1] || 0;
+        const t = [idx(0.2), idx(0.4), idx(0.6), idx(0.8)];
+
+        function pick(v) {
+            if (v <= t[0]) return '#e2e8f0';
+            if (v <= t[1]) return '#bfdbfe';
+            if (v <= t[2]) return '#93c5fd';
+            if (v <= t[3]) return '#60a5fa';
+            return '#2563eb';
+        }
+
+        data.forEach(d => {
+            if (!d.lat || !d.lng) return;
+            const val = Number(d.recent_avg || d.avg_price || 0);
+            L.circle([d.lat, d.lng], {
+                radius: 1050,
+                color: pick(val),
+                fillColor: pick(val),
+                fillOpacity: 0.45,
+                weight: 1.5,
+            }).addTo(homeMap).bindPopup(`<strong>${d.town}</strong><br>Avg Price: $${Math.round(val).toLocaleString()}`);
+        });
+    });
+</script>
+{% endif %}
+{% endblock %}

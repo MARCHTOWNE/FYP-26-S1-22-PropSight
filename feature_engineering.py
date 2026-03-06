@@ -173,7 +173,10 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
 # Feature engineering
 # ---------------------------------------------------------------------------
 
-def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
+def engineer_features(
+    df: pd.DataFrame,
+    price_index: pd.Series,
+) -> pd.DataFrame:
     print("\nEngineering features ...")
 
     df["flat_age"] = (df["year"] - df["lease_commence_date"]).clip(lower=0)
@@ -192,11 +195,18 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
             df["flat_type_ordinal"].median()
         )
 
-    df[TARGET_COL] = np.log1p(df["resale_price"])
+    # RPI-adjusted target: divide out macro price trend so the model
+    # learns structural property value independent of market timing.
+    quarter_key = (
+        df["year"].astype(int) * 10
+        + ((df["month_num"].astype(int) - 1) // 3 + 1)
+    )
+    df["price_index"] = quarter_key.map(price_index)
+    df[TARGET_COL] = np.log1p(df["resale_price"] / df["price_index"])
 
     print(
         "  Features added: flat_age, month_sin, month_cos, "
-        "is_mature_estate, flat_type_ordinal, log_price"
+        "is_mature_estate, flat_type_ordinal, price_index, log_price (RPI-adjusted)"
     )
     return df
 
@@ -215,6 +225,43 @@ def drop_missing_model_rows(df: pd.DataFrame) -> pd.DataFrame:
         f"required model fields. Remaining: {len(df):,}"
     )
     return df
+
+
+# ---------------------------------------------------------------------------
+# Quarterly price index (RPI normalization)
+# ---------------------------------------------------------------------------
+
+def compute_price_index(df: pd.DataFrame) -> pd.Series:
+    """
+    Compute a quarterly resale price index from transaction data.
+
+    Each quarter's index = median(resale_price) / base, where
+    base = median of all quarterly medians (centering the index around 1.0).
+
+    The index captures the macro market trend so models can learn
+    structural property value independent of price inflation.
+
+    Parameters:
+        df: DataFrame with 'year', 'month_num', and 'resale_price' columns.
+
+    Returns:
+        pd.Series mapping quarter key (year*10 + quarter_num) to index value.
+    """
+    quarter_key = (
+        df["year"].astype(int) * 10
+        + ((df["month_num"].astype(int) - 1) // 3 + 1)
+    )
+    quarterly_median = df.groupby(quarter_key)["resale_price"].median()
+    base = quarterly_median.median()
+    pi = quarterly_median / base
+
+    print(f"\nPrice index computed ({len(pi)} quarters):")
+    print(f"  Base (median of quarterly medians): SGD {base:,.0f}")
+    print(f"  Index range: {pi.min():.3f} — {pi.max():.3f}")
+    print(f"  Train-era (≤2020) mean: {pi[pi.index <= 20204].mean():.3f}")
+    print(f"  Test-era  (≥2023) mean: {pi[pi.index >= 20231].mean():.3f}")
+
+    return pi
 
 
 # ---------------------------------------------------------------------------
@@ -297,6 +344,7 @@ def save_artefacts(
     test: pd.DataFrame,
     target_encoders: dict,
     scaler: StandardScaler,
+    price_index: pd.Series,
 ) -> str:
     run_dir = os.path.join(
         OUTPUT_DIR,
@@ -308,7 +356,7 @@ def save_artefacts(
 
     for name, split in [("train", train), ("val", val), ("test", test)]:
         X = split[FEATURE_COLS]
-        y = split[[TARGET_COL, "resale_price"]]
+        y = split[[TARGET_COL, "resale_price", "price_index"]]
 
         X.to_parquet(os.path.join(run_dir, f"X_{name}.parquet"), index=False)
         y.to_parquet(os.path.join(run_dir, f"y_{name}.parquet"), index=False)
@@ -322,6 +370,10 @@ def save_artefacts(
     with open(os.path.join(run_dir, "scaler.pkl"), "wb") as f:
         pickle.dump(scaler, f)
     print("  scaler.pkl")
+
+    with open(os.path.join(run_dir, "price_index.pkl"), "wb") as f:
+        pickle.dump(price_index, f)
+    print(f"  price_index.pkl ({len(price_index)} quarters)")
 
     with open(os.path.join(run_dir, "feature_cols.txt"), "w") as f:
         f.write("\n".join(FEATURE_COLS))
@@ -389,7 +441,8 @@ def main() -> None:
 
     df = load_data()
     df = remove_outliers(df)
-    df = engineer_features(df)
+    price_index = compute_price_index(df)
+    df = engineer_features(df, price_index)
     df = drop_missing_model_rows(df)
 
     train, val, test = temporal_split(df)
@@ -397,7 +450,7 @@ def main() -> None:
     train, val, test, scaler = scale_features(train, val, test)
 
     print_summary(train)
-    run_dir = save_artefacts(train, val, test, target_encoders, scaler)
+    run_dir = save_artefacts(train, val, test, target_encoders, scaler, price_index)
 
     print(f"\nDone. ML-ready data saved to: {run_dir}/")
 

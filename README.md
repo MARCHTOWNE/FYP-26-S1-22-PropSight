@@ -15,8 +15,9 @@ The pipeline:
 2. consolidates and cleans the raw CSV files
 3. stores the cleaned data in a SQLite database
 4. geocodes HDB addresses using OneMap
-5. computes proximity-based location features
-6. prepares a clean feature-ready dataset for future machine learning use
+5. fetches one-time reference datasets for MRT stations, primary schools, and major malls
+6. computes proximity-based location features
+7. prepares a clean feature-ready dataset for future machine learning use
 
 The current project scope focuses on:
 
@@ -36,7 +37,8 @@ Each file has a single responsibility.
 api_fetcher.py          → Fetch raw CSVs from data.gov.sg API → /raw
 data_pipeline.py        → Consolidate, clean, validate → hdb_resale.db
 geocoding.py            → Resolve latitude/longitude using OneMap API
-proximity_features.py   → Compute MRT/CBD/school/mall distances
+fetch_reference_data.py → Build /reference_data JSON files (run once)
+proximity_features.py   → Compute MRT/CBD/primary-school/major-mall distances
 feature_engineering.py  → Build clean feature-ready datasets
 eda_visualisation.py    → Optional exploratory analysis
 ````
@@ -55,10 +57,19 @@ Main database: `hdb_resale.db`
 | `district_summary` | Aggregated summary table for analytics and visualisation |
 | `geocode_cache`    | Cached OneMap geocoding results                          |
 | `pipeline_meta`    | Stores metadata about pipeline runs                      |
+| `upload_audit`     | Audit trail for admin upload operations                  |
 
 ---
 
-## `resale_prices` Key Columns
+## Database Schema Reference
+
+### `resale_prices`
+
+Format:
+
+* one row per resale transaction
+* storage: SQLite table in `hdb_resale.db`
+* primary usage: main training, analytics, map, and prediction dataset
 
 | Column                   | Type    | Description                        |
 | ------------------------ | ------- | ---------------------------------- |
@@ -82,8 +93,77 @@ Main database: `hdb_resale.db`
 | `longitude`              | REAL    | Geocoded longitude                 |
 | `dist_mrt`               | REAL    | Distance to nearest MRT/LRT        |
 | `dist_cbd`               | REAL    | Distance to CBD anchor point       |
-| `dist_school`            | REAL    | Distance to nearest primary school |
-| `dist_mall`              | REAL    | Distance to nearest shopping mall  |
+| `dist_primary_school`    | REAL    | Distance to nearest primary school |
+| `dist_major_mall`        | REAL    | Distance to nearest major mall     |
+
+### `district_summary`
+
+Format:
+
+* one row per `(town, flat_type, year)` group
+* rebuilt on each `data_pipeline.py` run
+* used for analytics and summary visualisation
+
+| Column                  | Type    | Description                                      |
+| ----------------------- | ------- | ------------------------------------------------ |
+| `town`                  | TEXT    | HDB town                                         |
+| `flat_type`             | TEXT    | Flat type                                        |
+| `year`                  | INTEGER | Transaction year                                 |
+| `median_price`          | REAL    | Median resale price for the group                |
+| `avg_price`             | REAL    | Mean resale price for the group                  |
+| `transaction_count`     | INTEGER | Number of transactions in the group              |
+| `avg_floor_area`        | REAL    | Mean floor area in square metres                 |
+| `avg_remaining_lease`   | REAL    | Mean remaining lease in years                    |
+
+### `geocode_cache`
+
+Format:
+
+* one row per unique `full_address`
+* persistent cache across reruns
+* used by `geocoding.py` to avoid duplicate OneMap calls
+
+| Column         | Type | Description                                |
+| -------------- | ---- | ------------------------------------------ |
+| `full_address` | TEXT | Full derived address, primary key          |
+| `latitude`     | REAL | Geocoded latitude                          |
+| `longitude`    | REAL | Geocoded longitude                         |
+| `fetched_at`   | TEXT | UTC timestamp when the address was cached  |
+
+### `pipeline_meta`
+
+Format:
+
+* key-value metadata table
+* persists across pipeline runs
+* used for run tracking and freshness checks
+
+| Column   | Type | Description                  |
+| -------- | ---- | ---------------------------- |
+| `key`    | TEXT | Metadata key, primary key    |
+| `value`  | TEXT | Metadata value               |
+
+Common keys written by the pipeline:
+
+* `last_fetched_month`
+* `last_run_at`
+* `total_rows`
+
+### `upload_audit`
+
+Format:
+
+* append-only audit log
+* used for admin upload traceability
+
+| Column          | Type    | Description                                |
+| --------------- | ------- | ------------------------------------------ |
+| `id`            | INTEGER | Auto-increment primary key                 |
+| `uploaded_at`   | TEXT    | Upload timestamp                           |
+| `uploaded_by`   | TEXT    | User or process that triggered the upload  |
+| `filename`      | TEXT    | Uploaded file name                         |
+| `rows_inserted` | INTEGER | Number of rows inserted                    |
+| `status`        | TEXT    | Upload result status                       |
 
 ---
 
@@ -95,9 +175,22 @@ Main database: `hdb_resale.db`
 python api_fetcher.py
 python data_pipeline.py
 python geocoding.py
+python fetch_reference_data.py
 python proximity_features.py
 python feature_engineering.py
 ```
+
+Important:
+
+* `fetch_reference_data.py` is a one-time setup step.
+* Run it before the first run of `proximity_features.py`.
+* You do not need to run it again on every pipeline run unless you want to refresh the MRT, school, or major mall reference datasets.
+
+Geocoding note:
+
+* `geocoding.py` is rerunnable and incremental, not one-time.
+* Run it after `data_pipeline.py`.
+* Run it again whenever new resale rows are added or when you want to retry unresolved addresses.
 
 ### Optional EDA
 
@@ -146,6 +239,30 @@ Main responsibilities:
 * batch-save geocoding results
 * update all matching rows in `resale_prices`
 
+Important usage note:
+
+* this script is safe to rerun
+* it is not a one-time setup script
+* rerun it whenever the database contains new ungeocoded addresses
+
+---
+
+### `fetch_reference_data.py`
+
+Fetches and saves the reference datasets used by `proximity_features.py`.
+
+Main responsibilities:
+
+* fetch MRT station reference data from LTA static geospatial data
+* fetch primary school names from data.gov.sg and geocode them with OneMap
+* geocode a curated major mall list with OneMap
+* save JSON files to `/reference_data`
+
+Important usage note:
+
+* run this script once before running `proximity_features.py`
+* rerun only if you want to refresh the reference datasets
+
 ---
 
 ### `proximity_features.py`
@@ -156,8 +273,8 @@ Generated features:
 
 * `dist_mrt`
 * `dist_cbd`
-* `dist_school`
-* `dist_mall`
+* `dist_primary_school`
+* `dist_major_mall`
 
 These features are written back to `resale_prices`.
 
@@ -279,7 +396,6 @@ sqlite3 hdb_resale.db
 | OneMap Singapore API          | Address geocoding               |
 | MRT/LRT reference data        | Nearest station distance        |
 | School reference data         | Nearest primary school distance |
-| Mall reference data           | Nearest shopping mall distance  |
+| Major mall reference data     | Nearest major mall distance     |
 
 ---
-

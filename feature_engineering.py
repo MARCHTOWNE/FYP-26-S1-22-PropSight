@@ -49,8 +49,8 @@ SCALE_COLS = [
     "year",
     "dist_mrt",
     "dist_cbd",
-    "dist_school",
-    "dist_mall",
+    "dist_primary_school",
+    "dist_major_mall",
 ]
 
 FEATURE_COLS = [
@@ -68,8 +68,8 @@ FEATURE_COLS = [
     "is_mature_estate",
     "dist_mrt",
     "dist_cbd",
-    "dist_school",
-    "dist_mall",
+    "dist_primary_school",
+    "dist_major_mall",
 ]
 
 TARGET_COL = "log_price"
@@ -87,8 +87,8 @@ REQUIRED_MODEL_COLS = [
     "resale_price",
     "dist_mrt",
     "dist_cbd",
-    "dist_school",
-    "dist_mall",
+    "dist_primary_school",
+    "dist_major_mall",
 ]
 
 
@@ -116,8 +116,8 @@ def load_data() -> pd.DataFrame:
         "longitude",
         "dist_mrt",
         "dist_cbd",
-        "dist_school",
-        "dist_mall",
+        "dist_primary_school",
+        "dist_major_mall",
     ]
 
     for col in numeric_cols:

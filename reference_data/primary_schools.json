@@ -1,0 +1,897 @@
+[
+  {
+    "name": "ADMIRALTY PRIMARY SCHOOL",
+    "lat": 1.442634790331114,
+    "lng": 103.800040119743
+  },
+  {
+    "name": "AHMAD IBRAHIM PRIMARY SCHOOL",
+    "lat": 1.433152715435181,
+    "lng": 103.8329424010853
+  },
+  {
+    "name": "AI TONG SCHOOL",
+    "lat": 1.360583433890406,
+    "lng": 103.8330203339857
+  },
+  {
+    "name": "ALEXANDRA PRIMARY SCHOOL",
+    "lat": 1.291334391613348,
+    "lng": 103.8244246805311
+  },
+  {
+    "name": "ANCHOR GREEN PRIMARY SCHOOL",
+    "lat": 1.390369986546132,
+    "lng": 103.8871653759329
+  },
+  {
+    "name": "ANDERSON PRIMARY SCHOOL",
+    "lat": 1.384264294367363,
+    "lng": 103.8413920811184
+  },
+  {
+    "name": "ANG MO KIO PRIMARY SCHOOL",
+    "lat": 1.369321765846087,
+    "lng": 103.839630858752
+  },
+  {
+    "name": "ANGLO-CHINESE SCHOOL (JUNIOR)",
+    "lat": 1.309350412749673,
+    "lng": 103.840950265464
+  },
+  {
+    "name": "ANGLO-CHINESE SCHOOL (PRIMARY)",
+    "lat": 1.31837054523522,
+    "lng": 103.8356097323541
+  },
+  {
+    "name": "ANGSANA PRIMARY SCHOOL",
+    "lat": 1.363605905883133,
+    "lng": 103.9389409003993
+  },
+  {
+    "name": "BEACON PRIMARY SCHOOL",
+    "lat": 1.383949362118238,
+    "lng": 103.7736320229752
+  },
+  {
+    "name": "BEDOK GREEN PRIMARY SCHOOL",
+    "lat": 1.323445932879926,
+    "lng": 103.937878976352
+  },
+  {
+    "name": "BENDEMEER PRIMARY SCHOOL",
+    "lat": 1.321812507804748,
+    "lng": 103.8654041676288
+  },
+  {
+    "name": "BLANGAH RISE PRIMARY SCHOOL",
+    "lat": 1.276120479240372,
+    "lng": 103.808628535239
+  },
+  {
+    "name": "BOON LAY GARDEN PRIMARY SCHOOL",
+    "lat": 1.343178537933179,
+    "lng": 103.7132808894514
+  },
+  {
+    "name": "BUKIT PANJANG PRIMARY SCHOOL",
+    "lat": 1.373621793024374,
+    "lng": 103.7693749040251
+  },
+  {
+    "name": "BUKIT TIMAH PRIMARY SCHOOL",
+    "lat": 1.33774986225881,
+    "lng": 103.7668553447784
+  },
+  {
+    "name": "BUKIT VIEW PRIMARY SCHOOL",
+    "lat": 1.345860547886968,
+    "lng": 103.75366641455
+  },
+  {
+    "name": "CANBERRA PRIMARY SCHOOL",
+    "lat": 1.451250243715436,
+    "lng": 103.8158588589283
+  },
+  {
+    "name": "CANOSSA CATHOLIC PRIMARY SCHOOL",
+    "lat": 1.326644245448396,
+    "lng": 103.8822279648518
+  },
+  {
+    "name": "CANTONMENT PRIMARY SCHOOL",
+    "lat": 1.275472526232034,
+    "lng": 103.8399626317482
+  },
+  {
+    "name": "CASUARINA PRIMARY SCHOOL",
+    "lat": 1.372460639280005,
+    "lng": 103.9570202861143
+  },
+  {
+    "name": "CEDAR PRIMARY SCHOOL",
+    "lat": 1.335588501431211,
+    "lng": 103.8756210494394
+  },
+  {
+    "name": "CHANGKAT PRIMARY SCHOOL",
+    "lat": 1.340231639516331,
+    "lng": 103.9520801140343
+  },
+  {
+    "name": "CHIJ (KATONG) PRIMARY",
+    "lat": 1.306485352770875,
+    "lng": 103.9111056204962
+  },
+  {
+    "name": "CHIJ (KELLOCK)",
+    "lat": 1.275022722964019,
+    "lng": 103.8281575648959
+  },
+  {
+    "name": "CHIJ OUR LADY OF GOOD COUNSEL",
+    "lat": 1.357429522696155,
+    "lng": 103.8640093973725
+  },
+  {
+    "name": "CHIJ OUR LADY OF THE NATIVITY",
+    "lat": 1.373302971401289,
+    "lng": 103.8975757283031
+  },
+  {
+    "name": "CHIJ OUR LADY QUEEN OF PEACE",
+    "lat": 1.366603668560997,
+    "lng": 103.7674122046017
+  },
+  {
+    "name": "CHIJ PRIMARY (TOA PAYOH)",
+    "lat": 1.332752647115879,
+    "lng": 103.8418472637856
+  },
+  {
+    "name": "CHONGFU SCHOOL",
+    "lat": 1.438395628970071,
+    "lng": 103.8393091738164
+  },
+  {
+    "name": "CHONGZHENG PRIMARY SCHOOL",
+    "lat": 1.350707392377436,
+    "lng": 103.951399541868
+  },
+  {
+    "name": "CHUA CHU KANG PRIMARY SCHOOL",
+    "lat": 1.377758900933685,
+    "lng": 103.7418329174204
+  },
+  {
+    "name": "CLEMENTI PRIMARY SCHOOL",
+    "lat": 1.315063218278743,
+    "lng": 103.7631444936865
+  },
+  {
+    "name": "COMPASSVALE PRIMARY SCHOOL",
+    "lat": 1.394445296365664,
+    "lng": 103.8978122299046
+  },
+  {
+    "name": "CONCORD PRIMARY SCHOOL",
+    "lat": 1.380008061972414,
+    "lng": 103.7362254407264
+  },
+  {
+    "name": "CORPORATION PRIMARY SCHOOL",
+    "lat": 1.350997798725388,
+    "lng": 103.7075937243418
+  },
+  {
+    "name": "DAMAI PRIMARY SCHOOL",
+    "lat": 1.335461068004069,
+    "lng": 103.9212701696126
+  },
+  {
+    "name": "DAZHONG PRIMARY SCHOOL",
+    "lat": 1.359179744727699,
+    "lng": 103.7484721078394
+  },
+  {
+    "name": "DE LA SALLE SCHOOL",
+    "lat": 1.394707829639912,
+    "lng": 103.7432018128305
+  },
+  {
+    "name": "EAST SPRING PRIMARY SCHOOL",
+    "lat": 1.352684007463578,
+    "lng": 103.9616768491645
+  },
+  {
+    "name": "EDGEFIELD PRIMARY SCHOOL",
+    "lat": 1.400091395109958,
+    "lng": 103.9078475991141
+  },
+  {
+    "name": "ELIAS PARK PRIMARY SCHOOL",
+    "lat": 1.375056963158182,
+    "lng": 103.9452894168725
+  },
+  {
+    "name": "ENDEAVOUR PRIMARY SCHOOL",
+    "lat": 1.454038374993021,
+    "lng": 103.8174362317305
+  },
+  {
+    "name": "EVERGREEN PRIMARY SCHOOL",
+    "lat": 1.444153328247356,
+    "lng": 103.7945777877569
+  },
+  {
+    "name": "FAIRFIELD METHODIST SCHOOL (PRIMARY)",
+    "lat": 1.301004419167346,
+    "lng": 103.785455606827
+  },
+  {
+    "name": "FARRER PARK PRIMARY SCHOOL",
+    "lat": 1.312368676813718,
+    "lng": 103.8507664029651
+  },
+  {
+    "name": "FENGSHAN PRIMARY SCHOOL",
+    "lat": 1.32980598760785,
+    "lng": 103.9317102930578
+  },
+  {
+    "name": "FERN GREEN PRIMARY SCHOOL",
+    "lat": 1.397269660504794,
+    "lng": 103.8803303056833
+  },
+  {
+    "name": "FERNVALE PRIMARY SCHOOL",
+    "lat": 1.390302279637964,
+    "lng": 103.874445458032
+  },
+  {
+    "name": "FIRST TOA PAYOH PRIMARY SCHOOL",
+    "lat": 1.34032299499939,
+    "lng": 103.8555299061816
+  },
+  {
+    "name": "FRONTIER PRIMARY SCHOOL",
+    "lat": 1.336412987432344,
+    "lng": 103.6997017393095
+  },
+  {
+    "name": "FUCHUN PRIMARY SCHOOL",
+    "lat": 1.430479908101254,
+    "lng": 103.7781929442981
+  },
+  {
+    "name": "FUHUA PRIMARY SCHOOL",
+    "lat": 1.336597264658171,
+    "lng": 103.7360894818831
+  },
+  {
+    "name": "GAN ENG SENG PRIMARY SCHOOL",
+    "lat": 1.285595164949621,
+    "lng": 103.8155474100632
+  },
+  {
+    "name": "GEYLANG METHODIST SCHOOL (PRIMARY)",
+    "lat": 1.317591267572844,
+    "lng": 103.883845744916
+  },
+  {
+    "name": "GONGSHANG PRIMARY SCHOOL",
+    "lat": 1.357116067902936,
+    "lng": 103.9491447972771
+  },
+  {
+    "name": "GREENDALE PRIMARY SCHOOL",
+    "lat": 1.39648195114255,
+    "lng": 103.9123346207095
+  },
+  {
+    "name": "GREENRIDGE PRIMARY SCHOOL",
+    "lat": 1.385889219369218,
+    "lng": 103.7677944692579
+  },
+  {
+    "name": "GREENWOOD PRIMARY SCHOOL",
+    "lat": 1.439899583317834,
+    "lng": 103.8047255873839
+  },
+  {
+    "name": "HAIG GIRLS' SCHOOL",
+    "lat": 1.311943442713839,
+    "lng": 103.9029025571947
+  },
+  {
+    "name": "HENRY PARK PRIMARY SCHOOL",
+    "lat": 1.316676461783479,
+    "lng": 103.7842962277468
+  },
+  {
+    "name": "HOLY INNOCENTS' PRIMARY SCHOOL",
+    "lat": 1.366938308773486,
+    "lng": 103.8941148997942
+  },
+  {
+    "name": "HONG WEN SCHOOL",
+    "lat": 1.321759999645534,
+    "lng": 103.8576284688807
+  },
+  {
+    "name": "HORIZON PRIMARY SCHOOL",
+    "lat": 1.399550034492005,
+    "lng": 103.9134048556651
+  },
+  {
+    "name": "HOUGANG PRIMARY SCHOOL",
+    "lat": 1.377382452314626,
+    "lng": 103.8808052745566
+  },
+  {
+    "name": "HUAMIN PRIMARY SCHOOL",
+    "lat": 1.426972845129362,
+    "lng": 103.8442402265639
+  },
+  {
+    "name": "INNOVA PRIMARY SCHOOL",
+    "lat": 1.42896700684852,
+    "lng": 103.7906075391852
+  },
+  {
+    "name": "JIEMIN PRIMARY SCHOOL",
+    "lat": 1.427688476652264,
+    "lng": 103.8304254900925
+  },
+  {
+    "name": "JING SHAN PRIMARY SCHOOL",
+    "lat": 1.372232909834984,
+    "lng": 103.852132214306
+  },
+  {
+    "name": "JUNYUAN PRIMARY SCHOOL",
+    "lat": 1.347870747667462,
+    "lng": 103.9392217090732
+  },
+  {
+    "name": "JURONG PRIMARY SCHOOL",
+    "lat": 1.348438596989479,
+    "lng": 103.7331565668572
+  },
+  {
+    "name": "JURONG WEST PRIMARY SCHOOL",
+    "lat": 1.33917519796104,
+    "lng": 103.6988037322437
+  },
+  {
+    "name": "KEMING PRIMARY SCHOOL",
+    "lat": 1.345528499608757,
+    "lng": 103.7564493993506
+  },
+  {
+    "name": "KHENG CHENG SCHOOL",
+    "lat": 1.337338193563907,
+    "lng": 103.8471485018234
+  },
+  {
+    "name": "KONG HWA SCHOOL",
+    "lat": 1.310996740091935,
+    "lng": 103.8883520290672
+  },
+  {
+    "name": "KRANJI PRIMARY SCHOOL",
+    "lat": 1.393560504971042,
+    "lng": 103.7473627209389
+  },
+  {
+    "name": "KUO CHUAN PRESBYTERIAN PRIMARY SCHOOL",
+    "lat": 1.349398136695366,
+    "lng": 103.8550182333104
+  },
+  {
+    "name": "LAKESIDE PRIMARY SCHOOL",
+    "lat": 1.338203977042863,
+    "lng": 103.718089546664
+  },
+  {
+    "name": "LIANHUA PRIMARY SCHOOL",
+    "lat": 1.354241911272948,
+    "lng": 103.7541658287112
+  },
+  {
+    "name": "MAHA BODHI SCHOOL",
+    "lat": 1.328580238735551,
+    "lng": 103.9013069041567
+  },
+  {
+    "name": "MARSILING PRIMARY SCHOOL",
+    "lat": 1.43383904037059,
+    "lng": 103.7736430138458
+  },
+  {
+    "name": "MARYMOUNT CONVENT SCHOOL",
+    "lat": 1.340366769873745,
+    "lng": 103.8400210644257
+  },
+  {
+    "name": "MAYFLOWER PRIMARY SCHOOL",
+    "lat": 1.376376835476832,
+    "lng": 103.8432528037418
+  },
+  {
+    "name": "MEE TOH SCHOOL",
+    "lat": 1.394618453859209,
+    "lng": 103.9085894942275
+  },
+  {
+    "name": "MERIDIAN PRIMARY SCHOOL",
+    "lat": 1.375528316584852,
+    "lng": 103.9348890785176
+  },
+  {
+    "name": "METHODIST GIRLS' SCHOOL (PRIMARY)",
+    "lat": 1.349472762683966,
+    "lng": 103.8849713431423
+  },
+  {
+    "name": "MONTFORT JUNIOR SCHOOL",
+    "lat": 1.373824440759788,
+    "lng": 103.889307782925
+  },
+  {
+    "name": "NAN CHIAU PRIMARY SCHOOL",
+    "lat": 1.392211499065922,
+    "lng": 103.8911809281855
+  },
+  {
+    "name": "NAN HUA PRIMARY SCHOOL",
+    "lat": 1.319201599563877,
+    "lng": 103.7610950657604
+  },
+  {
+    "name": "NANYANG PRIMARY SCHOOL",
+    "lat": 1.320847499045325,
+    "lng": 103.807750155296
+  },
+  {
+    "name": "NAVAL BASE PRIMARY SCHOOL",
+    "lat": 1.416306631593873,
+    "lng": 103.8387940772327
+  },
+  {
+    "name": "NEW TOWN PRIMARY SCHOOL",
+    "lat": 1.299641881810217,
+    "lng": 103.8001021630402
+  },
+  {
+    "name": "NGEE ANN PRIMARY SCHOOL",
+    "lat": 1.305525059104983,
+    "lng": 103.9174630174967
+  },
+  {
+    "name": "NORTH SPRING PRIMARY SCHOOL",
+    "lat": 1.387061464948597,
+    "lng": 103.9032026830277
+  },
+  {
+    "name": "NORTH VIEW PRIMARY SCHOOL",
+    "lat": 1.427523271937279,
+    "lng": 103.8481907878688
+  },
+  {
+    "name": "NORTH VISTA PRIMARY SCHOOL",
+    "lat": 1.382822430162999,
+    "lng": 103.8959618779278
+  },
+  {
+    "name": "NORTHLAND PRIMARY SCHOOL",
+    "lat": 1.420969899189534,
+    "lng": 103.8409284249291
+  },
+  {
+    "name": "NORTHOAKS PRIMARY SCHOOL",
+    "lat": 1.45660782030104,
+    "lng": 103.814196981329
+  },
+  {
+    "name": "NORTHSHORE PRIMARY SCHOOL",
+    "lat": 1.418138033366677,
+    "lng": 103.9044169097418
+  },
+  {
+    "name": "OASIS PRIMARY SCHOOL",
+    "lat": 1.404624132007935,
+    "lng": 103.9111206006377
+  },
+  {
+    "name": "OPERA ESTATE PRIMARY SCHOOL",
+    "lat": 1.319319144362567,
+    "lng": 103.923788259248
+  },
+  {
+    "name": "PALM VIEW PRIMARY SCHOOL",
+    "lat": 1.383769230221237,
+    "lng": 103.891354675017
+  },
+  {
+    "name": "PARK VIEW PRIMARY SCHOOL",
+    "lat": 1.377380698542497,
+    "lng": 103.9395416956535
+  },
+  {
+    "name": "PASIR RIS PRIMARY SCHOOL",
+    "lat": 1.372418702455316,
+    "lng": 103.9628072121161
+  },
+  {
+    "name": "PAYA LEBAR METHODIST GIRLS' SCHOOL (PRIMARY)",
+    "lat": 1.349472762683966,
+    "lng": 103.8849713431423
+  },
+  {
+    "name": "PEI CHUN PUBLIC SCHOOL",
+    "lat": 1.33737358725953,
+    "lng": 103.8555855780611
+  },
+  {
+    "name": "PEI HWA PRESBYTERIAN PRIMARY SCHOOL",
+    "lat": 1.338056346130476,
+    "lng": 103.7761064486133
+  },
+  {
+    "name": "PEI TONG PRIMARY SCHOOL",
+    "lat": 1.31619786415977,
+    "lng": 103.7675998188441
+  },
+  {
+    "name": "PEIYING PRIMARY SCHOOL",
+    "lat": 1.417416275512517,
+    "lng": 103.8301432098749
+  },
+  {
+    "name": "PIONEER PRIMARY SCHOOL",
+    "lat": 1.3390226466759,
+    "lng": 103.6877696239824
+  },
+  {
+    "name": "POI CHING SCHOOL",
+    "lat": 1.35765122315688,
+    "lng": 103.9352464771987
+  },
+  {
+    "name": "PRINCESS ELIZABETH PRIMARY SCHOOL",
+    "lat": 1.349203512653009,
+    "lng": 103.7410196447094
+  },
+  {
+    "name": "PUNGGOL COVE PRIMARY SCHOOL",
+    "lat": 1.411599232730683,
+    "lng": 103.8988039211635
+  },
+  {
+    "name": "PUNGGOL GREEN PRIMARY SCHOOL",
+    "lat": 1.401872206432952,
+    "lng": 103.8988013303018
+  },
+  {
+    "name": "PUNGGOL PRIMARY SCHOOL",
+    "lat": 1.378200625476397,
+    "lng": 103.8946671595121
+  },
+  {
+    "name": "PUNGGOL VIEW PRIMARY SCHOOL",
+    "lat": 1.405145826479627,
+    "lng": 103.9051563713755
+  },
+  {
+    "name": "QIFA PRIMARY SCHOOL",
+    "lat": 1.313265832680701,
+    "lng": 103.7566291018106
+  },
+  {
+    "name": "QIHUA PRIMARY SCHOOL",
+    "lat": 1.442035965575938,
+    "lng": 103.7883397620653
+  },
+  {
+    "name": "QUEENSTOWN PRIMARY SCHOOL",
+    "lat": 1.295593650090142,
+    "lng": 103.8075486173318
+  },
+  {
+    "name": "RADIN MAS PRIMARY SCHOOL",
+    "lat": 1.274958236226361,
+    "lng": 103.8241882703726
+  },
+  {
+    "name": "RAFFLES GIRLS' PRIMARY SCHOOL",
+    "lat": 1.329404260001214,
+    "lng": 103.806442915912
+  },
+  {
+    "name": "RED SWASTIKA SCHOOL",
+    "lat": 1.334056595808593,
+    "lng": 103.9343175284833
+  },
+  {
+    "name": "RIVER VALLEY PRIMARY SCHOOL",
+    "lat": 1.294183478428372,
+    "lng": 103.8360189415711
+  },
+  {
+    "name": "RIVERSIDE PRIMARY SCHOOL",
+    "lat": 1.447004264937856,
+    "lng": 103.8018890313332
+  },
+  {
+    "name": "RIVERVALE PRIMARY SCHOOL",
+    "lat": 1.393409977677617,
+    "lng": 103.9045595119971
+  },
+  {
+    "name": "ROSYTH SCHOOL",
+    "lat": 1.372890674990646,
+    "lng": 103.8750015491733
+  },
+  {
+    "name": "RULANG PRIMARY SCHOOL",
+    "lat": 1.346738688890966,
+    "lng": 103.7184579554868
+  },
+  {
+    "name": "SEMBAWANG PRIMARY SCHOOL",
+    "lat": 1.445046762056599,
+    "lng": 103.82102212387
+  },
+  {
+    "name": "SENG KANG PRIMARY SCHOOL",
+    "lat": 1.389497404224623,
+    "lng": 103.8997671120465
+  },
+  {
+    "name": "SENGKANG GREEN PRIMARY SCHOOL",
+    "lat": 1.39284606680478,
+    "lng": 103.8752176664857
+  },
+  {
+    "name": "SHUQUN PRIMARY SCHOOL",
+    "lat": 1.347653114316325,
+    "lng": 103.7215237133784
+  },
+  {
+    "name": "SI LING PRIMARY SCHOOL",
+    "lat": 1.432409357325257,
+    "lng": 103.786035065192
+  },
+  {
+    "name": "SINGAPORE CHINESE GIRLS' PRIMARY SCHOOL",
+    "lat": 1.320807252359937,
+    "lng": 103.8277447495481
+  },
+  {
+    "name": "SOUTH VIEW PRIMARY SCHOOL",
+    "lat": 1.381666643897507,
+    "lng": 103.7462758460104
+  },
+  {
+    "name": "SPRINGDALE PRIMARY SCHOOL",
+    "lat": 1.394670102992936,
+    "lng": 103.8899262212472
+  },
+  {
+    "name": "ST ANDREW'S SCHOOL (JUNIOR)",
+    "lat": 1.331402553088687,
+    "lng": 103.8651171343844
+  },
+  {
+    "name": "ST. ANTHONY'S CANOSSIAN PRIMARY SCHOOL",
+    "lat": 1.33472537301891,
+    "lng": 103.9412348682017
+  },
+  {
+    "name": "ST. ANTHONY'S PRIMARY SCHOOL",
+    "lat": 1.364119484758337,
+    "lng": 103.7492519190488
+  },
+  {
+    "name": "ST. GABRIEL'S PRIMARY SCHOOL",
+    "lat": 1.349471926538616,
+    "lng": 103.8625610377067
+  },
+  {
+    "name": "ST. HILDA'S PRIMARY SCHOOL",
+    "lat": 1.349385650363364,
+    "lng": 103.9370071336614
+  },
+  {
+    "name": "ST. JOSEPH'S INSTITUTION JUNIOR",
+    "lat": 1.317728609869134,
+    "lng": 103.8456119352347
+  },
+  {
+    "name": "ST. MARGARET'S SCHOOL (PRIMARY)",
+    "lat": 1.32439150290683,
+    "lng": 103.8816248373724
+  },
+  {
+    "name": "ST. STEPHEN'S SCHOOL",
+    "lat": 1.318789972951361,
+    "lng": 103.9172581295975
+  },
+  {
+    "name": "TAMPINES NORTH PRIMARY SCHOOL",
+    "lat": 1.360476414846836,
+    "lng": 103.9487257828322
+  },
+  {
+    "name": "TAMPINES PRIMARY SCHOOL",
+    "lat": 1.350486394669401,
+    "lng": 103.9435730985091
+  },
+  {
+    "name": "TANJONG KATONG PRIMARY SCHOOL",
+    "lat": 1.304984890448227,
+    "lng": 103.8999999654065
+  },
+  {
+    "name": "TAO NAN SCHOOL",
+    "lat": 1.294332105249307,
+    "lng": 103.8490261578219
+  },
+  {
+    "name": "TECK GHEE PRIMARY SCHOOL",
+    "lat": 1.365587820759683,
+    "lng": 103.8509571269816
+  },
+  {
+    "name": "TECK WHYE PRIMARY SCHOOL",
+    "lat": 1.383649968344577,
+    "lng": 103.7532918570159
+  },
+  {
+    "name": "TELOK KURAU PRIMARY SCHOOL",
+    "lat": 1.331045854413487,
+    "lng": 103.9109340113368
+  },
+  {
+    "name": "TEMASEK PRIMARY SCHOOL",
+    "lat": 1.317706775513332,
+    "lng": 103.9455906691627
+  },
+  {
+    "name": "TOWNSVILLE PRIMARY SCHOOL",
+    "lat": 1.36003263746623,
+    "lng": 103.8538260483272
+  },
+  {
+    "name": "UNITY PRIMARY SCHOOL",
+    "lat": 1.402854818772471,
+    "lng": 103.746822625758
+  },
+  {
+    "name": "VALOUR PRIMARY SCHOOL",
+    "lat": 1.406835702153197,
+    "lng": 103.899078139493
+  },
+  {
+    "name": "WATERWAY PRIMARY SCHOOL",
+    "lat": 1.398828006265785,
+    "lng": 103.9186215815555
+  },
+  {
+    "name": "WELLINGTON PRIMARY SCHOOL",
+    "lat": 1.451920191554766,
+    "lng": 103.8223037190938
+  },
+  {
+    "name": "WEST GROVE PRIMARY SCHOOL",
+    "lat": 1.344879056001406,
+    "lng": 103.6992863605808
+  },
+  {
+    "name": "WEST SPRING PRIMARY SCHOOL",
+    "lat": 1.389441458989443,
+    "lng": 103.7661957118344
+  },
+  {
+    "name": "WEST VIEW PRIMARY SCHOOL",
+    "lat": 1.3836758200336,
+    "lng": 103.7602404343173
+  },
+  {
+    "name": "WESTWOOD PRIMARY SCHOOL",
+    "lat": 1.347184566063761,
+    "lng": 103.7005342097801
+  },
+  {
+    "name": "WHITE SANDS PRIMARY SCHOOL",
+    "lat": 1.365557146685551,
+    "lng": 103.9609188693188
+  },
+  {
+    "name": "WOODGROVE PRIMARY SCHOOL",
+    "lat": 1.432736207250495,
+    "lng": 103.7902303139194
+  },
+  {
+    "name": "WOODLANDS PRIMARY SCHOOL",
+    "lat": 1.432736207250495,
+    "lng": 103.7902303139194
+  },
+  {
+    "name": "WOODLANDS RING PRIMARY SCHOOL",
+    "lat": 1.434952293158581,
+    "lng": 103.7974357331442
+  },
+  {
+    "name": "XINGHUA PRIMARY SCHOOL",
+    "lat": 1.357908935895362,
+    "lng": 103.8904728879052
+  },
+  {
+    "name": "XINGNAN PRIMARY SCHOOL",
+    "lat": 1.342547448776947,
+    "lng": 103.6879502521022
+  },
+  {
+    "name": "XINMIN PRIMARY SCHOOL",
+    "lat": 1.371395489419313,
+    "lng": 103.883080767491
+  },
+  {
+    "name": "XISHAN PRIMARY SCHOOL",
+    "lat": 1.433471869250645,
+    "lng": 103.8377553194475
+  },
+  {
+    "name": "YANGZHENG PRIMARY SCHOOL",
+    "lat": 1.348645758409243,
+    "lng": 103.8685955270421
+  },
+  {
+    "name": "YEW TEE PRIMARY SCHOOL",
+    "lat": 1.396766009050365,
+    "lng": 103.7509859673458
+  },
+  {
+    "name": "YIO CHU KANG PRIMARY SCHOOL",
+    "lat": 1.37793264345277,
+    "lng": 103.885643682171
+  },
+  {
+    "name": "YISHUN PRIMARY SCHOOL",
+    "lat": 1.433386029756746,
+    "lng": 103.8340871159143
+  },
+  {
+    "name": "YU NENG PRIMARY SCHOOL",
+    "lat": 1.333889303440688,
+    "lng": 103.9321448573552
+  },
+  {
+    "name": "YUHUA PRIMARY SCHOOL",
+    "lat": 1.34280230475034,
+    "lng": 103.7411057726437
+  },
+  {
+    "name": "YUMIN PRIMARY SCHOOL",
+    "lat": 1.351291776569808,
+    "lng": 103.9504619270873
+  },
+  {
+    "name": "ZHANGDE PRIMARY SCHOOL",
+    "lat": 1.284211533353803,
+    "lng": 103.8259518756614
+  },
+  {
+    "name": "ZHENGHUA PRIMARY SCHOOL",
+    "lat": 1.379548875122303,
+    "lng": 103.7693135217514
+  },
+  {
+    "name": "ZHONGHUA PRIMARY SCHOOL",
+    "lat": 1.360203297050483,
+    "lng": 103.8697624380833
+  }
+]

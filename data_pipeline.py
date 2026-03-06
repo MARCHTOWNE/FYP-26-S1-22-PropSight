@@ -7,9 +7,9 @@ validate, and write the authoritative dataset to hdb_resale.db.
 Design decisions:
   - All API fetching has been moved to api_fetcher.py.
   - full_address is derived here and stored in the DB for use by geocoding.py.
-  - Nullable columns (latitude, longitude, dist_mrt, dist_cbd, dist_school,
-    dist_mall) are created in this step so downstream scripts can UPDATE
-    them without altering the table schema.
+  - Nullable columns (latitude, longitude, dist_mrt, dist_cbd,
+    dist_primary_school, dist_major_mall) are created in this step so
+    downstream scripts can UPDATE them without altering the table schema.
   - geocode_cache and upload_audit tables are never dropped on re-runs.
   - district_summary is dropped and rebuilt each run for accuracy.
 
@@ -75,8 +75,8 @@ SQLITE_DTYPES = {
     "longitude":              "REAL",              # nullable — filled by geocoding.py
     "dist_mrt":               "REAL",              # nullable — filled by proximity_features.py
     "dist_cbd":               "REAL",              # nullable — filled by proximity_features.py
-    "dist_school":            "REAL",              # nullable — filled by proximity_features.py
-    "dist_mall":              "REAL",              # nullable — filled by proximity_features.py
+    "dist_primary_school":    "REAL",              # nullable — filled by proximity_features.py
+    "dist_major_mall":        "REAL",              # nullable — filled by proximity_features.py
 }
 
 # Canonical flat_type values
@@ -106,7 +106,7 @@ FLAT_MODEL_ALIASES = {
 NULLABLE_COLS: set[str] = {
     "full_address",
     "latitude", "longitude",
-    "dist_mrt", "dist_cbd", "dist_school", "dist_mall",
+    "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
 }
 
 # HDB floor-area sanity bounds (sqm) — used for logging only, rows are kept
@@ -433,10 +433,10 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # ------------------------------------------------------------------
     df["latitude"]   = None   # filled by geocoding.py
     df["longitude"]  = None   # filled by geocoding.py
-    df["dist_mrt"]   = None   # filled by proximity_features.py
-    df["dist_cbd"]   = None   # filled by proximity_features.py
-    df["dist_school"] = None  # filled by proximity_features.py
-    df["dist_mall"]  = None   # filled by proximity_features.py
+    df["dist_mrt"]            = None  # filled by proximity_features.py
+    df["dist_cbd"]            = None  # filled by proximity_features.py
+    df["dist_primary_school"] = None  # filled by proximity_features.py
+    df["dist_major_mall"]     = None  # filled by proximity_features.py
 
     # ------------------------------------------------------------------
     # Final column order (original columns + derived columns)
@@ -450,7 +450,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "resale_price",
         "full_address",
         "latitude", "longitude",
-        "dist_mrt", "dist_cbd", "dist_school", "dist_mall",
+        "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
     ]
     df = df[final_cols]
 

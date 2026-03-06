@@ -1,4 +1,4 @@
-# Database (too large for GitHub — regenerate by running data_pipeline.py)
+# Database (too large for GitHub)
 *.db
 *.sqlite
 *.sqlite3

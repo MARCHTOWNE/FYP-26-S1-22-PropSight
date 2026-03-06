@@ -270,15 +270,6 @@ You can also inspect it using SQLite in the terminal:
 sqlite3 hdb_resale.db
 ```
 
-Useful commands:
-
-```sql
-.tables
-SELECT COUNT(*) FROM resale_prices;
-SELECT COUNT(*) FROM geocode_cache;
-```
-
----
 
 ## Data Sources
 

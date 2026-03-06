@@ -485,105 +485,89 @@ def validate_data(df: pd.DataFrame) -> pd.DataFrame:
     print("\n  Validating data ...")
     before = len(df)
 
+    def _bool_mask(series: pd.Series) -> pd.Series:
+        """Return a plain bool Series with nulls filled as False."""
+        return series.fillna(False).astype(bool)
+
     # ------------------------------------------------------------------
     # Pre-compute helper series used by multiple rules
     # ------------------------------------------------------------------
-    # Cast Int64 (nullable integer) columns to float64 so that .notna()
-    # returns a plain numpy bool array instead of a pandas BooleanArray.
-    # Mixing BooleanArray with numpy bool via & raises TypeError in pandas.
-    _year             = pd.to_numeric(df["year"], errors="coerce")
-    _lcd              = pd.to_numeric(df["lease_commence_date"], errors="coerce")
-    _remaining_lease  = pd.to_numeric(df["remaining_lease"], errors="coerce")
+    _year = pd.to_numeric(df["year"], errors="coerce").astype("float64")
+    _lcd = pd.to_numeric(df["lease_commence_date"], errors="coerce").astype("float64")
+    _remaining_lease = pd.to_numeric(df["remaining_lease"], errors="coerce").astype("float64")
+    _floor_area = pd.to_numeric(df["floor_area_sqm"], errors="coerce").astype("float64")
+    _resale_price = pd.to_numeric(df["resale_price"], errors="coerce").astype("float64")
 
     # Parse storey_range "XX TO YY" into lower and upper integers for H7
-    _storey_lo = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)[0]
-    _storey_hi = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)[1]
-    storey_lo = pd.to_numeric(_storey_lo, errors="coerce")
-    storey_hi = pd.to_numeric(_storey_hi, errors="coerce")
+    _storey = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)
+    storey_lo = pd.to_numeric(_storey[0], errors="coerce").astype("float64")
+    storey_hi = pd.to_numeric(_storey[1], errors="coerce").astype("float64")
 
     # ------------------------------------------------------------------
-    # HARD RULES — build boolean keep mask; False = drop
+    # HARD RULES — build boolean drop mask
     # ------------------------------------------------------------------
+    h1_mask = _bool_mask(_remaining_lease > 99)
+    h1_count = int(h1_mask.sum())
 
-    # H1 — remaining_lease > 99 years (impossible for an HDB lease)
-    h1_mask = df["remaining_lease"] > 99
-    h1_count = h1_mask.sum()
+    h2_mask = _bool_mask(_remaining_lease < 0)
+    h2_count = int(h2_mask.sum())
 
-    # H2 — remaining_lease < 0 (cannot have negative lease remaining)
-    h2_mask = df["remaining_lease"] < 0
-    h2_count = h2_mask.sum()
+    h3_mask = _bool_mask(_lcd.notna() & _year.notna() & (_lcd > _year))
+    h3_count = int(h3_mask.sum())
 
-    # H3 — lease_commence_date > year (flat cannot be sold before lease started)
-    h3_mask = (
-        _lcd.notna() &
-        _year.notna() &
-        (_lcd > _year)
-    )
-    h3_count = h3_mask.sum()
+    h4_mask = _bool_mask(_lcd.notna() & (_lcd < HDB_FIRST_YEAR))
+    h4_count = int(h4_mask.sum())
 
-    # H4 — lease_commence_date < HDB_FIRST_YEAR (no HDB flats existed this early)
-    h4_mask = (
-        _lcd.notna() &
-        (_lcd < HDB_FIRST_YEAR)
-    )
-    h4_count = h4_mask.sum()
+    h5_mask = _bool_mask(_resale_price <= 0)
+    h5_count = int(h5_mask.sum())
 
-    # H5 — resale_price <= 0 (a zero or negative price is corrupt data)
-    h5_mask = df["resale_price"] <= 0
-    h5_count = h5_mask.sum()
+    h6_mask = _bool_mask(_floor_area <= 0)
+    h6_count = int(h6_mask.sum())
 
-    # H6 — floor_area_sqm <= 0 (physically impossible floor area)
-    h6_mask = df["floor_area_sqm"] <= 0
-    h6_count = h6_mask.sum()
+    h7_mask = _bool_mask(storey_hi.notna() & storey_lo.notna() & (storey_hi < storey_lo))
+    h7_count = int(h7_mask.sum())
 
-    # H7 — storey upper bound < storey lower bound (malformed storey_range)
-    h7_mask = storey_hi.notna() & storey_lo.notna() & (storey_hi < storey_lo)
-    h7_count = h7_mask.sum()
-
-    # Combine all hard-rule masks and drop offending rows
-    drop_mask = h1_mask | h2_mask | h3_mask | h4_mask | h5_mask | h6_mask | h7_mask
-    df = df[~drop_mask].copy()
+    drop_mask = _bool_mask(h1_mask | h2_mask | h3_mask | h4_mask | h5_mask | h6_mask | h7_mask)
+    df = df.loc[~drop_mask].copy()
     total_hard_dropped = before - len(df)
+
+    # Recompute helpers after filtering so indices align exactly with df
+    _year = pd.to_numeric(df["year"], errors="coerce").astype("float64")
+    _lcd = pd.to_numeric(df["lease_commence_date"], errors="coerce").astype("float64")
+    _remaining_lease = pd.to_numeric(df["remaining_lease"], errors="coerce").astype("float64")
+    _floor_area = pd.to_numeric(df["floor_area_sqm"], errors="coerce").astype("float64")
+    _resale_price = pd.to_numeric(df["resale_price"], errors="coerce").astype("float64")
 
     # ------------------------------------------------------------------
     # SOFT RULES — log WARNING counts, no rows removed
     # ------------------------------------------------------------------
-
-    # S1 — remaining_lease vs derived value mismatch > LEASE_MISMATCH_TOLERANCE
-    _expected_lease = (99 - (_year - _lcd)).where(_year.notna() & _lcd.notna())
-    s1_mask = (
-        _expected_lease.notna() &
-        _remaining_lease.notna() &
-        (_remaining_lease - _expected_lease).abs() > LEASE_MISMATCH_TOLERANCE
+    _expected_lease = (99 - (_year - _lcd)).astype("float64")
+    valid_lease_mask = _bool_mask(_year.notna() & _lcd.notna() & _remaining_lease.notna())
+    s1_mask = _bool_mask(
+        valid_lease_mask &
+        ((_remaining_lease - _expected_lease).abs() > LEASE_MISMATCH_TOLERANCE)
     )
-    s1_count = s1_mask.sum()
+    s1_count = int(s1_mask.sum())
 
-    # S2 — price per sqm outside [PRICE_PER_SQM_MIN, PRICE_PER_SQM_MAX]
-    _price_per_sqm = df["resale_price"] / df["floor_area_sqm"]
-    s2_mask = (
+    _price_per_sqm = (_resale_price / _floor_area).astype("float64")
+    s2_mask = _bool_mask(
         _price_per_sqm.notna() &
         ((_price_per_sqm < PRICE_PER_SQM_MIN) | (_price_per_sqm > PRICE_PER_SQM_MAX))
     )
-    s2_count = s2_mask.sum()
+    s2_count = int(s2_mask.sum())
 
-    # S3 — floor_area_sqm outside FLAT_TYPE_AREA_BOUNDS for its flat_type
-    #       rows with unmapped flat_type are silently skipped
-    s3_mask = pd.Series(False, index=df.index)
+    s3_mask = pd.Series(False, index=df.index, dtype=bool)
     for flat_type, (lo, hi) in FLAT_TYPE_AREA_BOUNDS.items():
-        type_rows = df["flat_type"] == flat_type
-        out_of_bounds = type_rows & (
-            (df["floor_area_sqm"] < lo) | (df["floor_area_sqm"] > hi)
-        )
+        type_rows = _bool_mask(df["flat_type"] == flat_type)
+        out_of_bounds = _bool_mask(type_rows & ((_floor_area < lo) | (_floor_area > hi)))
         s3_mask |= out_of_bounds
-    s3_count = s3_mask.sum()
+    s3_count = int(s3_mask.sum())
 
-    # S4 — town not in VALID_TOWNS
-    s4_mask = ~df["town"].isin(VALID_TOWNS)
-    s4_count = s4_mask.sum()
+    s4_mask = _bool_mask(~df["town"].isin(VALID_TOWNS))
+    s4_count = int(s4_mask.sum())
 
-    # S5 — year < HDB_FIRST_YEAR (sale predates HDB programme)
-    s5_mask = _year.notna() & (_year < HDB_FIRST_YEAR)
-    s5_count = s5_mask.sum()
+    s5_mask = _bool_mask(_year.notna() & (_year < HDB_FIRST_YEAR))
+    s5_count = int(s5_mask.sum())
 
     # ------------------------------------------------------------------
     # Summary

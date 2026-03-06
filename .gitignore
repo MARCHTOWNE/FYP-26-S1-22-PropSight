@@ -26,3 +26,6 @@ venv/
 # Claude Code local settings
 .claude/
 .vscode/
+
+model_assets/latest.txt
+model_assets/*/

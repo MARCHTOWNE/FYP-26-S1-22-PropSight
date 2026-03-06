@@ -1,6 +1,4 @@
-#Here’s a revised README with **model training** and **retraining** removed, so it matches your current stage more accurately:
 
-````markdown
 # HDB Resale Price Analytics Platform
 
 A data pipeline for Singapore HDB resale price analytics and future price prediction.

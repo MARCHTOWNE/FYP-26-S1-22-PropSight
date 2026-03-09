@@ -29,286 +29,421 @@
         box-shadow: none;
     }
 
+    /* ── Sidebar ── */
     .map-sidebar {
         position: absolute;
         top: 18px;
         left: 18px;
         z-index: 1000;
-        width: 360px;
+        width: 340px;
         max-width: calc(100% - 36px);
-        background: rgba(7, 13, 24, 0.86);
+        max-height: calc(100% - 36px);
+        overflow-y: auto;
+        background: rgba(7, 13, 24, 0.88);
         color: #e2e8f0;
         border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 20px;
-        backdrop-filter: blur(14px);
+        backdrop-filter: blur(16px);
         box-shadow: 0 18px 40px rgba(2, 6, 23, 0.42);
-        padding: 18px;
+        padding: 20px 18px;
     }
+    .map-sidebar::-webkit-scrollbar { width: 4px; }
+    .map-sidebar::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
 
     .map-kicker {
-        font-size: 0.68rem;
-        letter-spacing: 0.12em;
+        font-size: 0.65rem;
+        letter-spacing: 0.14em;
         text-transform: uppercase;
         color: #94a3b8;
-        margin-bottom: 0.35rem;
+        margin-bottom: 0.25rem;
     }
-
     .map-sidebar h2 {
-        font-size: 1.45rem;
-        line-height: 1.08;
-        margin-bottom: 0.55rem;
+        font-size: 1.25rem;
+        line-height: 1.15;
+        margin-bottom: 0.4rem;
         color: #f8fafc;
     }
-
-    .map-sidebar p {
-        color: #cbd5e1;
-        font-size: 0.92rem;
-        line-height: 1.55;
-        margin-bottom: 1rem;
+    .map-sidebar .sidebar-desc {
+        color: #94a3b8;
+        font-size: 0.82rem;
+        line-height: 1.5;
+        margin-bottom: 0.8rem;
     }
 
-    .map-toolbar {
-        display: grid;
-        gap: 12px;
-    }
-
+    /* ── Stats row ── */
     .map-stat-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: 10px;
-        margin-bottom: 10px;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+        margin-bottom: 12px;
     }
-
     .map-stat {
-        padding: 12px;
-        border-radius: 14px;
-        background: rgba(15, 23, 42, 0.82);
-        border: 1px solid rgba(148, 163, 184, 0.12);
+        padding: 10px;
+        border-radius: 12px;
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        text-align: center;
     }
-
     .map-stat-label {
         display: block;
-        font-size: 0.68rem;
-        color: #94a3b8;
+        font-size: 0.62rem;
+        color: #64748b;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        margin-bottom: 0.3rem;
+        margin-bottom: 2px;
     }
-
     .map-stat-value {
         display: block;
         font-family: 'Sora', sans-serif;
         color: #f8fafc;
-        font-size: 1.05rem;
+        font-size: 0.95rem;
+        font-weight: 700;
         line-height: 1.1;
     }
+
+    /* ── Toolbar ── */
+    .map-toolbar { display: grid; gap: 10px; }
 
     .map-mode-toggle {
         display: grid;
         grid-template-columns: 1fr 1fr;
-        gap: 8px;
+        gap: 6px;
     }
-
     .map-mode-toggle .btn {
-        border-radius: 12px;
-        padding: 0.7rem 0.8rem;
-        font-size: 0.88rem;
+        border-radius: 10px;
+        padding: 0.6rem 0.6rem;
+        font-size: 0.82rem;
         font-weight: 700;
     }
 
-    .map-control-group {
-        display: grid;
-        gap: 8px;
-    }
-
-    .map-control-group label {
-        font-size: 0.72rem;
+    .map-control-group { display: grid; gap: 6px; }
+    .map-control-group > label,
+    .control-label {
+        font-size: 0.68rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: #94a3b8;
+        color: #64748b;
         font-weight: 700;
-    }
-
-    .map-select,
-    .map-range-wrap {
-        background: rgba(15, 23, 42, 0.84);
-        border: 1px solid rgba(148, 163, 184, 0.14);
-        border-radius: 14px;
-        color: #f8fafc;
+        margin: 0;
     }
 
     .map-select {
-        padding: 0.72rem 0.8rem;
+        background: rgba(15, 23, 42, 0.84);
+        border: 1px solid rgba(148, 163, 184, 0.14);
+        border-radius: 10px;
+        color: #f8fafc;
+        padding: 0.55rem 0.7rem;
+        font-size: 0.82rem;
+    }
+    .map-select option { color: #0f172a; }
+
+    /* ── Heatmap config panel ── */
+    .heatmap-config {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        border-radius: 12px;
+        padding: 12px;
+        display: grid;
+        gap: 10px;
+    }
+    .heatmap-config-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+    .heatmap-config-row .map-control-group { gap: 4px; }
+    .config-info {
+        font-size: 0.72rem;
+        color: #64748b;
+        line-height: 1.4;
+        padding: 4px 0 0;
     }
 
-    .map-select option {
-        color: #0f172a;
+    /* ── Amenity dropdown ── */
+    .amenity-panel {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        border-radius: 12px;
+        padding: 10px 12px;
     }
-
-    .map-range-wrap {
-        padding: 0.7rem 0.85rem;
-    }
-
-    .map-range-wrap input {
-        width: 100%;
-    }
-
-    .map-range-meta {
+    .amenity-header {
         display: flex;
+        align-items: center;
         justify-content: space-between;
-        font-size: 0.77rem;
+        cursor: pointer;
+        user-select: none;
+    }
+    .amenity-header .control-label { pointer-events: none; }
+    .amenity-chevron {
+        font-size: 0.7rem;
+        color: #64748b;
+        transition: transform 0.2s;
+    }
+    .amenity-chevron.open { transform: rotate(180deg); }
+    .amenity-body { display: none; padding-top: 8px; }
+    .amenity-body.open { display: block; }
+
+    .amenity-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 6px 0;
+    }
+    .amenity-item + .amenity-item { border-top: 1px solid rgba(148,163,184,0.08); }
+    .amenity-item label {
+        font-size: 0.8rem;
         color: #cbd5e1;
-        margin-top: 0.4rem;
+        font-weight: 500;
+        margin: 0;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        text-transform: none;
+        letter-spacing: 0;
+        cursor: pointer;
     }
 
+    /* Amenity icon shapes */
+    .amenity-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 8px;
+        font-weight: 900;
+        color: #fff;
+        width: 18px;
+        height: 18px;
+        flex-shrink: 0;
+    }
+    .amenity-icon-mrt {
+        background: #0ea5e9;
+        border-radius: 3px;
+        transform: rotate(45deg);
+    }
+    .amenity-icon-mrt span { transform: rotate(-45deg); }
+    .amenity-icon-school {
+        background: #a855f7;
+        border-radius: 50%;
+    }
+    .amenity-icon-mall {
+        background: #f59e0b;
+        border-radius: 3px;
+    }
+
+    .form-check-input:checked { background-color: #3b82f6; border-color: #3b82f6; }
+    .form-check-input { cursor: pointer; }
+
+    /* ── Insight box ── */
     .map-insight {
-        padding: 12px 14px;
-        border-radius: 14px;
-        background: linear-gradient(135deg, rgba(14, 116, 144, 0.26), rgba(190, 24, 93, 0.18));
-        border: 1px solid rgba(125, 211, 252, 0.16);
-        color: #e2e8f0;
-        font-size: 0.86rem;
-        line-height: 1.5;
+        padding: 10px 12px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(14, 116, 144, 0.18), rgba(124, 58, 237, 0.12));
+        border: 1px solid rgba(125, 211, 252, 0.12);
+        color: #94a3b8;
+        font-size: 0.78rem;
+        line-height: 1.45;
     }
 
+    /* ── Breadcrumb ── */
+    .breadcrumb-bar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(37, 99, 235, 0.15);
+        border: 1px solid rgba(96, 165, 250, 0.2);
+        font-size: 0.82rem;
+        color: #cbd5e1;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+    .breadcrumb-bar:hover { background: rgba(37, 99, 235, 0.25); }
+    .breadcrumb-bar .bc-back { color: #60a5fa; font-weight: 700; }
+    .breadcrumb-bar .bc-sep { color: #475569; }
+    .breadcrumb-bar .bc-town { color: #f8fafc; font-weight: 700; }
+
+    /* ── District labels ── */
+    .district-label { text-align: center; pointer-events: none; }
+    .district-label .dl-town {
+        font-size: 10px;
+        font-weight: 800;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.7);
+        white-space: nowrap;
+    }
+    .district-label .dl-price {
+        font-size: 11px;
+        font-weight: 700;
+        color: #e0f2fe;
+        text-shadow: 0 1px 4px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.7);
+        white-space: nowrap;
+    }
+    .district-label .dl-tag {
+        font-size: 8px;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
+    }
+
+    /* ── Legend ── */
     .map-legend-panel {
         position: absolute;
         right: 18px;
         bottom: 18px;
         z-index: 1000;
-        width: 260px;
-        background: rgba(7, 13, 24, 0.82);
+        width: 240px;
+        background: rgba(7, 13, 24, 0.85);
         border: 1px solid rgba(148, 163, 184, 0.16);
-        border-radius: 18px;
+        border-radius: 14px;
         color: #e2e8f0;
-        padding: 14px;
+        padding: 12px;
         backdrop-filter: blur(12px);
-        box-shadow: 0 18px 36px rgba(2, 6, 23, 0.38);
+        box-shadow: 0 14px 28px rgba(2, 6, 23, 0.38);
     }
-
     .map-legend-title {
-        font-size: 0.74rem;
+        font-size: 0.68rem;
         text-transform: uppercase;
         letter-spacing: 0.08em;
-        color: #94a3b8;
-        margin-bottom: 0.7rem;
+        color: #64748b;
+        margin-bottom: 0.5rem;
     }
-
     .legend-scale {
-        height: 14px;
+        height: 12px;
         border-radius: 999px;
-        background: linear-gradient(90deg, #22c55e, #84cc16, #facc15, #fb923c, #f97316, #ef4444, #be123c);
-        margin-bottom: 0.55rem;
+        margin-bottom: 0.45rem;
     }
-
-    .legend-volume {
-        background: linear-gradient(90deg, #38bdf8, #22d3ee, #a3e635, #facc15, #f97316, #ef4444);
+    .legend-scale-price {
+        background: linear-gradient(90deg, #1d4ed8, #818cf8, #f1f5f9, #fca5a5, #dc2626);
     }
-
+    .legend-scale-pins {
+        background: linear-gradient(90deg, #22c55e, #84cc16, #facc15, #fb923c, #ef4444, #be123c);
+    }
     .legend-labels {
         display: flex;
         justify-content: space-between;
+        font-size: 0.68rem;
+        color: #64748b;
+    }
+    .legend-amenity-row {
+        display: flex;
+        align-items: center;
         gap: 6px;
-        font-size: 0.74rem;
-        color: #cbd5e1;
+        margin-top: 6px;
+        font-size: 0.72rem;
+        color: #94a3b8;
     }
 
+    /* ── Float note ── */
     .map-float-note {
         position: absolute;
         right: 18px;
         top: 18px;
         z-index: 1000;
         display: inline-flex;
-        gap: 10px;
+        gap: 8px;
         align-items: center;
-        padding: 10px 14px;
+        padding: 8px 14px;
         border-radius: 999px;
-        background: rgba(7, 13, 24, 0.76);
+        background: rgba(7, 13, 24, 0.8);
         border: 1px solid rgba(148, 163, 184, 0.16);
-        color: #f8fafc;
-        font-size: 0.82rem;
+        color: #94a3b8;
+        font-size: 0.78rem;
         backdrop-filter: blur(10px);
     }
 
-    .district-label {
-        font-size: 10px;
-        font-weight: 800;
-        color: #ffffff;
-        text-shadow: 0 0 4px rgba(2, 6, 23, 0.95), 0 0 10px rgba(2, 6, 23, 0.95);
-        white-space: nowrap;
+    /* ── Loading overlay ── */
+    .map-loading {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1001;
+        display: none;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 20px;
+        border-radius: 12px;
+        background: rgba(7, 13, 24, 0.92);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        color: #e2e8f0;
+        font-size: 0.85rem;
+        backdrop-filter: blur(10px);
     }
+    .map-loading.active { display: flex; }
 
+    /* ── Leaflet overrides ── */
     .leaflet-popup-content-wrapper,
     .leaflet-popup-tip {
         background: rgba(15, 23, 42, 0.96);
         color: #f8fafc;
+        border-radius: 10px;
     }
-
     .leaflet-popup-content {
-        font-size: 0.85rem;
-        line-height: 1.55;
+        font-size: 0.82rem;
+        line-height: 1.5;
         color: #e2e8f0;
     }
-
     .leaflet-control-zoom a {
         background: rgba(15, 23, 42, 0.9) !important;
         color: #f8fafc !important;
         border-color: rgba(148, 163, 184, 0.2) !important;
     }
-
     .leaflet-control-attribution {
         background: rgba(15, 23, 42, 0.74) !important;
         color: #cbd5e1 !important;
+        font-size: 0.65rem !important;
     }
 
-    .leaflet-interactive.pulse {
-        animation: pulse-ring 1.8s ease-out infinite;
+    /* ── Leaflet amenity custom icons ── */
+    .leaflet-amenity-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 900;
+        font-size: 9px;
+        color: #fff;
+        border: 1.5px solid rgba(255,255,255,0.85);
+        box-shadow: 0 1px 4px rgba(0,0,0,0.5);
+    }
+    .leaflet-amenity-mrt {
+        background: #0ea5e9;
+        border-radius: 3px;
+        transform: rotate(45deg);
+        width: 16px; height: 16px;
+    }
+    .leaflet-amenity-mrt span { transform: rotate(-45deg); display: block; }
+    .leaflet-amenity-school {
+        background: #a855f7;
+        border-radius: 50%;
+        width: 16px; height: 16px;
+    }
+    .leaflet-amenity-mall {
+        background: #f59e0b;
+        border-radius: 3px;
+        width: 16px; height: 16px;
     }
 
-    @keyframes pulse-ring {
-        0% { stroke-opacity: .95; }
-        50% { stroke-opacity: .42; }
-        100% { stroke-opacity: .95; }
-    }
-
+    /* ── Responsive ── */
     @media (max-width: 991px) {
-        .map-layout {
-            min-height: 880px;
-            height: auto;
-        }
-
-        #map {
-            min-height: 880px;
-        }
-
+        .map-layout { min-height: 880px; height: auto; }
+        #map { min-height: 880px; }
         .map-sidebar {
             width: calc(100% - 24px);
-            left: 12px;
-            right: 12px;
-            top: 12px;
+            left: 12px; right: 12px; top: 12px;
             max-width: none;
         }
-
-        .map-legend-panel {
-            right: 12px;
-            left: 12px;
-            bottom: 12px;
-            width: auto;
-        }
-
-        .map-float-note {
-            display: none;
-        }
+        .map-legend-panel { right: 12px; left: 12px; bottom: 12px; width: auto; }
+        .map-float-note { display: none; }
     }
-
     @media (max-width: 767px) {
-        .map-stat-grid {
-            grid-template-columns: 1fr;
-        }
-
-        .map-sidebar {
-            padding: 14px;
-        }
+        .map-stat-grid { grid-template-columns: 1fr; }
+        .map-sidebar { padding: 14px; }
+        .heatmap-config-row { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
@@ -319,35 +454,44 @@
         <div class="map-layout">
             <div class="map-sidebar">
                 <div class="map-kicker">Spatial Market Explorer</div>
-                <h2>Interactive transaction heatmap for Singapore HDB resale.</h2>
-                <p>Switch between point-level transactions and location heat intensity to read price pressure and market activity faster.</p>
+                <h2>HDB Resale Price Map</h2>
+                <p class="sidebar-desc">Heatmap uses AI predictions. Click any town to drill into transactions.</p>
 
                 <div class="map-stat-grid">
-                    <div class="map-stat">
-                        <span class="map-stat-label">Records</span>
-                        <span class="map-stat-value" id="statRecords">0</span>
-                    </div>
-                    <div class="map-stat">
-                        <span class="map-stat-label">Average</span>
-                        <span class="map-stat-value" id="statAvgPrice">-</span>
-                    </div>
                     <div class="map-stat">
                         <span class="map-stat-label">Towns</span>
                         <span class="map-stat-value" id="statTowns">-</span>
                     </div>
+                    <div class="map-stat">
+                        <span class="map-stat-label">Predicted Avg</span>
+                        <span class="map-stat-value" id="statAvgPrice">-</span>
+                    </div>
+                    <div class="map-stat">
+                        <span class="map-stat-label">Records</span>
+                        <span class="map-stat-value" id="statRecords">0</span>
+                    </div>
+                </div>
+
+                <!-- Breadcrumb -->
+                <div class="breadcrumb-bar" id="breadcrumb" style="display:none;" onclick="backToAllTowns()">
+                    <span class="bc-back">← All Towns</span>
+                    <span class="bc-sep">|</span>
+                    <span class="bc-town" id="bcTownName"></span>
                 </div>
 
                 <div class="map-toolbar">
+                    <!-- Mode toggle -->
                     <div class="map-mode-toggle">
-                        <button class="btn btn-primary active" id="btnPins" onclick="showPins()">
-                            <i class="bi bi-pin-map me-1"></i> Pin-Level
+                        <button class="btn btn-outline-light" id="btnPins" onclick="showPins()">
+                            <i class="bi bi-pin-map me-1"></i> Transactions
                         </button>
-                        <button class="btn btn-outline-light" id="btnHeatmap" onclick="showHeatmap()">
-                            <i class="bi bi-grid-3x3-gap me-1"></i> Heatmap
+                        <button class="btn btn-primary active" id="btnHeatmap" onclick="showHeatmap()">
+                            <i class="bi bi-map me-1"></i> AI Heatmap
                         </button>
                     </div>
 
-                    <div class="map-control-group">
+                    <!-- Town filter (pin mode only) -->
+                    <div class="map-control-group" id="townFilterGroup" style="display:none;">
                         <label for="townFilter">Town Filter</label>
                         <select id="townFilter" class="form-select form-select-sm map-select">
                             <option value="">All Towns</option>
@@ -357,48 +501,102 @@
                         </select>
                     </div>
 
-                    <div class="map-control-group">
-                        <label for="metricSelect">Heat Metric</label>
-                        <select id="metricSelect" class="form-select form-select-sm map-select" style="display: none;">
-                            <option value="price">Average Price</option>
-                            <option value="volume">Transaction Volume</option>
-                        </select>
+                    <!-- Heatmap config (heatmap mode only) -->
+                    <div class="heatmap-config" id="heatmapConfig">
+                        <span class="control-label">Prediction Parameters</span>
+                        <div class="heatmap-config-row">
+                            <div class="map-control-group">
+                                <label for="heatFlatType">Flat Type</label>
+                                <select id="heatFlatType" class="form-select form-select-sm map-select">
+                                    <option value="3 Room">3 Room</option>
+                                    <option value="4 Room" selected>4 Room</option>
+                                    <option value="5 Room">5 Room</option>
+                                    <option value="Executive">Executive</option>
+                                </select>
+                            </div>
+                            <div class="map-control-group">
+                                <label for="heatStorey">Storey</label>
+                                <select id="heatStorey" class="form-select form-select-sm map-select">
+                                    <option value="01 TO 03">01-03</option>
+                                    <option value="04 TO 06">04-06</option>
+                                    <option value="07 TO 09" selected>07-09</option>
+                                    <option value="10 TO 12">10-12</option>
+                                    <option value="13 TO 15">13-15</option>
+                                    <option value="16 TO 18">16-18</option>
+                                    <option value="19 TO 21">19-21</option>
+                                    <option value="22 TO 24">22-24</option>
+                                    <option value="25 TO 27">25-27</option>
+                                </select>
+                            </div>
+                        </div>
+                        <p class="config-info">The model predicts a price for each town using these parameters. Colours show relative pricing across towns.</p>
                     </div>
 
-                    <div class="map-control-group">
-                        <label for="radiusRange">Heat Radius</label>
-                        <div class="map-range-wrap">
-                            <input id="radiusRange" type="range" min="800" max="2400" step="100" value="1400">
-                            <div class="map-range-meta">
-                                <span>Focused</span>
-                                <span id="radiusValue">1400 m</span>
-                                <span>Broad</span>
+                    <!-- Amenity layers (collapsible) -->
+                    <div class="amenity-panel" id="amenityPanel">
+                        <div class="amenity-header" onclick="toggleAmenityPanel()">
+                            <span class="control-label">Nearby Amenities</span>
+                            <i class="bi bi-chevron-down amenity-chevron" id="amenityChevron"></i>
+                        </div>
+                        <div class="amenity-body" id="amenityBody">
+                            <div class="amenity-item">
+                                <label for="toggleMRT">
+                                    <span class="amenity-icon amenity-icon-mrt"><span>M</span></span>
+                                    MRT / LRT Stations
+                                </label>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="toggleMRT">
+                                </div>
+                            </div>
+                            <div class="amenity-item">
+                                <label for="toggleSchools">
+                                    <span class="amenity-icon amenity-icon-school">S</span>
+                                    Primary Schools
+                                </label>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="toggleSchools">
+                                </div>
+                            </div>
+                            <div class="amenity-item">
+                                <label for="toggleMalls">
+                                    <span class="amenity-icon amenity-icon-mall">M</span>
+                                    Shopping Malls
+                                </label>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="toggleMalls">
+                                </div>
                             </div>
                         </div>
                     </div>
 
                     <div class="map-insight" id="mapInsight">
-                        Pin mode shows individual resale transactions. Switch to heatmap mode to compare locations by pricing pressure.
+                        AI Heatmap predicts a typical flat price for each town. Click any region to explore individual transactions.
                     </div>
                 </div>
             </div>
 
-            <div class="map-float-note">
+            <div class="map-float-note" id="floatNote">
                 <i class="bi bi-cursor-fill"></i>
-                <span>Click a location bubble to jump into town-level transactions</span>
+                <span>Click a town to explore transactions</span>
             </div>
 
             <div id="map"></div>
 
-            <div class="map-legend-panel">
-                <div class="map-legend-title" id="legendTitle">Price Intensity</div>
-                <div class="legend-scale" id="legendScale"></div>
+            <!-- Loading spinner -->
+            <div class="map-loading" id="mapLoading">
+                <span class="spinner-border spinner-border-sm"></span>
+                <span id="loadingText">Running predictions...</span>
+            </div>
+
+            <div class="map-legend-panel" id="legendPanel">
+                <div class="map-legend-title" id="legendTitle">AI Predicted Price</div>
+                <div class="legend-scale legend-scale-price" id="legendScale"></div>
                 <div class="legend-labels" id="legendLabels">
-                    <span>Low</span>
-                    <span>Moderate</span>
-                    <span>High</span>
-                    <span>Extreme</span>
+                    <span id="legendLow">Low</span>
+                    <span>Mid</span>
+                    <span id="legendHigh">High</span>
                 </div>
+                <div id="legendAmenities"></div>
             </div>
         </div>
     </div>
@@ -407,46 +605,82 @@
 
 {% block extra_scripts %}
 <script>
-const map = L.map('map', { zoomControl: true }).setView([1.3521, 103.8198], 11);
+// ─── Map Init ────────────────────────────────────────────────────
+const map = L.map('map', { zoomControl: true }).setView([1.3521, 103.8198], 12);
 
 L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     subdomains: 'abcd',
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
+    attribution: '&copy; OpenStreetMap &copy; CARTO'
 }).addTo(map);
 
-let markers = L.layerGroup().addTo(map);
-let heatmapLayer = L.layerGroup();
-let currentMode = 'pins';
+let markers = L.layerGroup();
+let heatmapLayer = L.layerGroup().addTo(map);
+let currentMode = 'heatmap';
+let drilledTown = null;
+let activeAmenities = new Set();
 
-const PRICE_COLORS = ['#22c55e', '#84cc16', '#facc15', '#fb923c', '#f97316', '#ef4444', '#be123c'];
-const VOL_COLORS = ['#38bdf8', '#22d3ee', '#a3e635', '#facc15', '#f97316', '#ef4444'];
+// Amenity layers
+let mrtLayer = L.layerGroup();
+let schoolLayer = L.layerGroup();
+let mallLayer = L.layerGroup();
 
-function updateStats(data) {
+const PIN_COLORS = ['#22c55e','#84cc16','#facc15','#fb923c','#f97316','#ef4444','#be123c'];
+
+// ─── Choropleth color (blue → white → red) ──────────────────────
+function lerpColor(a, b, t) {
+    const ar = parseInt(a.slice(1,3),16), ag = parseInt(a.slice(3,5),16), ab = parseInt(a.slice(5,7),16);
+    const br = parseInt(b.slice(1,3),16), bg = parseInt(b.slice(3,5),16), bb = parseInt(b.slice(5,7),16);
+    const r = Math.round(ar + (br - ar) * t);
+    const g = Math.round(ag + (bg - ag) * t);
+    const bl = Math.round(ab + (bb - ab) * t);
+    return '#' + [r,g,bl].map(c => c.toString(16).padStart(2,'0')).join('');
+}
+
+function choroplethColor(value, min, max) {
+    if (!Number.isFinite(value) || min >= max) return '#f1f5f9';
+    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+    if (t <= 0.5) return lerpColor('#1d4ed8', '#f1f5f9', t / 0.5);
+    return lerpColor('#f1f5f9', '#dc2626', (t - 0.5) / 0.5);
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────
+function updateStats(data, mode) {
     const records = data.length;
-    const avgPrice = records
-        ? '$' + Math.round(data.reduce((sum, d) => sum + Number(d.resale_price || d.avg_price || 0), 0) / records).toLocaleString()
-        : '-';
     const townCount = new Set(data.map(d => d.town).filter(Boolean)).size || '-';
 
-    document.getElementById('statRecords').textContent = records.toLocaleString();
-    document.getElementById('statAvgPrice').textContent = avgPrice;
+    let avgPrice = '-';
+    if (mode === 'heatmap') {
+        const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
+        avgPrice = prices.length
+            ? '$' + Math.round(prices.reduce((s, v) => s + v, 0) / prices.length).toLocaleString()
+            : '-';
+    } else {
+        const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
+        avgPrice = prices.length
+            ? '$' + Math.round(prices.reduce((s, v) => s + v, 0) / prices.length).toLocaleString()
+            : '-';
+    }
+
     document.getElementById('statTowns').textContent = townCount;
+    document.getElementById('statAvgPrice').textContent = avgPrice;
+    document.getElementById('statRecords').textContent = records.toLocaleString();
 }
 
-function setInsight(text) {
-    document.getElementById('mapInsight').textContent = text;
+function setInsight(text) { document.getElementById('mapInsight').textContent = text; }
+
+function showLoading(text) {
+    document.getElementById('loadingText').textContent = text || 'Loading...';
+    document.getElementById('mapLoading').classList.add('active');
 }
+function hideLoading() { document.getElementById('mapLoading').classList.remove('active'); }
 
 function buildThresholds(values, buckets = 7) {
     if (!values.length) return [];
     const sorted = [...values].sort((a, b) => a - b);
-    const out = [];
-    for (let i = 1; i < buckets; i++) {
-        const pos = Math.floor((i / buckets) * (sorted.length - 1));
-        out.push(sorted[pos]);
-    }
-    return out;
+    return Array.from({length: buckets - 1}, (_, i) =>
+        sorted[Math.floor(((i + 1) / buckets) * (sorted.length - 1))]
+    );
 }
 
 function scaleColor(value, thresholds, palette) {
@@ -457,152 +691,219 @@ function scaleColor(value, thresholds, palette) {
 }
 
 function handleAuthFailure(resp) {
-    if (resp.status === 401) {
-        window.location.href = "{{ url_for('login') }}";
-        return true;
-    }
+    if (resp.status === 401) { window.location.href = "{{ url_for('login') }}"; return true; }
     return false;
 }
 
-function updateLegend(metric) {
+function updateLegend(mode, minVal, maxVal) {
     const title = document.getElementById('legendTitle');
     const scale = document.getElementById('legendScale');
     const labels = document.getElementById('legendLabels');
 
-    if (metric === 'volume') {
-        title.textContent = 'Transaction Volume';
-        scale.className = 'legend-scale legend-volume';
-        labels.innerHTML = '<span>Quiet</span><span>Active</span><span>Busy</span><span>Hot</span>';
-        return;
+    if (mode === 'heatmap') {
+        title.textContent = 'AI Predicted Price';
+        scale.className = 'legend-scale legend-scale-price';
+        const lo = Number.isFinite(minVal) ? '$' + Math.round(minVal).toLocaleString() : 'Low';
+        const hi = Number.isFinite(maxVal) ? '$' + Math.round(maxVal).toLocaleString() : 'High';
+        labels.innerHTML = `<span>${lo}</span><span>Mid</span><span>${hi}</span>`;
+    } else {
+        title.textContent = 'Transaction Price';
+        scale.className = 'legend-scale legend-scale-pins';
+        labels.innerHTML = '<span>Low</span><span>Mid</span><span>High</span><span>Peak</span>';
     }
-
-    title.textContent = 'Price Intensity';
-    scale.className = 'legend-scale';
-    labels.innerHTML = '<span>Affordable</span><span>Mid</span><span>Premium</span><span>Peak</span>';
+    updateAmenityLegend();
 }
 
+function updateAmenityLegend() {
+    const el = document.getElementById('legendAmenities');
+    let html = '';
+    if (activeAmenities.has('mrt')) {
+        html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-mrt" style="width:14px;height:14px;font-size:7px;"><span>M</span></span> MRT / LRT</div>';
+    }
+    if (activeAmenities.has('school')) {
+        html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-school" style="width:14px;height:14px;font-size:7px;">S</span> Primary School</div>';
+    }
+    if (activeAmenities.has('mall')) {
+        html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-mall" style="width:14px;height:14px;font-size:7px;">M</span> Shopping Mall</div>';
+    }
+    el.innerHTML = html;
+}
+
+function showBreadcrumb(town) {
+    document.getElementById('breadcrumb').style.display = 'flex';
+    document.getElementById('bcTownName').textContent = town;
+}
+function hideBreadcrumb() { document.getElementById('breadcrumb').style.display = 'none'; }
+
+function toggleAmenityPanel() {
+    const body = document.getElementById('amenityBody');
+    const chevron = document.getElementById('amenityChevron');
+    body.classList.toggle('open');
+    chevron.classList.toggle('open');
+}
+
+// ─── Heatmap (AI Prediction) Mode ────────────────────────────────
+async function loadHeatmap() {
+    showLoading('Running AI predictions for each town...');
+
+    const flatType = document.getElementById('heatFlatType').value;
+    const storey = document.getElementById('heatStorey').value;
+    const params = new URLSearchParams({
+        flat_type: flatType,
+        storey_range: storey,
+    });
+
+    try {
+        const resp = await fetch('/api/predicted_heatmap?' + params);
+        if (handleAuthFailure(resp)) return;
+        const data = await resp.json();
+
+        const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
+        const minP = Math.min(...prices);
+        const maxP = Math.max(...prices);
+
+        heatmapLayer.clearLayers();
+
+        data.forEach(d => {
+            if (!d.lat || !d.lng) return;
+            const pred = Number(d.predicted_price);
+            const color = choroplethColor(pred, minP, maxP);
+            const predFmt = '$' + Math.round(pred).toLocaleString();
+            const rangeFmt = '$' + Math.round(Number(d.price_low)).toLocaleString() + ' – $' + Math.round(Number(d.price_high)).toLocaleString();
+
+            const circle = L.circle([d.lat, d.lng], {
+                radius: 2000,
+                fillColor: color,
+                color: 'rgba(255,255,255,0.25)',
+                weight: 1.5,
+                fillOpacity: 0.55,
+            });
+
+            circle.on('mouseover', function() { this.setStyle({ fillOpacity: 0.78 }); });
+            circle.on('mouseout', function() { this.setStyle({ fillOpacity: 0.55 }); });
+            circle.bindTooltip(`
+                <strong>${d.town}</strong><br>
+                Predicted: <b>${predFmt}</b><br>
+                Range: ${rangeFmt}<br>
+                Txns: ${Number(d.total_txns).toLocaleString()}
+            `, { sticky: true });
+
+            circle.on('click', () => drillDown(d.town));
+
+            const labelMarker = L.marker([d.lat, d.lng], {
+                interactive: false,
+                icon: L.divIcon({
+                    className: 'district-label',
+                    html: `<div class="dl-town">${d.town}</div><div class="dl-price">${predFmt}</div><div class="dl-tag">${flatType}</div>`,
+                    iconSize: [140, 42],
+                    iconAnchor: [70, 21],
+                })
+            });
+
+            heatmapLayer.addLayer(circle);
+            heatmapLayer.addLayer(labelMarker);
+        });
+
+        updateLegend('heatmap', minP, maxP);
+        updateStats(data, 'heatmap');
+        setInsight(`Showing AI-predicted prices for a typical ${flatType} (storey ${storey.replace(' TO ', '-')}) in each town. Blue = lower, Red = higher. Click to drill down.`);
+    } catch (e) {
+        setInsight('Failed to load predictions. Please try again.');
+    } finally {
+        hideLoading();
+    }
+}
+
+// ─── Drill Down ──────────────────────────────────────────────────
+function drillDown(town) {
+    drilledTown = town;
+    document.getElementById('townFilter').value = town;
+    showBreadcrumb(town);
+    currentMode = 'pins';
+    setModeButtons('pins');
+    document.getElementById('heatmapConfig').style.display = 'none';
+    document.getElementById('townFilterGroup').style.display = '';
+    document.getElementById('floatNote').style.display = 'none';
+    map.removeLayer(heatmapLayer);
+    markers.addTo(map);
+    loadPins();
+}
+
+function backToAllTowns() {
+    drilledTown = null;
+    document.getElementById('townFilter').value = '';
+    hideBreadcrumb();
+    showHeatmap();
+}
+
+// ─── Pin-Level Mode ──────────────────────────────────────────────
 async function loadPins() {
+    showLoading('Loading transactions...');
     const town = document.getElementById('townFilter').value;
     const params = new URLSearchParams();
     if (town) params.set('town', town);
     params.set('limit', 1800);
 
-    const resp = await fetch('/api/transactions?' + params);
-    if (handleAuthFailure(resp)) return;
-    const data = await resp.json();
+    try {
+        const resp = await fetch('/api/transactions?' + params);
+        if (handleAuthFailure(resp)) return;
+        const data = await resp.json();
 
-    markers.clearLayers();
-    const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
-    const thresholds = buildThresholds(prices, PRICE_COLORS.length);
+        markers.clearLayers();
+        const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
+        const thresholds = buildThresholds(prices, PIN_COLORS.length);
 
-    data.forEach(txn => {
-        if (!txn.latitude || !txn.longitude) return;
+        data.forEach(txn => {
+            if (!txn.latitude || !txn.longitude) return;
+            const price = Number(txn.resale_price);
+            const color = scaleColor(price, thresholds, PIN_COLORS);
+            const radius = Math.max(4, Math.min(10, Number(txn.floor_area_sqm || 70) / 14));
 
-        const price = Number(txn.resale_price);
-        const color = scaleColor(price, thresholds, PRICE_COLORS);
-        const radius = Math.max(4, Math.min(11, Number(txn.floor_area_sqm || 70) / 13));
+            const marker = L.circleMarker([txn.latitude, txn.longitude], {
+                radius,
+                fillColor: color,
+                color: 'rgba(255,255,255,0.6)',
+                weight: 0.7,
+                fillOpacity: 0.85,
+            });
 
-        const marker = L.circleMarker([txn.latitude, txn.longitude], {
-            radius,
-            fillColor: color,
-            color: 'rgba(255,255,255,0.75)',
-            weight: 0.8,
-            fillOpacity: 0.88,
+            marker.bindPopup(`
+                <strong>${txn.block} ${txn.street_name}</strong><br>
+                <b style="font-size:1.05em;">$${Number(txn.resale_price).toLocaleString()}</b><br>
+                ${txn.flat_type} · ${txn.storey_range}<br>
+                ${txn.floor_area_sqm} sqm · ${txn.month}<br>
+                <span style="color:#93c5fd">${txn.town}</span>
+            `);
+
+            markers.addLayer(marker);
         });
 
-        marker.bindPopup(`
-            <strong>${txn.block} ${txn.street_name}</strong><br>
-            <b>$${Number(txn.resale_price).toLocaleString()}</b><br>
-            ${txn.flat_type} · ${txn.storey_range}<br>
-            ${txn.floor_area_sqm} sqm · ${txn.month}<br>
-            <span style="color:#93c5fd">${txn.town}</span>
-        `);
+        if (town && data.length > 0) {
+            const lats = data.filter(d => d.latitude).map(d => d.latitude);
+            const lngs = data.filter(d => d.longitude).map(d => d.longitude);
+            if (lats.length) {
+                map.fitBounds([[Math.min(...lats), Math.min(...lngs)], [Math.max(...lats), Math.max(...lngs)]], { padding: [60, 60] });
+            }
+        }
 
-        markers.addLayer(marker);
-    });
-
-    updateLegend('price');
-    updateStats(data);
-    setInsight(
-        town
-            ? `${town} is in pin mode. Every dot is an individual resale transaction colored by price intensity.`
-            : 'Pin mode shows individual resale transactions across Singapore. Warm colors indicate higher-priced deals.'
-    );
+        updateLegend('pins');
+        updateStats(data, 'pins');
+        setInsight(
+            town
+                ? `${data.length.toLocaleString()} transactions in ${town}. Each dot = one resale, coloured by price.`
+                : 'Showing individual resale transactions across Singapore. Warm colours = higher prices.'
+        );
+    } catch (e) {
+        setInsight('Failed to load transactions.');
+    } finally {
+        hideLoading();
+    }
 }
 
-async function loadHeatmap() {
-    const resp = await fetch('/api/district_summary');
-    if (handleAuthFailure(resp)) return;
-    const data = await resp.json();
-    const metric = document.getElementById('metricSelect').value;
-    const radius = Number(document.getElementById('radiusRange').value);
-    const palette = metric === 'price' ? PRICE_COLORS : VOL_COLORS;
-    const values = data
-        .map(d => Number(metric === 'price' ? (d.recent_avg || d.avg_price) : d.total_txns))
-        .filter(Number.isFinite);
-    const thresholds = buildThresholds(values, palette.length);
-
-    heatmapLayer.clearLayers();
-
-    data.forEach(d => {
-        if (!d.lat || !d.lng) return;
-
-        const metricValue = Number(metric === 'price' ? (d.recent_avg || d.avg_price) : d.total_txns);
-        const color = scaleColor(metricValue, thresholds, palette);
-        const label = metric === 'price' ? 'Avg Price (2023+)' : 'Transactions';
-        const formatted = metric === 'price'
-            ? '$' + Math.round(metricValue).toLocaleString()
-            : Number(metricValue).toLocaleString();
-
-        const circle = L.circle([d.lat, d.lng], {
-            radius,
-            fillColor: color,
-            color,
-            weight: 1.6,
-            fillOpacity: 0.35,
-            className: 'pulse',
-        });
-
-        circle.bindPopup(`
-            <strong>${d.town}</strong><br>
-            ${label}: <b>${formatted}</b><br>
-            Overall Avg Price: $${Number(d.avg_price).toLocaleString()}<br>
-            Total Txns: ${Number(d.total_txns).toLocaleString()}<br>
-            <span style="color:#fcd34d">Click to inspect town transactions</span>
-        `);
-
-        circle.on('click', () => {
-            document.getElementById('townFilter').value = d.town;
-            showPins();
-        });
-
-        const labelMarker = L.marker([d.lat, d.lng], {
-            interactive: false,
-            icon: L.divIcon({
-                className: 'district-label',
-                html: `<div>${d.town}</div>`,
-                iconSize: [120, 16],
-                iconAnchor: [60, 8],
-            })
-        });
-
-        heatmapLayer.addLayer(circle);
-        heatmapLayer.addLayer(labelMarker);
-    });
-
-    updateLegend(metric);
-    updateStats(data);
-    setInsight(
-        metric === 'price'
-            ? 'Heatmap mode ranks locations by pricing pressure. Red zones indicate premium resale clusters.'
-            : 'Heatmap mode ranks locations by transaction volume. Warmer zones indicate stronger market activity.'
-    );
-}
-
+// ─── Mode Switching ──────────────────────────────────────────────
 function setModeButtons(mode) {
     const pinsBtn = document.getElementById('btnPins');
     const heatBtn = document.getElementById('btnHeatmap');
-
     if (mode === 'pins') {
         pinsBtn.classList.add('active', 'btn-primary');
         pinsBtn.classList.remove('btn-outline-light');
@@ -618,36 +919,287 @@ function setModeButtons(mode) {
 
 function showPins() {
     currentMode = 'pins';
+    drilledTown = null;
+    hideBreadcrumb();
     setModeButtons('pins');
-    document.getElementById('metricSelect').style.display = 'none';
+    document.getElementById('heatmapConfig').style.display = 'none';
+    document.getElementById('townFilterGroup').style.display = '';
+    document.getElementById('floatNote').style.display = 'none';
     map.removeLayer(heatmapLayer);
     markers.addTo(map);
+    map.setView([1.3521, 103.8198], 12);
     loadPins();
 }
 
 function showHeatmap() {
     currentMode = 'heatmap';
+    drilledTown = null;
+    hideBreadcrumb();
     setModeButtons('heatmap');
-    document.getElementById('metricSelect').style.display = '';
+    document.getElementById('heatmapConfig').style.display = '';
+    document.getElementById('townFilterGroup').style.display = 'none';
+    document.getElementById('floatNote').style.display = '';
     map.removeLayer(markers);
     heatmapLayer.addTo(map);
+    map.setView([1.3521, 103.8198], 12);
     loadHeatmap();
 }
 
+// Event listeners for heatmap params
 document.getElementById('townFilter').addEventListener('change', () => {
-    if (currentMode === 'pins') {
-        loadPins();
-    }
+    if (currentMode === 'pins') loadPins();
+});
+document.getElementById('heatFlatType').addEventListener('change', () => {
+    if (currentMode === 'heatmap') loadHeatmap();
+});
+document.getElementById('heatStorey').addEventListener('change', () => {
+    if (currentMode === 'heatmap') loadHeatmap();
 });
 
-document.getElementById('metricSelect').addEventListener('change', loadHeatmap);
-document.getElementById('radiusRange').addEventListener('input', (event) => {
-    document.getElementById('radiusValue').textContent = `${event.target.value} m`;
-    if (currentMode === 'heatmap') {
-        loadHeatmap();
-    }
+// ─── AMENITY DATA ────────────────────────────────────────────────
+const MRT_STATIONS = [
+    {name:"Jurong East",lat:1.3329,lng:103.7422},{name:"Bukit Batok",lat:1.3490,lng:103.7496},
+    {name:"Bukit Gombak",lat:1.3590,lng:103.7516},{name:"Choa Chu Kang",lat:1.3853,lng:103.7444},
+    {name:"Yew Tee",lat:1.3975,lng:103.7474},{name:"Kranji",lat:1.4251,lng:103.7620},
+    {name:"Marsiling",lat:1.4326,lng:103.7741},{name:"Woodlands",lat:1.4370,lng:103.7865},
+    {name:"Admiralty",lat:1.4407,lng:103.8010},{name:"Sembawang",lat:1.4491,lng:103.8200},
+    {name:"Canberra",lat:1.4430,lng:103.8296},{name:"Yishun",lat:1.4293,lng:103.8353},
+    {name:"Khatib",lat:1.4173,lng:103.8329},{name:"Ang Mo Kio",lat:1.3700,lng:103.8496},
+    {name:"Bishan",lat:1.3513,lng:103.8492},{name:"Braddell",lat:1.3404,lng:103.8469},
+    {name:"Toa Payoh",lat:1.3327,lng:103.8473},{name:"Novena",lat:1.3204,lng:103.8438},
+    {name:"Newton",lat:1.3138,lng:103.8381},{name:"Orchard",lat:1.3043,lng:103.8318},
+    {name:"Somerset",lat:1.3006,lng:103.8387},{name:"Dhoby Ghaut",lat:1.2993,lng:103.8458},
+    {name:"City Hall",lat:1.2931,lng:103.8521},{name:"Raffles Place",lat:1.2836,lng:103.8515},
+    {name:"Marina Bay",lat:1.2764,lng:103.8546},{name:"Marina South Pier",lat:1.2714,lng:103.8632},
+    {name:"Pasir Ris",lat:1.3731,lng:103.9494},{name:"Tampines",lat:1.3545,lng:103.9452},
+    {name:"Simei",lat:1.3432,lng:103.9533},{name:"Tanah Merah",lat:1.3272,lng:103.9464},
+    {name:"Bedok",lat:1.3240,lng:103.9301},{name:"Kembangan",lat:1.3210,lng:103.9129},
+    {name:"Eunos",lat:1.3198,lng:103.9030},{name:"Paya Lebar",lat:1.3176,lng:103.8928},
+    {name:"Aljunied",lat:1.3165,lng:103.8829},{name:"Kallang",lat:1.3114,lng:103.8714},
+    {name:"Lavender",lat:1.3072,lng:103.8631},{name:"Bugis",lat:1.3009,lng:103.8560},
+    {name:"Tanjong Pagar",lat:1.2764,lng:103.8468},{name:"Outram Park",lat:1.2803,lng:103.8393},
+    {name:"Tiong Bahru",lat:1.2862,lng:103.8271},{name:"Redhill",lat:1.2894,lng:103.8168},
+    {name:"Queenstown",lat:1.2942,lng:103.8060},{name:"Commonwealth",lat:1.3024,lng:103.7983},
+    {name:"Buona Vista",lat:1.3074,lng:103.7900},{name:"Dover",lat:1.3113,lng:103.7787},
+    {name:"Clementi",lat:1.3151,lng:103.7652},{name:"Chinese Garden",lat:1.3425,lng:103.7327},
+    {name:"Lakeside",lat:1.3444,lng:103.7209},{name:"Boon Lay",lat:1.3385,lng:103.7060},
+    {name:"Pioneer",lat:1.3376,lng:103.6973},{name:"Joo Koon",lat:1.3279,lng:103.6789},
+    {name:"Gul Circle",lat:1.3193,lng:103.6607},{name:"Tuas Crescent",lat:1.3210,lng:103.6492},
+    {name:"Tuas West Road",lat:1.3300,lng:103.6397},{name:"Tuas Link",lat:1.3405,lng:103.6367},
+    {name:"Expo",lat:1.3351,lng:103.9617},{name:"Changi Airport",lat:1.3574,lng:103.9885},
+    {name:"Bras Basah",lat:1.2968,lng:103.8507},{name:"Esplanade",lat:1.2936,lng:103.8554},
+    {name:"Promenade",lat:1.2934,lng:103.8611},{name:"Nicoll Highway",lat:1.2997,lng:103.8637},
+    {name:"Stadium",lat:1.3026,lng:103.8753},{name:"Mountbatten",lat:1.3062,lng:103.8826},
+    {name:"Dakota",lat:1.3084,lng:103.8887},{name:"MacPherson",lat:1.3266,lng:103.8900},
+    {name:"Tai Seng",lat:1.3359,lng:103.8880},{name:"Bartley",lat:1.3427,lng:103.8800},
+    {name:"Serangoon",lat:1.3496,lng:103.8735},{name:"Lorong Chuan",lat:1.3516,lng:103.8640},
+    {name:"Marymount",lat:1.3487,lng:103.8393},{name:"Caldecott",lat:1.3374,lng:103.8395},
+    {name:"Botanic Gardens",lat:1.3224,lng:103.8153},{name:"Farrer Road",lat:1.3176,lng:103.8074},
+    {name:"Holland Village",lat:1.3119,lng:103.7960},{name:"one-north",lat:1.2996,lng:103.7872},
+    {name:"Kent Ridge",lat:1.2935,lng:103.7846},{name:"Haw Par Villa",lat:1.2826,lng:103.7822},
+    {name:"Pasir Panjang",lat:1.2762,lng:103.7914},{name:"Labrador Park",lat:1.2720,lng:103.8027},
+    {name:"Telok Blangah",lat:1.2707,lng:103.8099},{name:"HarbourFront",lat:1.2653,lng:103.8222},
+    {name:"Bayfront",lat:1.2814,lng:103.8592},
+    {name:"Bukit Panjang",lat:1.3784,lng:103.7621},{name:"Cashew",lat:1.3690,lng:103.7644},
+    {name:"Hillview",lat:1.3626,lng:103.7676},{name:"Beauty World",lat:1.3410,lng:103.7758},
+    {name:"King Albert Park",lat:1.3356,lng:103.7838},{name:"Sixth Avenue",lat:1.3308,lng:103.7971},
+    {name:"Tan Kah Kee",lat:1.3260,lng:103.8073},{name:"Stevens",lat:1.3200,lng:103.8260},
+    {name:"Rochor",lat:1.3036,lng:103.8525},{name:"Downtown",lat:1.2793,lng:103.8529},
+    {name:"Telok Ayer",lat:1.2821,lng:103.8486},{name:"Fort Canning",lat:1.2924,lng:103.8440},
+    {name:"Bencoolen",lat:1.2984,lng:103.8497},{name:"Little India",lat:1.3064,lng:103.8493},
+    {name:"Bendemeer",lat:1.3138,lng:103.8629},{name:"Geylang Bahru",lat:1.3215,lng:103.8716},
+    {name:"Mattar",lat:1.3270,lng:103.8831},{name:"Ubi",lat:1.3299,lng:103.8989},
+    {name:"Kaki Bukit",lat:1.3350,lng:103.9087},{name:"Bedok North",lat:1.3348,lng:103.9180},
+    {name:"Bedok Reservoir",lat:1.3368,lng:103.9322},{name:"Tampines West",lat:1.3459,lng:103.9384},
+    {name:"Tampines East",lat:1.3563,lng:103.9546},{name:"Upper Changi",lat:1.3416,lng:103.9614},
+    {name:"Chinatown",lat:1.2849,lng:103.8440},{name:"Clarke Quay",lat:1.2887,lng:103.8465},
+    {name:"Farrer Park",lat:1.3124,lng:103.8546},{name:"Boon Keng",lat:1.3195,lng:103.8618},
+    {name:"Potong Pasir",lat:1.3314,lng:103.8688},{name:"Woodleigh",lat:1.3392,lng:103.8707},
+    {name:"Kovan",lat:1.3600,lng:103.8851},{name:"Hougang",lat:1.3713,lng:103.8926},
+    {name:"Buangkok",lat:1.3830,lng:103.8930},{name:"Sengkang",lat:1.3917,lng:103.8953},
+    {name:"Punggol",lat:1.4053,lng:103.9023},
+    {name:"Woodlands North",lat:1.4486,lng:103.7849},{name:"Woodlands South",lat:1.4270,lng:103.7930},
+    {name:"Springleaf",lat:1.3976,lng:103.8186},{name:"Lentor",lat:1.3847,lng:103.8363},
+    {name:"Mayflower",lat:1.3716,lng:103.8380},{name:"Bright Hill",lat:1.3632,lng:103.8336},
+    {name:"Upper Thomson",lat:1.3541,lng:103.8333},{name:"Napier",lat:1.3069,lng:103.8215},
+    {name:"Orchard Boulevard",lat:1.3014,lng:103.8289},{name:"Great World",lat:1.2936,lng:103.8314},
+    {name:"Havelock",lat:1.2884,lng:103.8368},{name:"Maxwell",lat:1.2794,lng:103.8445},
+    {name:"Shenton Way",lat:1.2762,lng:103.8489},{name:"Gardens by the Bay",lat:1.2797,lng:103.8653},
+    {name:"Tanjong Rhu",lat:1.2930,lng:103.8728},{name:"Katong Park",lat:1.2970,lng:103.8854},
+    {name:"Tanjong Katong",lat:1.3015,lng:103.8954},{name:"Marine Parade",lat:1.3027,lng:103.9067},
+    {name:"Marine Terrace",lat:1.3066,lng:103.9136},{name:"Siglap",lat:1.3111,lng:103.9233},
+    {name:"Bayshore",lat:1.3159,lng:103.9393},{name:"Bedok South",lat:1.3177,lng:103.9460},
+    {name:"Sungei Bedok",lat:1.3243,lng:103.9531},
+    {name:"South View",lat:1.3804,lng:103.7452},{name:"Keat Hong",lat:1.3787,lng:103.7488},
+    {name:"Teck Whye",lat:1.3766,lng:103.7534},{name:"Phoenix",lat:1.3787,lng:103.7574},
+    {name:"Petir",lat:1.3778,lng:103.7670},{name:"Pending",lat:1.3760,lng:103.7711},
+    {name:"Bangkit",lat:1.3802,lng:103.7716},{name:"Fajar",lat:1.3847,lng:103.7703},
+    {name:"Segar",lat:1.3876,lng:103.7629},{name:"Jelapang",lat:1.3862,lng:103.7588},
+    {name:"Senja",lat:1.3826,lng:103.7623},
+    {name:"Compassvale",lat:1.3944,lng:103.9001},{name:"Rumbia",lat:1.3914,lng:103.9059},
+    {name:"Bakau",lat:1.3879,lng:103.9050},{name:"Kangkar",lat:1.3835,lng:103.9023},
+    {name:"Ranggung",lat:1.3837,lng:103.8977},{name:"Cheng Lim",lat:1.3965,lng:103.8935},
+    {name:"Farmway",lat:1.3975,lng:103.8890},{name:"Kupang",lat:1.3985,lng:103.8838},
+    {name:"Thanggam",lat:1.3972,lng:103.8778},{name:"Fernvale",lat:1.3916,lng:103.8764},
+    {name:"Layar",lat:1.3925,lng:103.8797},{name:"Tongkang",lat:1.3896,lng:103.8862},
+    {name:"Cove",lat:1.3993,lng:103.9059},{name:"Meridian",lat:1.3970,lng:103.9096},
+    {name:"Coral Edge",lat:1.3940,lng:103.9126},{name:"Riviera",lat:1.3944,lng:103.9164},
+    {name:"Kadaloor",lat:1.3999,lng:103.9162},{name:"Oasis",lat:1.4025,lng:103.9133},
+    {name:"Damai",lat:1.4052,lng:103.9085},{name:"Sam Kee",lat:1.4098,lng:103.9047},
+    {name:"Teck Lee",lat:1.4127,lng:103.9063},{name:"Punggol Point",lat:1.4177,lng:103.9066},
+    {name:"Samudera",lat:1.4164,lng:103.9020},{name:"Nibong",lat:1.4116,lng:103.9005},
+    {name:"Sumang",lat:1.4085,lng:103.8982},{name:"Soo Teck",lat:1.4057,lng:103.8973},
+];
+
+const PRIMARY_SCHOOLS = [
+    {name:"Ai Tong School",lat:1.3385,lng:103.8550},{name:"Alexandra Primary",lat:1.2872,lng:103.8016},
+    {name:"Anchor Green Primary",lat:1.3935,lng:103.8890},{name:"Anderson Primary",lat:1.3620,lng:103.8357},
+    {name:"Anglo-Chinese School (Junior)",lat:1.3014,lng:103.8373},{name:"Beacon Primary",lat:1.3520,lng:103.9428},
+    {name:"Bedok Green Primary",lat:1.3266,lng:103.9399},{name:"Blangah Rise Primary",lat:1.2731,lng:103.8100},
+    {name:"Boon Lay Garden Primary",lat:1.3466,lng:103.7059},{name:"Bukit Panjang Primary",lat:1.3800,lng:103.7720},
+    {name:"Bukit Timah Primary",lat:1.3348,lng:103.7787},{name:"Bukit View Primary",lat:1.3558,lng:103.7510},
+    {name:"Canberra Primary",lat:1.4430,lng:103.8264},{name:"Canossa Catholic Primary",lat:1.3115,lng:103.8933},
+    {name:"Cantonment Primary",lat:1.2790,lng:103.8430},{name:"Casuarina Primary",lat:1.3960,lng:103.8790},
+    {name:"Catholic High School (Primary)",lat:1.3512,lng:103.8397},{name:"Cedar Primary",lat:1.3437,lng:103.9512},
+    {name:"Changkat Primary",lat:1.3575,lng:103.7535},{name:"CHIJ Kellock",lat:1.2915,lng:103.8250},
+    {name:"CHIJ Our Lady of Good Counsel",lat:1.3760,lng:103.8396},{name:"CHIJ Our Lady Queen of Peace",lat:1.3520,lng:103.7590},
+    {name:"CHIJ St Nicholas Girls'",lat:1.3580,lng:103.8395},{name:"Chongfu School",lat:1.3849,lng:103.8952},
+    {name:"Chongzheng Primary",lat:1.3436,lng:103.9399},{name:"Chua Chu Kang Primary",lat:1.3933,lng:103.7413},
+    {name:"Clementi Primary",lat:1.3153,lng:103.7680},{name:"Compassvale Primary",lat:1.3918,lng:103.8971},
+    {name:"Concord Primary",lat:1.3855,lng:103.7550},{name:"Coral Primary",lat:1.3850,lng:103.9000},
+    {name:"Damai Primary",lat:1.3393,lng:103.9340},{name:"Dazhong Primary",lat:1.3465,lng:103.7088},
+    {name:"De La Salle School",lat:1.3135,lng:103.8733},{name:"East Spring Primary",lat:1.3449,lng:103.9378},
+    {name:"Edgefield Primary",lat:1.3942,lng:103.9050},{name:"Elias Park Primary",lat:1.3769,lng:103.9477},
+    {name:"Endeavour Primary",lat:1.3480,lng:103.7039},{name:"Eunos Primary",lat:1.3219,lng:103.9021},
+    {name:"Evergreen Primary",lat:1.4355,lng:103.7857},{name:"Fairfield Methodist (Primary)",lat:1.3196,lng:103.8666},
+    {name:"Farrer Park Primary",lat:1.3130,lng:103.8540},{name:"Fengshan Primary",lat:1.3270,lng:103.9390},
+    {name:"Fernvale Primary",lat:1.3918,lng:103.8760},{name:"First Toa Payoh Primary",lat:1.3395,lng:103.8518},
+    {name:"Frontier Primary",lat:1.3445,lng:103.7129},{name:"Fuhua Primary",lat:1.3285,lng:103.7468},
+    {name:"Gan Eng Seng Primary",lat:1.2888,lng:103.8280},{name:"Geylang Methodist (Primary)",lat:1.3120,lng:103.8879},
+    {name:"Gongshang Primary",lat:1.3590,lng:103.9384},{name:"Greendale Primary",lat:1.4040,lng:103.9070},
+    {name:"Greenridge Primary",lat:1.3770,lng:103.7680},{name:"Greenwood Primary",lat:1.3577,lng:103.7666},
+    {name:"Guangyang Primary",lat:1.3513,lng:103.8530},{name:"Haig Girls' School",lat:1.3043,lng:103.8870},
+    {name:"Henry Park Primary",lat:1.3247,lng:103.7885},{name:"Holy Innocents' Primary",lat:1.3670,lng:103.8868},
+    {name:"Horizon Primary",lat:1.3888,lng:103.7476},{name:"Hougang Primary",lat:1.3714,lng:103.8930},
+    {name:"Innova Primary",lat:1.3450,lng:103.7067},{name:"Jiemin Primary",lat:1.3935,lng:103.8925},
+    {name:"Jurong Primary",lat:1.3469,lng:103.7240},{name:"Jurong West Primary",lat:1.3507,lng:103.7188},
+    {name:"Keming Primary",lat:1.3548,lng:103.7542},{name:"Kong Hwa School",lat:1.3114,lng:103.8909},
+    {name:"Kranji Primary",lat:1.4230,lng:103.7570},{name:"Kuo Chuan Presbyterian Primary",lat:1.3512,lng:103.8398},
+    {name:"Lakeside Primary",lat:1.3425,lng:103.7221},{name:"Lianhua Primary",lat:1.3477,lng:103.7443},
+    {name:"Maha Bodhi School",lat:1.3255,lng:103.8634},{name:"Maris Stella High (Primary)",lat:1.3478,lng:103.8556},
+    {name:"Marsiling Primary",lat:1.4350,lng:103.7720},{name:"Mayflower Primary",lat:1.3698,lng:103.8377},
+    {name:"Methodist Girls' School (Primary)",lat:1.3148,lng:103.7892},{name:"Nan Chiau Primary",lat:1.3920,lng:103.8939},
+    {name:"Nan Hua Primary",lat:1.3059,lng:103.7872},{name:"Nanyang Primary",lat:1.3180,lng:103.8110},
+    {name:"Naval Base Primary",lat:1.4470,lng:103.7950},{name:"New Town Primary",lat:1.3435,lng:103.8452},
+    {name:"Ngee Ann Primary",lat:1.3520,lng:103.8010},{name:"Northland Primary",lat:1.4370,lng:103.8200},
+    {name:"Northoaks Primary",lat:1.4310,lng:103.8135},{name:"Oasis Primary",lat:1.4050,lng:103.9103},
+    {name:"Opera Estate Primary",lat:1.3207,lng:103.9320},{name:"Palm View Primary",lat:1.3561,lng:103.7190},
+    {name:"Park View Primary",lat:1.3930,lng:103.8880},{name:"Paya Lebar Methodist Girls'",lat:1.3235,lng:103.8980},
+    {name:"Pei Chun Public School",lat:1.3373,lng:103.8489},{name:"Pei Hwa Presbyterian Primary",lat:1.3760,lng:103.7671},
+    {name:"Pei Tong Primary",lat:1.3070,lng:103.7646},{name:"Pioneer Primary",lat:1.3400,lng:103.6966},
+    {name:"Poi Ching School",lat:1.3395,lng:103.9371},{name:"Princess Elizabeth Primary",lat:1.3530,lng:103.7470},
+    {name:"Punggol Green Primary",lat:1.3984,lng:103.9055},{name:"Punggol Primary",lat:1.4027,lng:103.8988},
+    {name:"Punggol View Primary",lat:1.3965,lng:103.9047},{name:"Qihua Primary",lat:1.3520,lng:103.9375},
+    {name:"Queenstown Primary",lat:1.2946,lng:103.8059},{name:"Radin Mas Primary",lat:1.2785,lng:103.8146},
+    {name:"Raffles Girls' Primary",lat:1.3034,lng:103.8343},{name:"Red Swastika School",lat:1.3297,lng:103.9330},
+    {name:"River Valley Primary",lat:1.2935,lng:103.8318},{name:"Rivervale Primary",lat:1.3880,lng:103.9010},
+    {name:"Rosyth School",lat:1.3502,lng:103.8740},{name:"Rulang Primary",lat:1.3455,lng:103.7193},
+    {name:"Seng Kang Primary",lat:1.3920,lng:103.8920},{name:"Shuqun Primary",lat:1.3427,lng:103.7180},
+    {name:"Si Ling Primary",lat:1.3569,lng:103.7530},{name:"South View Primary",lat:1.3800,lng:103.7440},
+    {name:"Springdale Primary",lat:1.3797,lng:103.7700},{name:"St Andrew's Junior School",lat:1.3062,lng:103.8620},
+    {name:"St Gabriel's Primary",lat:1.3735,lng:103.8864},{name:"St Hilda's Primary",lat:1.3364,lng:103.9411},
+    {name:"St Margaret's Primary",lat:1.3068,lng:103.8429},{name:"Tampines North Primary",lat:1.3625,lng:103.9399},
+    {name:"Tampines Primary",lat:1.3530,lng:103.9459},{name:"Tanjong Katong Primary",lat:1.3039,lng:103.8911},
+    {name:"Tao Nan School",lat:1.2975,lng:103.8810},{name:"Teck Ghee Primary",lat:1.3697,lng:103.8555},
+    {name:"Teck Whye Primary",lat:1.3770,lng:103.7530},{name:"Telok Kurau Primary",lat:1.3117,lng:103.9120},
+    {name:"Townsville Primary",lat:1.3452,lng:103.9456},{name:"Unity Primary",lat:1.3880,lng:103.7450},
+    {name:"Waterway Primary",lat:1.4020,lng:103.9070},{name:"Wellington Primary",lat:1.3450,lng:103.8420},
+    {name:"West Grove Primary",lat:1.3390,lng:103.7375},{name:"West Spring Primary",lat:1.3830,lng:103.7580},
+    {name:"Westwood Primary",lat:1.3466,lng:103.7026},{name:"White Sands Primary",lat:1.3730,lng:103.9490},
+    {name:"Woodgrove Primary",lat:1.4380,lng:103.7900},{name:"Woodlands Primary",lat:1.4330,lng:103.7860},
+    {name:"Woodlands Ring Primary",lat:1.4400,lng:103.7860},{name:"Xinghua Primary",lat:1.3690,lng:103.8700},
+    {name:"Xingnan Primary",lat:1.3420,lng:103.7070},{name:"Xishan Primary",lat:1.3513,lng:103.7510},
+    {name:"Yangzheng Primary",lat:1.3640,lng:103.8488},{name:"Yew Tee Primary",lat:1.3960,lng:103.7450},
+    {name:"Yio Chu Kang Primary",lat:1.3760,lng:103.8440},{name:"Yu Neng Primary",lat:1.3495,lng:103.7415},
+    {name:"Yuhua Primary",lat:1.3365,lng:103.7305},{name:"Yumin Primary",lat:1.3575,lng:103.8770},
+    {name:"Zhangde Primary",lat:1.3488,lng:103.8475},{name:"Zhenghua Primary",lat:1.3850,lng:103.7640},
+    {name:"Zhonghua Primary",lat:1.3471,lng:103.8950},
+];
+
+const SHOPPING_MALLS = [
+    {name:"VivoCity",lat:1.2644,lng:103.8223},{name:"ION Orchard",lat:1.3040,lng:103.8320},
+    {name:"Ngee Ann City",lat:1.3026,lng:103.8342},{name:"Plaza Singapura",lat:1.3007,lng:103.8451},
+    {name:"Bugis Junction",lat:1.2997,lng:103.8553},{name:"Bugis+",lat:1.2992,lng:103.8561},
+    {name:"Suntec City",lat:1.2952,lng:103.8577},{name:"Marina Square",lat:1.2911,lng:103.8574},
+    {name:"Raffles City",lat:1.2935,lng:103.8530},{name:"The Shoppes at MBS",lat:1.2838,lng:103.8591},
+    {name:"Paragon",lat:1.3038,lng:103.8354},{name:"313@Somerset",lat:1.3008,lng:103.8385},
+    {name:"Wisma Atria",lat:1.3039,lng:103.8330},{name:"Tanglin Mall",lat:1.3073,lng:103.8227},
+    {name:"Great World City",lat:1.2930,lng:103.8318},{name:"Tiong Bahru Plaza",lat:1.2864,lng:103.8273},
+    {name:"Anchorpoint",lat:1.2878,lng:103.8021},{name:"HarbourFront Centre",lat:1.2650,lng:103.8206},
+    {name:"NEX",lat:1.3503,lng:103.8715},{name:"Compass One",lat:1.3928,lng:103.8960},
+    {name:"Rivervale Mall",lat:1.3866,lng:103.9026},{name:"Waterway Point",lat:1.4072,lng:103.9025},
+    {name:"Causeway Point",lat:1.4360,lng:103.7862},{name:"Northpoint City",lat:1.4293,lng:103.8357},
+    {name:"Junction 8",lat:1.3500,lng:103.8491},{name:"Heartland Mall",lat:1.3594,lng:103.8851},
+    {name:"Hougang Mall",lat:1.3720,lng:103.8933},{name:"Punggol Plaza",lat:1.4053,lng:103.9019},
+    {name:"Changi City Point",lat:1.3343,lng:103.9617},{name:"Tampines Mall",lat:1.3536,lng:103.9449},
+    {name:"Tampines 1",lat:1.3533,lng:103.9434},{name:"Century Square",lat:1.3526,lng:103.9458},
+    {name:"White Sands",lat:1.3727,lng:103.9491},{name:"Eastpoint Mall",lat:1.3434,lng:103.9534},
+    {name:"Bedok Mall",lat:1.3248,lng:103.9301},{name:"Parkway Parade",lat:1.3016,lng:103.9052},
+    {name:"i12 Katong",lat:1.3048,lng:103.9001},{name:"PLQ Mall",lat:1.3175,lng:103.8930},
+    {name:"City Square Mall",lat:1.3116,lng:103.8561},{name:"Mustafa Centre",lat:1.3099,lng:103.8556},
+    {name:"Velocity @ Novena",lat:1.3205,lng:103.8440},{name:"United Square",lat:1.3268,lng:103.8442},
+    {name:"Thomson Plaza",lat:1.3267,lng:103.8386},{name:"Junction 10",lat:1.3565,lng:103.7516},
+    {name:"West Mall",lat:1.3498,lng:103.7496},{name:"JCube",lat:1.3333,lng:103.7404},
+    {name:"IMM",lat:1.3347,lng:103.7467},{name:"Westgate",lat:1.3343,lng:103.7425},
+    {name:"Jem",lat:1.3335,lng:103.7436},{name:"Clementi Mall",lat:1.3152,lng:103.7646},
+    {name:"Star Vista",lat:1.3069,lng:103.7888},{name:"Lot One",lat:1.3855,lng:103.7443},
+    {name:"Hillion Mall",lat:1.3830,lng:103.7637},{name:"Sun Plaza",lat:1.4446,lng:103.8017},
+    {name:"AMK Hub",lat:1.3694,lng:103.8490},{name:"Yew Tee Point",lat:1.3975,lng:103.7480},
+];
+
+// ─── Build Amenity Layers (distinct shapes) ──────────────────────
+function makeAmenityIcon(cls) {
+    return L.divIcon({
+        className: 'leaflet-amenity-icon ' + cls,
+        html: cls.includes('mrt') ? '<span>M</span>' : cls.includes('school') ? 'S' : 'M',
+        iconSize: [16, 16],
+        iconAnchor: [8, 8],
+    });
+}
+
+MRT_STATIONS.forEach(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mrt') });
+    m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
+    mrtLayer.addLayer(m);
+});
+PRIMARY_SCHOOLS.forEach(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-school') });
+    m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
+    schoolLayer.addLayer(m);
+});
+SHOPPING_MALLS.forEach(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mall') });
+    m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
+    mallLayer.addLayer(m);
 });
 
-showPins();
+document.getElementById('toggleMRT').addEventListener('change', function() {
+    if (this.checked) { mrtLayer.addTo(map); activeAmenities.add('mrt'); }
+    else { map.removeLayer(mrtLayer); activeAmenities.delete('mrt'); }
+    updateAmenityLegend();
+});
+document.getElementById('toggleSchools').addEventListener('change', function() {
+    if (this.checked) { schoolLayer.addTo(map); activeAmenities.add('school'); }
+    else { map.removeLayer(schoolLayer); activeAmenities.delete('school'); }
+    updateAmenityLegend();
+});
+document.getElementById('toggleMalls').addEventListener('change', function() {
+    if (this.checked) { mallLayer.addTo(map); activeAmenities.add('mall'); }
+    else { map.removeLayer(mallLayer); activeAmenities.delete('mall'); }
+    updateAmenityLegend();
+});
+
+// ─── Init ────────────────────────────────────────────────────────
+showHeatmap();
 </script>
 {% endblock %}

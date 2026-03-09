@@ -1626,6 +1626,70 @@ def api_district_summary():
     return jsonify(_get_district_summary_data())
 
 
+@app.route("/api/predicted_heatmap")
+@api_login_required
+def api_predicted_heatmap():
+    """Run the prediction model for a representative flat in each town.
+
+    Query params (all optional — defaults to a typical 4 Room flat):
+      flat_type       e.g. "4 Room"
+      flat_model      e.g. "Model A"
+      floor_area      e.g. 93
+      storey_range    e.g. "07 TO 09"
+      lease_commence  e.g. 1995
+    """
+    flat_type = request.args.get("flat_type", "4 Room")
+    flat_model = request.args.get("flat_model", "Model A")
+    floor_area_raw = request.args.get("floor_area", "")
+    storey_range = request.args.get("storey_range", "07 TO 09")
+    lease_commence_raw = request.args.get("lease_commence", "")
+
+    district_data = _get_district_summary_data()
+    results = []
+
+    for d in district_data:
+        town = d["town"]
+        if not d.get("lat") or not d.get("lng"):
+            continue
+
+        try:
+            floor_area, lease_commence, _ = _resolve_prediction_inputs(
+                town, flat_type,
+                floor_area_raw or "",
+                lease_commence_raw or "",
+            )
+        except Exception:
+            floor_area = 90
+            lease_commence = 1990
+
+        available_models = _get_available_models_data(town, flat_type)
+        model_to_use = flat_model if flat_model in available_models else (
+            available_models[0] if available_models else flat_model
+        )
+
+        try:
+            pred = predict_price(
+                town, flat_type, model_to_use,
+                floor_area, storey_range, lease_commence,
+            )
+        except Exception:
+            pred = {"predicted_price": 0, "price_low": 0, "price_high": 0}
+
+        results.append({
+            "town": town,
+            "lat": d["lat"],
+            "lng": d["lng"],
+            "predicted_price": pred["predicted_price"],
+            "price_low": pred["price_low"],
+            "price_high": pred["price_high"],
+            "avg_price": d.get("avg_price", 0),
+            "recent_avg": d.get("recent_avg", 0),
+            "total_txns": d.get("total_txns", 0),
+        })
+
+    return jsonify(results)
+
+
 @app.route("/api/price_trend")
 @api_login_required
 def api_price_trend():

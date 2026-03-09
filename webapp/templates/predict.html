@@ -30,6 +30,21 @@
                             </select>
                         </div>
 
+                        <div class="row">
+                            <div class="col-7 mb-3">
+                                <label class="form-label">Street <small class="text-muted">(optional)</small></label>
+                                <select name="street_name" id="predictStreet" class="form-select">
+                                    <option value="">Any street...</option>
+                                </select>
+                            </div>
+                            <div class="col-5 mb-3">
+                                <label class="form-label">Block <small class="text-muted">(optional)</small></label>
+                                <select name="block" id="predictBlock" class="form-select">
+                                    <option value="">Any block...</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Flat Type</label>
                             <select name="flat_type" id="predictFlatType" class="form-select" required>
@@ -164,6 +179,114 @@
                 </div>
             </div>
 
+            <!-- Extra context -->
+            <div class="row g-3 mb-4">
+                {% if remaining_lease is not none %}
+                <div class="col-md-4">
+                    <div class="card metric-card">
+                        <div class="metric-value">{{ remaining_lease }} yrs</div>
+                        <div class="metric-label">Remaining Lease</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if flat_age is not none %}
+                <div class="col-md-4">
+                    <div class="card metric-card">
+                        <div class="metric-value">{{ flat_age }} yrs</div>
+                        <div class="metric-label">Flat Age</div>
+                    </div>
+                </div>
+                {% endif %}
+                {% if town_avg_price %}
+                <div class="col-md-4">
+                    <div class="card metric-card">
+                        <div class="metric-value">${{ "{:,}".format(town_avg_price|int) }}</div>
+                        <div class="metric-label">Town Avg ({{ form_data.flat_type }})</div>
+                        {% if result.predicted_price > town_avg_price %}
+                        <small class="text-danger">+${{ "{:,}".format((result.predicted_price - town_avg_price)|int) }} above avg</small>
+                        {% elif result.predicted_price < town_avg_price %}
+                        <small class="text-success">${{ "{:,}".format((town_avg_price - result.predicted_price)|int) }} below avg</small>
+                        {% else %}
+                        <small class="text-muted">At average</small>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <!-- Timeline forecast -->
+            {% if timeline %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h6 class="card-title mb-3"><i class="bi bi-graph-up me-2"></i>5-Year Price Forecast</h6>
+                    <canvas id="timelineChart" height="200"></canvas>
+                    <div class="table-responsive mt-3">
+                        <table class="table table-sm table-hover mb-0 small">
+                            <thead>
+                                <tr>
+                                    <th>Year</th>
+                                    <th class="text-end">Predicted Price</th>
+                                    <th class="text-end">Range</th>
+                                    <th class="text-end">Remaining Lease</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in timeline %}
+                                <tr{% if loop.first %} class="fw-bold"{% endif %}>
+                                    <td>{{ t.year }}{% if loop.first %} (Now){% endif %}</td>
+                                    <td class="text-end">${{ "{:,}".format(t.predicted_price) }}</td>
+                                    <td class="text-end">${{ "{:,}".format(t.price_low) }} - ${{ "{:,}".format(t.price_high) }}</td>
+                                    <td class="text-end">{{ t.remaining_lease }} yrs</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Recent similar transactions -->
+            {% if recent_transactions %}
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h6 class="card-title mb-3"><i class="bi bi-clock-history me-2"></i>Recent Similar Transactions</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0 small">
+                            <thead>
+                                <tr>
+                                    <th>Address</th>
+                                    <th>Storey</th>
+                                    <th class="text-end">Area</th>
+                                    <th class="text-end">Price</th>
+                                    <th>Month</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for txn in recent_transactions %}
+                                <tr>
+                                    <td>{{ txn.block }} {{ txn.street_name }}</td>
+                                    <td>{{ txn.storey_range }}</td>
+                                    <td class="text-end">{{ txn.floor_area_sqm }} sqm</td>
+                                    <td class="text-end">${{ "{:,}".format(txn.resale_price|int) }}</td>
+                                    <td>{{ txn.month }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Explore deeper link -->
+            <div class="text-center mb-4">
+                <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&predicted_price={{ result.predicted_price }}"
+                   class="btn btn-outline-primary">
+                    <i class="bi bi-bar-chart-line me-2"></i>Explore Deeper Analysis
+                </a>
+            </div>
+
             {% else %}
             <!-- Empty state -->
             <div class="card">
@@ -202,6 +325,11 @@ var originalPredictStoreyOptions = predictStoreyRangeSelect.innerHTML;
 var predictForm = document.getElementById('predictForm');
 var predictSubmitBtn = document.getElementById('predictSubmitBtn');
 var defaultSubmitHtml = predictSubmitBtn ? predictSubmitBtn.innerHTML : '';
+
+// Street/block dropdowns
+var predictStreetSelect = document.getElementById('predictStreet');
+var predictBlockSelect = document.getElementById('predictBlock');
+var streetRequestToken = 0;
 
 // Cascading dropdowns + dynamic sliders
 var predictTownSelect = document.getElementById('predictTown');
@@ -246,12 +374,14 @@ predictTownSelect.addEventListener('change', async function() {
     try {
         var responses = await Promise.all([
             fetch('/api/lease_year_range?town=' + encodeURIComponent(town)),
-            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town))
+            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town)),
+            fetch('/api/available_streets?town=' + encodeURIComponent(town))
         ]);
         if (requestToken !== townRequestToken) return;
 
         var leaseResp = responses[0];
         var flatTypeResp = responses[1];
+        var streetResp = responses[2];
 
         if (leaseResp.ok) {
             var data = await leaseResp.json();
@@ -271,13 +401,38 @@ predictTownSelect.addEventListener('change', async function() {
                 }
             });
         }
+
+        if (streetResp.ok) {
+            var data3 = await streetResp.json();
+            predictStreetSelect.innerHTML = '<option value="">Any street...</option>' +
+                (data3.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
+        }
     } catch(e) {
         predictFlatTypeSelect.innerHTML = originalPredictFlatTypeOptions;
     } finally {
-        // Reset flat model
+        // Reset flat model and block
         predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+        predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
         endOptionLoad();
     }
+});
+
+// Street change → load blocks
+predictStreetSelect.addEventListener('change', async function() {
+    var town = predictTownSelect.value;
+    var street = this.value;
+    predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
+    if (!town || !street) return;
+    var token = ++streetRequestToken;
+    try {
+        var resp = await fetch('/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street));
+        if (token !== streetRequestToken) return;
+        if (resp.ok) {
+            var data = await resp.json();
+            predictBlockSelect.innerHTML = '<option value="">Any block...</option>' +
+                (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
+        }
+    } catch(e) {}
 });
 
 predictFlatTypeSelect.addEventListener('change', async function() {
@@ -352,5 +507,68 @@ predictFlatTypeSelect.addEventListener('change', async function() {
         setSubmitButtonState('idle');
     });
 })();
+
+// Timeline chart
+{% if timeline %}
+(function() {
+    var ctx = document.getElementById('timelineChart');
+    if (!ctx) return;
+    var timeline = {{ timeline | tojson }};
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: timeline.map(function(t) { return t.year; }),
+            datasets: [
+                {
+                    label: 'Predicted Price',
+                    data: timeline.map(function(t) { return t.predicted_price; }),
+                    borderColor: '#0d6efd',
+                    backgroundColor: 'rgba(13,110,253,0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                },
+                {
+                    label: 'Upper Range',
+                    data: timeline.map(function(t) { return t.price_high; }),
+                    borderColor: 'rgba(13,110,253,0.3)',
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: false,
+                },
+                {
+                    label: 'Lower Range',
+                    data: timeline.map(function(t) { return t.price_low; }),
+                    borderColor: 'rgba(13,110,253,0.3)',
+                    borderDash: [5, 5],
+                    pointRadius: 0,
+                    fill: '-1',
+                    backgroundColor: 'rgba(13,110,253,0.05)',
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString();
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; }
+                    }
+                }
+            }
+        }
+    });
+})();
+{% endif %}
 </script>
 {% endblock %}

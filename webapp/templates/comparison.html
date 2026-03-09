@@ -41,7 +41,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Town</label>
-                            <select name="left_town" class="form-select" required>
+                            <select id="leftTown" name="left_town" class="form-select" required>
                                 <option value="">Select town...</option>
                                 {% for t in towns %}
                                 <option value="{{ t }}" {% if left_form_data.get('town') == t %}selected{% endif %}>{{ t }}</option>
@@ -49,9 +49,24 @@
                             </select>
                         </div>
 
+                        <div class="row">
+                            <div class="col-7 mb-3">
+                                <label class="form-label">Street <small class="text-muted">(optional)</small></label>
+                                <select id="leftStreet" name="left_street_name" class="form-select">
+                                    <option value="">Any street...</option>
+                                </select>
+                            </div>
+                            <div class="col-5 mb-3">
+                                <label class="form-label">Block <small class="text-muted">(optional)</small></label>
+                                <select id="leftBlock" name="left_block" class="form-select">
+                                    <option value="">Any block...</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Flat Type</label>
-                            <select name="left_flat_type" class="form-select" required>
+                            <select id="leftFlatType" name="left_flat_type" class="form-select" required>
                                 {% for ft in flat_types %}
                                 <option value="{{ ft }}" {% if left_form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
                                 {% endfor %}
@@ -60,7 +75,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Flat Model</label>
-                            <select name="left_flat_model" class="form-select" required>
+                            <select id="leftFlatModel" name="left_flat_model" class="form-select" required>
                                 {% for fm in flat_models %}
                                 <option value="{{ fm }}" {% if left_form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
                                 {% endfor %}
@@ -90,7 +105,7 @@
 
                         <div>
                             <label class="form-label">Storey Range</label>
-                            <select name="left_storey_range" class="form-select" required>
+                            <select id="leftStoreyRange" name="left_storey_range" class="form-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}" {% if left_form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
                                 {% endfor %}
@@ -112,7 +127,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Town</label>
-                            <select name="right_town" class="form-select" required>
+                            <select id="rightTown" name="right_town" class="form-select" required>
                                 <option value="">Select town...</option>
                                 {% for t in towns %}
                                 <option value="{{ t }}" {% if right_form_data.get('town') == t %}selected{% endif %}>{{ t }}</option>
@@ -120,9 +135,24 @@
                             </select>
                         </div>
 
+                        <div class="row">
+                            <div class="col-7 mb-3">
+                                <label class="form-label">Street <small class="text-muted">(optional)</small></label>
+                                <select id="rightStreet" name="right_street_name" class="form-select">
+                                    <option value="">Any street...</option>
+                                </select>
+                            </div>
+                            <div class="col-5 mb-3">
+                                <label class="form-label">Block <small class="text-muted">(optional)</small></label>
+                                <select id="rightBlock" name="right_block" class="form-select">
+                                    <option value="">Any block...</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div class="mb-3">
                             <label class="form-label">Flat Type</label>
-                            <select name="right_flat_type" class="form-select" required>
+                            <select id="rightFlatType" name="right_flat_type" class="form-select" required>
                                 {% for ft in flat_types %}
                                 <option value="{{ ft }}" {% if right_form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
                                 {% endfor %}
@@ -131,7 +161,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Flat Model</label>
-                            <select name="right_flat_model" class="form-select" required>
+                            <select id="rightFlatModel" name="right_flat_model" class="form-select" required>
                                 {% for fm in flat_models %}
                                 <option value="{{ fm }}" {% if right_form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
                                 {% endfor %}
@@ -161,7 +191,7 @@
 
                         <div>
                             <label class="form-label">Storey Range</label>
-                            <select name="right_storey_range" class="form-select" required>
+                            <select id="rightStoreyRange" name="right_storey_range" class="form-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}" {% if right_form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
                                 {% endfor %}
@@ -184,6 +214,9 @@
                 <div class="card-body">
                     <small class="kicker">Prediction A</small>
                     <h2 class="h4 mt-2 mb-1">{{ left_form_data['town'] }}</h2>
+                    {% if left_form_data.get('block') and left_form_data.get('street_name') %}
+                    <p class="text-muted mb-1 small">{{ left_form_data['block'] }} {{ left_form_data['street_name'] }}</p>
+                    {% endif %}
                     <p class="text-muted mb-3">{{ left_form_data['flat_type'] }} · {{ left_form_data['flat_model'] }}</p>
                     <div class="price-display mb-1">${{ "{:,.0f}".format(left_result['predicted_price']) }}</div>
                     <div class="price-range mb-4">
@@ -224,6 +257,9 @@
                 <div class="card-body">
                     <small class="kicker">Prediction B</small>
                     <h2 class="h4 mt-2 mb-1">{{ right_form_data['town'] }}</h2>
+                    {% if right_form_data.get('block') and right_form_data.get('street_name') %}
+                    <p class="text-muted mb-1 small">{{ right_form_data['block'] }} {{ right_form_data['street_name'] }}</p>
+                    {% endif %}
                     <p class="text-muted mb-3">{{ right_form_data['flat_type'] }} · {{ right_form_data['flat_model'] }}</p>
                     <div class="price-display mb-1">${{ "{:,.0f}".format(right_result['predicted_price']) }}</div>
                     <div class="price-range mb-4">
@@ -309,5 +345,206 @@ bindRange('leftFloorRange', 'leftFloorVal');
 bindRange('leftLeaseRange', 'leftLeaseVal');
 bindRange('rightFloorRange', 'rightFloorVal');
 bindRange('rightLeaseRange', 'rightLeaseVal');
+
+// Dynamic cascade logic for both sides
+var compareForm = document.getElementById('comparisonForm');
+var compareSubmitBtn = compareForm ? compareForm.querySelector('button[type="submit"]') : null;
+var defaultCompareSubmitHtml = compareSubmitBtn ? compareSubmitBtn.innerHTML : '';
+var pendingCompareRequests = 0;
+
+function setCompareSubmitState(mode) {
+    if (!compareSubmitBtn) return;
+    if (mode === 'loading-options') {
+        compareSubmitBtn.disabled = true;
+        compareSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading options...';
+    } else {
+        compareSubmitBtn.disabled = false;
+        compareSubmitBtn.innerHTML = defaultCompareSubmitHtml;
+    }
+}
+
+function bindCascade(prefix) {
+    var townSelect = document.getElementById(prefix + 'Town');
+    var flatTypeSelect = document.getElementById(prefix + 'FlatType');
+    var flatModelSelect = document.getElementById(prefix + 'FlatModel');
+    var storeyRangeSelect = document.getElementById(prefix + 'StoreyRange');
+    var streetSelect = document.getElementById(prefix + 'Street');
+    var blockSelect = document.getElementById(prefix + 'Block');
+    var floorRange = document.getElementById(prefix + 'FloorRange');
+    var floorVal = document.getElementById(prefix + 'FloorVal');
+    var leaseRange = document.getElementById(prefix + 'LeaseRange');
+    var leaseVal = document.getElementById(prefix + 'LeaseVal');
+
+    if (!townSelect || !flatTypeSelect) return;
+
+    var origFlatTypeOptions = flatTypeSelect.innerHTML;
+    var origFlatModelOptions = flatModelSelect.innerHTML;
+    var origStoreyOptions = storeyRangeSelect.innerHTML;
+    var townToken = 0;
+    var ftToken = 0;
+    var streetToken = 0;
+
+    function beginLoad() {
+        pendingCompareRequests++;
+        setCompareSubmitState('loading-options');
+    }
+    function endLoad() {
+        pendingCompareRequests = Math.max(0, pendingCompareRequests - 1);
+        if (pendingCompareRequests === 0) setCompareSubmitState('idle');
+    }
+
+    townSelect.addEventListener('change', async function() {
+        var town = this.value;
+        if (!town) return;
+        var token = ++townToken;
+        beginLoad();
+
+        try {
+            var responses = await Promise.all([
+                fetch('/api/lease_year_range?town=' + encodeURIComponent(town)),
+                fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town)),
+                fetch('/api/available_streets?town=' + encodeURIComponent(town))
+            ]);
+            if (token !== townToken) return;
+
+            if (responses[0].ok) {
+                var data = await responses[0].json();
+                leaseRange.min = data.min_year;
+                leaseRange.max = data.max_year;
+                leaseRange.value = data.avg_year;
+                leaseVal.textContent = data.avg_year;
+            }
+
+            if (responses[1].ok) {
+                var data2 = await responses[1].json();
+                var validTypes = data2.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
+                Array.from(flatTypeSelect.options).forEach(function(opt) {
+                    if (opt.value && validTypes.length > 0) {
+                        opt.disabled = !validTypes.includes(opt.value);
+                    }
+                });
+            }
+
+            if (responses[2].ok && streetSelect) {
+                var data3 = await responses[2].json();
+                streetSelect.innerHTML = '<option value="">Any street...</option>' +
+                    (data3.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
+            }
+        } catch(e) {
+            flatTypeSelect.innerHTML = origFlatTypeOptions;
+        } finally {
+            flatModelSelect.innerHTML = origFlatModelOptions;
+            storeyRangeSelect.innerHTML = origStoreyOptions;
+            if (blockSelect) blockSelect.innerHTML = '<option value="">Any block...</option>';
+            endLoad();
+        }
+    });
+
+    // Street change → load blocks
+    if (streetSelect) {
+        streetSelect.addEventListener('change', async function() {
+            var town = townSelect.value;
+            var street = this.value;
+            blockSelect.innerHTML = '<option value="">Any block...</option>';
+            if (!town || !street) return;
+            var token = ++streetToken;
+            try {
+                var resp = await fetch('/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street));
+                if (token !== streetToken) return;
+                if (resp.ok) {
+                    var data = await resp.json();
+                    blockSelect.innerHTML = '<option value="">Any block...</option>' +
+                        (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
+                }
+            } catch(e) {}
+        });
+    }
+
+    flatTypeSelect.addEventListener('change', async function() {
+        var town = townSelect.value;
+        var flatType = this.value;
+        if (!town || !flatType) return;
+        var token = ++ftToken;
+        beginLoad();
+
+        try {
+            var responses = await Promise.all([
+                fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+                fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType))
+            ]);
+            if (token !== ftToken) return;
+
+            if (responses[0].ok) {
+                var data = await responses[0].json();
+                floorRange.min = data.min_area;
+                floorRange.max = data.max_area;
+                floorRange.value = data.avg_area;
+                floorVal.textContent = data.avg_area;
+            }
+            if (responses[1].ok) {
+                var data2 = await responses[1].json();
+                if (data2.models && data2.models.length > 0) {
+                    flatModelSelect.innerHTML = data2.models.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
+                } else {
+                    flatModelSelect.innerHTML = origFlatModelOptions;
+                }
+            }
+            if (responses[2].ok) {
+                var data3 = await responses[2].json();
+                if (data3.storey_ranges && data3.storey_ranges.length > 0) {
+                    storeyRangeSelect.innerHTML = data3.storey_ranges.map(function(sr) { return '<option value="' + sr + '">' + sr + '</option>'; }).join('');
+                } else {
+                    storeyRangeSelect.innerHTML = origStoreyOptions;
+                }
+            }
+        } catch(e) {
+            flatModelSelect.innerHTML = origFlatModelOptions;
+            storeyRangeSelect.innerHTML = origStoreyOptions;
+        } finally {
+            endLoad();
+        }
+    });
+
+    // Trigger cascade on page load if prefilled
+    if (townSelect.value) {
+        var prefilledFlatType = flatTypeSelect.value;
+        var prefilledFlatModel = flatModelSelect.value;
+        var prefilledStorey = storeyRangeSelect.value;
+        var prefilledFloor = floorRange.value;
+        var prefilledLease = leaseRange.value;
+
+        townSelect.dispatchEvent(new Event('change'));
+
+        // After town cascade completes, trigger flat type cascade and restore selections
+        setTimeout(function() {
+            if (prefilledFlatType) {
+                flatTypeSelect.value = prefilledFlatType;
+                flatTypeSelect.dispatchEvent(new Event('change'));
+
+                // Restore dependent selections after flat type cascade
+                setTimeout(function() {
+                    if (prefilledFlatModel) flatModelSelect.value = prefilledFlatModel;
+                    if (prefilledStorey) storeyRangeSelect.value = prefilledStorey;
+                    if (prefilledFloor) { floorRange.value = prefilledFloor; floorVal.textContent = prefilledFloor; }
+                    if (prefilledLease) { leaseRange.value = prefilledLease; leaseVal.textContent = prefilledLease; }
+                }, 500);
+            }
+        }, 500);
+    }
+}
+
+bindCascade('left');
+bindCascade('right');
+
+// Prevent submit while options are loading
+if (compareForm) {
+    compareForm.addEventListener('submit', function(e) {
+        if (pendingCompareRequests > 0) {
+            e.preventDefault();
+            setCompareSubmitState('loading-options');
+        }
+    });
+}
 </script>
 {% endblock %}

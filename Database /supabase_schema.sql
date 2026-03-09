@@ -324,3 +324,69 @@ RETURNS INTEGER LANGUAGE SQL STABLE AS $$
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     WHERE t.name = p_town AND ft.name = p_flat_type;
 $$;
+
+-- ── 7. Block-Level & Analytics RPC Functions ────────────────────
+
+-- Streets for a town (block-level comparison)
+CREATE OR REPLACE FUNCTION rpc_available_streets(p_town TEXT)
+RETURNS TABLE(street_name TEXT) LANGUAGE SQL STABLE AS $$
+    SELECT DISTINCT b.street_name
+    FROM blocks b JOIN towns t ON b.town_id = t.id
+    WHERE t.name = p_town
+    ORDER BY b.street_name;
+$$;
+
+-- Blocks for a town + street
+CREATE OR REPLACE FUNCTION rpc_available_blocks(p_town TEXT, p_street TEXT)
+RETURNS TABLE(block TEXT) LANGUAGE SQL STABLE AS $$
+    SELECT DISTINCT b.block
+    FROM blocks b JOIN towns t ON b.town_id = t.id
+    WHERE t.name = p_town AND b.street_name = p_street
+    ORDER BY b.block;
+$$;
+
+-- Block-level distances for prediction
+CREATE OR REPLACE FUNCTION rpc_block_distances(p_town TEXT, p_street TEXT, p_block TEXT)
+RETURNS TABLE(dist_mrt DOUBLE PRECISION, dist_cbd DOUBLE PRECISION,
+              dist_school DOUBLE PRECISION, dist_mall DOUBLE PRECISION)
+LANGUAGE SQL STABLE AS $$
+    SELECT b.dist_mrt, b.dist_cbd, b.dist_primary_school, b.dist_major_mall
+    FROM blocks b JOIN towns t ON b.town_id = t.id
+    WHERE t.name = p_town AND b.street_name = p_street AND b.block = p_block
+    LIMIT 1;
+$$;
+
+-- Lease decay data for analytics
+CREATE OR REPLACE FUNCTION rpc_lease_decay(p_town TEXT, p_flat_type TEXT DEFAULT NULL)
+RETURNS TABLE(lease_bucket INTEGER, avg_price DOUBLE PRECISION, txn_count BIGINT)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        (CAST(tx.remaining_lease AS INT) / 10) * 10,
+        ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        COUNT(*)
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    WHERE t.name = p_town
+      AND (p_flat_type IS NULL OR ft.name = p_flat_type)
+    GROUP BY (CAST(tx.remaining_lease AS INT) / 10) * 10
+    ORDER BY 1 DESC;
+$$;
+
+-- Recent similar transactions for prediction context
+CREATE OR REPLACE FUNCTION rpc_recent_similar_transactions(p_town TEXT, p_flat_type TEXT, p_limit INTEGER DEFAULT 20)
+RETURNS TABLE(
+    block TEXT, street_name TEXT, storey_range TEXT,
+    floor_area_sqm DOUBLE PRECISION, resale_price DOUBLE PRECISION, month TEXT
+) LANGUAGE SQL STABLE AS $$
+    SELECT b.block, b.street_name, tx.storey_range,
+           tx.floor_area_sqm, tx.resale_price, tx.month
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    WHERE t.name = p_town AND ft.name = p_flat_type
+    ORDER BY tx.year DESC, tx.month_num DESC
+    LIMIT p_limit;
+$$;

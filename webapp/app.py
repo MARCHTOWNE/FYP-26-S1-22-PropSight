@@ -628,6 +628,8 @@ def _default_prediction_form_data():
         "floor_area": 90,
         "storey_range": STOREY_RANGES[0] if STOREY_RANGES else "",
         "lease_commence": 1990,
+        "street_name": "",
+        "block": "",
     }
 
 
@@ -652,7 +654,7 @@ def _extract_prediction_form_data(source, prefix, seed=None):
     if seed:
         form_data.update(seed)
 
-    for field in ("town", "flat_type", "flat_model", "storey_range"):
+    for field in ("town", "flat_type", "flat_model", "storey_range", "street_name", "block"):
         value = source.get(f"{prefix}_{field}", "")
         if value:
             form_data[field] = value.strip()
@@ -679,6 +681,13 @@ def _run_prediction_form(form_data):
     resolved_form["floor_area"] = floor_area
     resolved_form["lease_commence"] = lease_commence
 
+    # Block-level distances if available
+    block_distances = None
+    if resolved_form.get("block") and resolved_form.get("street_name"):
+        block_distances = _get_block_distances(
+            resolved_form["town"], resolved_form["street_name"], resolved_form["block"]
+        )
+
     result = predict_price(
         resolved_form["town"],
         resolved_form["flat_type"],
@@ -686,6 +695,7 @@ def _run_prediction_form(form_data):
         resolved_form["floor_area"],
         resolved_form["storey_range"],
         resolved_form["lease_commence"],
+        override_distances=block_distances,
     )
     result["assumptions"] = assumptions
 
@@ -1058,7 +1068,7 @@ def load_user():
 # ---------------------------------------------------------------------------
 
 def predict_price(town, flat_type, flat_model, floor_area, storey_range,
-                  lease_commence):
+                  lease_commence, override_year=None, override_distances=None):
     """
     Run the full feature engineering + prediction pipeline for a single property.
     Returns dict with predicted_price, price_low, price_high.
@@ -1069,7 +1079,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     price_index = ARTEFACTS["price_index"]
 
     now = datetime.now()
-    year = now.year
+    year = override_year if override_year is not None else now.year
     month_num = now.month
 
     # Derived features
@@ -1093,12 +1103,18 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     parts = storey_range.split(" TO ")
     storey_mid = (int(parts[0]) + int(parts[1])) / 2
 
-    # Distances (use town averages)
-    dists = TOWN_DISTANCES.get(town, {})
-    dist_mrt = dists.get("avg_dist_mrt", 500)
-    dist_cbd = dists.get("avg_dist_cbd", 10000)
-    dist_school = dists.get("avg_dist_school", 500)
-    dist_mall = dists.get("avg_dist_mall", 1000)
+    # Distances (use block-level if provided, else town averages)
+    if override_distances:
+        dist_mrt = override_distances.get("dist_mrt", 500)
+        dist_cbd = override_distances.get("dist_cbd", 10000)
+        dist_school = override_distances.get("dist_school", 500)
+        dist_mall = override_distances.get("dist_mall", 1000)
+    else:
+        dists = TOWN_DISTANCES.get(town, {})
+        dist_mrt = dists.get("avg_dist_mrt", 500)
+        dist_cbd = dists.get("avg_dist_cbd", 10000)
+        dist_school = dists.get("avg_dist_school", 500)
+        dist_mall = dists.get("avg_dist_mall", 1000)
 
     # Build feature row (pre-scaling)
     raw = {
@@ -1148,6 +1164,74 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         "price_high": round(price_high),
         "mape": round(mape * 100, 1),
     }
+
+
+def _get_recent_similar_transactions(town, flat_type, limit=5):
+    """Return recent transactions for same town + flat_type."""
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_recent_similar_transactions", {
+                "p_town": town, "p_flat_type": flat_type, "p_limit": limit,
+            }) or []
+            return rows
+        except SupabaseError:
+            pass
+
+    if not _has_local_resale_db():
+        return []
+    try:
+        conn = _get_db()
+        rows = conn.execute(
+            """SELECT block, street_name, storey_range, floor_area_sqm,
+                      resale_price, month
+               FROM resale_prices
+               WHERE town = ? AND flat_type = ?
+               ORDER BY year DESC, month DESC
+               LIMIT ?""",
+            (town, flat_type, limit),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except sqlite3.Error:
+        return []
+
+
+def _get_block_distances(town, street_name, block):
+    """Look up actual distances for a specific block."""
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_block_distances", {
+                "p_town": town, "p_street": street_name, "p_block": block,
+            }) or []
+            if rows:
+                r = rows[0]
+                return {
+                    "dist_mrt": r.get("dist_mrt"),
+                    "dist_cbd": r.get("dist_cbd"),
+                    "dist_school": r.get("dist_school"),
+                    "dist_mall": r.get("dist_mall"),
+                }
+        except SupabaseError:
+            pass
+
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            row = conn.execute(
+                """SELECT AVG(dist_mrt) as dist_mrt, AVG(dist_cbd) as dist_cbd,
+                          AVG(dist_primary_school) as dist_school,
+                          AVG(dist_major_mall) as dist_mall
+                   FROM resale_prices
+                   WHERE town = ? AND street_name = ? AND block = ?
+                     AND dist_mrt IS NOT NULL""",
+                (town, street_name, block),
+            ).fetchone()
+            conn.close()
+            if row and row["dist_mrt"] is not None:
+                return dict(row)
+        except sqlite3.Error:
+            pass
+    return None
 
 
 def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_raw):
@@ -1483,6 +1567,11 @@ def comparison_select_saved(pred_id):
 def predict():
     result = None
     form_data = {}
+    timeline = None
+    flat_age = None
+    remaining_lease = None
+    town_avg_price = None
+    recent_transactions = None
 
     if request.method == "POST":
         floor_area_raw = request.form.get("floor_area", "").strip()
@@ -1501,7 +1590,16 @@ def predict():
             "floor_area": floor_area,
             "storey_range": request.form["storey_range"],
             "lease_commence": lease_commence,
+            "street_name": request.form.get("street_name", "").strip(),
+            "block": request.form.get("block", "").strip(),
         }
+
+        # Look up block-level distances if block is specified
+        block_distances = None
+        if form_data["block"] and form_data["street_name"]:
+            block_distances = _get_block_distances(
+                form_data["town"], form_data["street_name"], form_data["block"]
+            )
 
         result = predict_price(
             form_data["town"],
@@ -1510,8 +1608,42 @@ def predict():
             form_data["floor_area"],
             form_data["storey_range"],
             form_data["lease_commence"],
+            override_distances=block_distances,
         )
         result["assumptions"] = assumptions
+
+        # Timeline: predict for 1-5 years ahead
+        current_year = datetime.now().year
+        timeline = [{"year": current_year, "predicted_price": result["predicted_price"],
+                      "price_low": result["price_low"], "price_high": result["price_high"],
+                      "remaining_lease": max(0, 99 - (current_year - form_data["lease_commence"]))}]
+        for y_offset in range(1, 6):
+            future_year = current_year + y_offset
+            fp = predict_price(
+                form_data["town"], form_data["flat_type"], form_data["flat_model"],
+                form_data["floor_area"], form_data["storey_range"],
+                form_data["lease_commence"], override_year=future_year,
+                override_distances=block_distances,
+            )
+            fp["year"] = future_year
+            fp["remaining_lease"] = max(0, 99 - (future_year - form_data["lease_commence"]))
+            timeline.append(fp)
+
+        # Extra context
+        flat_age = current_year - form_data["lease_commence"]
+        remaining_lease = max(0, 99 - flat_age)
+
+        # Town average for this flat type
+        town_avg_price = None
+        breakdown = _get_flat_type_breakdown_data(form_data["town"])
+        for entry in breakdown:
+            if entry.get("flat_type") == form_data["flat_type"]:
+                town_avg_price = entry.get("avg_price")
+                break
+
+        recent_transactions = _get_recent_similar_transactions(
+            form_data["town"], form_data["flat_type"]
+        )
 
     return render_template(
         "predict.html",
@@ -1521,6 +1653,11 @@ def predict():
         flat_types=list(FLAT_TYPE_ORDINAL.keys()),
         flat_models=FLAT_MODELS,
         storey_ranges=STOREY_RANGES,
+        timeline=timeline,
+        flat_age=flat_age,
+        remaining_lease=remaining_lease,
+        town_avg_price=town_avg_price,
+        recent_transactions=recent_transactions,
     )
 
 
@@ -1913,6 +2050,109 @@ def api_lease_year_range():
     """Min and max lease_commence_date for a town."""
     town = request.args.get("town", "")
     return jsonify(_get_lease_year_range_data(town))
+
+
+@app.route("/api/available_streets")
+@api_login_required
+def api_available_streets():
+    """Returns street names for a given town."""
+    town = request.args.get("town", "")
+    if not town:
+        return jsonify({"streets": []})
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_available_streets", {"p_town": town}) or []
+            return jsonify({"streets": [r["street_name"] for r in rows]})
+        except SupabaseError:
+            pass
+
+    if _has_local_resale_db():
+        conn = _get_db()
+        rows = conn.execute(
+            "SELECT DISTINCT street_name FROM resale_prices WHERE town = ? ORDER BY street_name",
+            (town,),
+        ).fetchall()
+        conn.close()
+        return jsonify({"streets": [r["street_name"] for r in rows]})
+
+    return jsonify({"streets": []})
+
+
+@app.route("/api/available_blocks")
+@api_login_required
+def api_available_blocks():
+    """Returns blocks for a given town + street."""
+    town = request.args.get("town", "")
+    street = request.args.get("street_name", "")
+    if not town or not street:
+        return jsonify({"blocks": []})
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_available_blocks", {"p_town": town, "p_street": street}) or []
+            return jsonify({"blocks": [r["block"] for r in rows]})
+        except SupabaseError:
+            pass
+
+    if _has_local_resale_db():
+        conn = _get_db()
+        rows = conn.execute(
+            "SELECT DISTINCT block FROM resale_prices WHERE town = ? AND street_name = ? ORDER BY block",
+            (town, street),
+        ).fetchall()
+        conn.close()
+        return jsonify({"blocks": [r["block"] for r in rows]})
+
+    return jsonify({"blocks": []})
+
+
+@app.route("/api/prediction_context")
+@api_login_required
+def api_prediction_context():
+    """Returns lease decay + recent transactions for prediction analytics."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    predicted_price = request.args.get("predicted_price", type=float, default=0)
+
+    # Lease decay
+    lease_decay = []
+    if SUPABASE_ENABLED:
+        try:
+            lease_decay = _supabase_rpc("rpc_lease_decay", {
+                "p_town": town, "p_flat_type": flat_type or None,
+            }) or []
+        except SupabaseError:
+            pass
+
+    if not lease_decay and _has_local_resale_db() and town:
+        try:
+            conn = _get_db()
+            query = """
+                SELECT CAST(remaining_lease/10 AS INT)*10 as lease_bucket,
+                       ROUND(AVG(resale_price)) as avg_price,
+                       COUNT(*) as txn_count
+                FROM resale_prices WHERE town = ?
+            """
+            params = [town]
+            if flat_type:
+                query += " AND flat_type = ?"
+                params.append(flat_type)
+            query += " GROUP BY lease_bucket ORDER BY lease_bucket DESC"
+            rows = conn.execute(query, params).fetchall()
+            conn.close()
+            lease_decay = [dict(r) for r in rows]
+        except sqlite3.Error:
+            pass
+
+    # Recent transactions
+    recent = _get_recent_similar_transactions(town, flat_type, limit=20)
+
+    return jsonify({
+        "lease_decay": lease_decay,
+        "recent_transactions": recent,
+        "predicted_price": predicted_price,
+    })
 
 
 # ---------------------------------------------------------------------------

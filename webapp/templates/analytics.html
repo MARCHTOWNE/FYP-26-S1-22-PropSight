@@ -148,7 +148,7 @@
         </div>
     </div>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
         <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-body">
@@ -162,6 +162,40 @@
                 <div class="card-body">
                     <h6 class="card-title"><i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm by Town</h6>
                     <div class="chart-container"><canvas id="psfChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prediction Insights Section (visible when coming from prediction page) -->
+    <div id="predictionInsights" class="d-none">
+        <hr class="my-4">
+        <h5 class="mb-3"><i class="bi bi-bullseye me-2 text-primary"></i>Prediction Insights</h5>
+        <div class="row g-4 mb-4">
+            <div class="col-lg-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title"><i class="bi bi-graph-up me-1 text-primary"></i>Price Trend vs Your Prediction</h6>
+                        <div class="chart-container"><canvas id="trendVsPredictionChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="row g-4 mb-4">
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title"><i class="bi bi-bar-chart me-1 text-primary"></i>Prediction vs Recent Actuals</h6>
+                        <div class="chart-container"><canvas id="predVsActualsChart"></canvas></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title"><i class="bi bi-hourglass-split me-1 text-primary"></i>Lease Decay Effect on Price</h6>
+                        <div class="chart-container"><canvas id="leaseDecayChart"></canvas></div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -493,6 +527,173 @@ async function refreshDashboard() {
     });
 });
 
+// Pre-set filters from URL params (e.g. from prediction page link)
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    if (params.get('town')) document.getElementById('filterTown').value = params.get('town');
+    if (params.get('flat_type')) document.getElementById('filterFlat').value = params.get('flat_type');
+})();
+
 refreshDashboard();
+
+// ── Prediction Insights (when arriving from prediction page) ──
+(function() {
+    var params = new URLSearchParams(window.location.search);
+    var predictedPrice = parseFloat(params.get('predicted_price'));
+    var town = params.get('town');
+    var flatType = params.get('flat_type');
+
+    if (!predictedPrice || !town) return;
+
+    document.getElementById('predictionInsights').classList.remove('d-none');
+
+    var trendVsPredChart, predVsActChart, leaseDecChart;
+
+    // 1. Price Trend with prediction annotation line
+    async function loadTrendVsPrediction() {
+        var qp = new URLSearchParams();
+        qp.set('town', town);
+        if (flatType) qp.set('flat_type', flatType);
+        var data = await fetchJSON('/api/price_trend_simple?' + qp);
+        if (!data.length) return;
+
+        var ctx = document.getElementById('trendVsPredictionChart').getContext('2d');
+        if (trendVsPredChart) trendVsPredChart.destroy();
+
+        trendVsPredChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(function(d) { return d.year; }),
+                datasets: [
+                    {
+                        label: 'Average Price',
+                        data: data.map(function(d) { return d.avg_price; }),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.12)',
+                        fill: true,
+                        tension: 0.28,
+                    },
+                    {
+                        label: 'Your Prediction',
+                        data: data.map(function() { return predictedPrice; }),
+                        borderColor: '#dc2626',
+                        borderDash: [8, 4],
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: { callbacks: { label: function(c) { return formatMoney(c.parsed.y); } } },
+                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                },
+                scales: { y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } } }
+            }
+        });
+    }
+
+    // 2 & 3. Fetch prediction context data for actuals + lease decay
+    async function loadPredictionContext() {
+        var qp = new URLSearchParams();
+        qp.set('town', town);
+        if (flatType) qp.set('flat_type', flatType);
+        qp.set('predicted_price', predictedPrice);
+        var ctx_data = await fetchJSON('/api/prediction_context?' + qp);
+
+        // Prediction vs Recent Actuals
+        var txns = (ctx_data.recent_transactions || []).slice(0, 15);
+        if (txns.length) {
+            var labels = txns.map(function(t) { return t.block + ' ' + t.street_name; });
+            var prices = txns.map(function(t) { return t.resale_price; });
+            var predLine = txns.map(function() { return predictedPrice; });
+
+            var cvs = document.getElementById('predVsActualsChart').getContext('2d');
+            if (predVsActChart) predVsActChart.destroy();
+
+            predVsActChart = new Chart(cvs, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Actual Price',
+                            data: prices,
+                            backgroundColor: 'rgba(37, 99, 235, 0.72)',
+                            borderRadius: 4,
+                        },
+                        {
+                            label: 'Your Prediction',
+                            data: predLine,
+                            type: 'line',
+                            borderColor: '#dc2626',
+                            borderDash: [8, 4],
+                            borderWidth: 2,
+                            pointRadius: 0,
+                            fill: false,
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        tooltip: { callbacks: { label: function(c) { return formatMoney(c.parsed.y); } } },
+                        legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                    },
+                    scales: {
+                        x: { ticks: { maxRotation: 45, font: { size: 9 } } },
+                        y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } }
+                    }
+                }
+            });
+        }
+
+        // Lease Decay Chart
+        var decay = ctx_data.lease_decay || [];
+        if (decay.length) {
+            var bucketLabels = decay.map(function(d) { return d.lease_bucket + '-' + (d.lease_bucket + 9) + ' yrs'; });
+            var bucketPrices = decay.map(function(d) { return d.avg_price; });
+            var bucketCounts = decay.map(function(d) { return d.txn_count; });
+
+            var cvs2 = document.getElementById('leaseDecayChart').getContext('2d');
+            if (leaseDecChart) leaseDecChart.destroy();
+
+            leaseDecChart = new Chart(cvs2, {
+                type: 'bar',
+                data: {
+                    labels: bucketLabels,
+                    datasets: [{
+                        label: 'Avg Price',
+                        data: bucketPrices,
+                        backgroundColor: decay.map(function(d, i) { return COLORS[i % COLORS.length]; }),
+                        borderRadius: 6,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(c) {
+                                    return formatMoney(c.parsed.y) + ' (' + bucketCounts[c.dataIndex].toLocaleString() + ' txns)';
+                                }
+                            }
+                        }
+                    },
+                    scales: { y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } } }
+                }
+            });
+        }
+    }
+
+    loadTrendVsPrediction();
+    loadPredictionContext();
+})();
 </script>
 {% endblock %}

@@ -9,15 +9,17 @@
             <p class="section-eyebrow text-light">AI-Driven Proptech Platform</p>
             <h1>Predict Singapore HDB resale values with spatial intelligence and market analytics.</h1>
             <p class="hero-lead">
-                A data-first workflow combining machine learning, transaction heatmaps, and district-level analytics
+                A data-first workflow combining machine learning, transaction heatmaps, and location-level analytics
                 to support confident property decisions.
             </p>
             <div class="cta-row">
                 {% if g.user %}
                 <a href="{{ url_for('predict') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
+                <a href="{{ url_for('comparison') }}" class="btn btn-outline-light btn-lg px-4">Compare Properties</a>
                 <a href="{{ url_for('analytics') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
                 {% else %}
                 <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
+                <a href="{{ url_for('comparison') }}" class="btn btn-outline-light btn-lg px-4">Compare Properties</a>
                 <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
                 {% endif %}
             </div>
@@ -31,62 +33,41 @@
         <a href="#predict-section">Predict</a>
         <a href="#insights-section">Insights</a>
         <a href="#tech-section">Technology</a>
+        <a href="#faq-section">FAQ</a>
     </div>
 </nav>
 
-<section class="story-section bg-white angled-top" data-reveal>
-    <div class="container">
-        <div class="metric-grid">
-            <div class="metric-tile">
-                <small class="kicker">Dataset</small>
-                <span>970K+</span>
-                <small class="meta">Historical Transactions</small>
-            </div>
-            <div class="metric-tile">
-                <small class="kicker">Coverage</small>
-                <span>27</span>
-                <small class="meta">HDB Towns Covered</small>
-            </div>
-            <div class="metric-tile">
-                <small class="kicker">Period</small>
-                <span>1990-2026</span>
-                <small class="meta">Data Horizon</small>
-            </div>
-            <div class="metric-tile">
-                <small class="kicker">Accuracy</small>
-                <span>MAPE 6.5%</span>
-                <small class="meta">Model Reliability</small>
-            </div>
-        </div>
-    </div>
-</section>
-
-<section id="map-section" class="story-section bg-soft accent-map" data-reveal>
+<section id="map-section" class="story-section bg-soft accent-map angled-top" data-reveal>
     <div class="container">
         <div class="split-grid align-items-center mb-4">
             <div>
                 <p class="section-eyebrow">Geospatial Insight</p>
-                <h2 class="section-title">Interactive Map of District Price Behaviour</h2>
+                <h2 class="section-title">Interactive Map of Location Price Behaviour</h2>
                 <p class="section-subtitle">
-                    Explore market movement geographically using pin-level transactions and district heat layers.
+                    Explore market movement geographically using pin-level transactions and location heat layers.
                     Shift from area discovery to deep transaction context in one flow.
                 </p>
                 {% if g.user %}
-                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Open Full Interactive Map</a>
+                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Explore Live Map</a>
                 {% else %}
-                <a href="{{ url_for('login') }}" class="btn btn-primary">Login to Explore Live Map</a>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mapAccessModal">Explore Live Map</button>
                 {% endif %}
             </div>
-            <div class="panel-card map-showcase shift-down">
-                {% if g.user %}
+            <div class="panel-card map-showcase shift-down" style="position:relative;">
                 <div id="homeMap" class="home-map"></div>
+                {% if g.user %}
+                <a href="{{ url_for('map_view') }}" class="map-preview-link" aria-label="Open the live interactive map">
+                    <span class="visually-hidden">Open the live interactive map</span>
+                </a>
                 {% else %}
-                <div class="map-gated-visual">
-                    <div class="map-gated-copy">
-                        <h5>Live map for registered users</h5>
-                        <p>Sign in to view district-level heat patterns and transaction pins.</p>
-                    </div>
-                </div>
+                <button
+                    type="button"
+                    class="map-preview-link map-preview-button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#mapAccessModal"
+                    aria-label="Sign in or register to use the live interactive map">
+                    <span class="visually-hidden">Sign in or register to use the live interactive map</span>
+                </button>
                 {% endif %}
             </div>
         </div>
@@ -104,10 +85,10 @@
                 </p>
             </div>
             <div class="panel-card prediction-preview">
-                <form method="POST" action="{{ url_for('predict') }}" class="row g-2">
+                <form method="POST" action="{{ url_for('predict') }}" class="row g-2" id="homeForm">
                     <div class="col-12">
                         <label class="form-label small">Town</label>
-                        <select class="form-select" name="town" required>
+                        <select class="form-select" name="town" id="homeTown" required>
                             <option value="">Select town...</option>
                             {% for t in towns %}
                             <option value="{{ t }}">{{ t }}</option>
@@ -116,7 +97,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label small">Flat Type</label>
-                        <select class="form-select" name="flat_type" required>
+                        <select class="form-select" name="flat_type" id="homeFlatType" required>
                             {% for ft in flat_types %}
                             <option value="{{ ft }}">{{ ft }}</option>
                             {% endfor %}
@@ -124,7 +105,7 @@
                     </div>
                     <div class="col-6">
                         <label class="form-label small">Flat Model</label>
-                        <select class="form-select" name="flat_model" required>
+                        <select class="form-select" name="flat_model" id="homeFlatModel" required>
                             {% for fm in flat_models %}
                             <option value="{{ fm }}">{{ fm }}</option>
                             {% endfor %}
@@ -132,25 +113,35 @@
                     </div>
                     <div class="col-4">
                         <label class="form-label small">Floor Area</label>
-                        <input type="number" class="form-control" name="floor_area" min="30" max="300" placeholder="Optional">
+                        <div class="slider-wrap">
+                          <input type="range" id="homeFloorRange" name="floor_area"
+                                 min="30" max="300" value="90" step="1"
+                                 class="form-range accent-range">
+                          <div class="slider-display"><span id="homeFloorVal">90</span> sqm</div>
+                        </div>
                     </div>
                     <div class="col-4">
                         <label class="form-label small">Storey</label>
-                        <select class="form-select" name="storey_range" required>
+                        <select class="form-select" name="storey_range" id="homeStoreyRange" required>
                             {% for sr in storey_ranges %}
                             <option value="{{ sr }}">{{ sr }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="col-4">
-                        <label class="form-label small">Lease Start</label>
-                        <input type="number" class="form-control" name="lease_commence" min="1960" max="2025" placeholder="Optional">
+                        <label class="form-label small">Lease Start Year</label>
+                        <div class="slider-wrap">
+                          <input type="range" id="homeLeaseRange" name="lease_commence"
+                                 min="1960" max="2024" value="1990" step="1"
+                                 class="form-range accent-range">
+                          <div class="slider-display"><span id="homeLeaseVal">1990</span></div>
+                        </div>
                     </div>
                     <div class="col-12 d-grid mt-2">
                         {% if g.user %}
-                        <button class="btn btn-primary">Predict Estimated Price</button>
+                        <button class="btn btn-primary" type="submit" id="homeSubmitBtn">Predict Estimated Price</button>
                         {% else %}
-                        <a href="{{ url_for('login') }}" class="btn btn-primary">Login to Run Prediction</a>
+                        <a href="{{ url_for('predict') }}" class="btn btn-primary">Predict Estimated Price</a>
                         {% endif %}
                     </div>
                 </form>
@@ -161,7 +152,7 @@
                     </div>
                     <div>
                         <small>Confidence</small>
-                        <strong>±6.5% MAPE</strong>
+                        <strong>±{{ artefact_mape }}% MAPE</strong>
                     </div>
                     <div>
                         <small>Trend Snapshot</small>
@@ -176,7 +167,7 @@
 <section id="insights-section" class="story-section bg-soft accent-insights" data-reveal>
     <div class="container">
         <p class="section-eyebrow">Market Intelligence</p>
-        <h2 class="section-title">Analytics dashboards for trend, volume, and district comparison</h2>
+        <h2 class="section-title">Analytics dashboards for trend, volume, and location comparison</h2>
         <p class="section-subtitle mb-4">Use card-based insights to compare towns, track yearly movements, and identify market shifts quickly.</p>
 
         <div class="insight-grid">
@@ -187,8 +178,8 @@
             </div>
             <div class="panel-card">
                 <small class="kicker">Compare</small>
-                <h6>District Comparison</h6>
-                <p>Benchmark latest average prices and price-per-sqm across districts.</p>
+                <h6>Location Comparison</h6>
+                <p>Benchmark latest average prices and price-per-sqm across locations.</p>
             </div>
             <div class="panel-card">
                 <small class="kicker">Volume</small>
@@ -216,26 +207,144 @@
             </div>
             <div class="tech-list">
                 <div class="tech-item"><strong>Prediction Engine:</strong> XGBoost model with feature engineering and calibrated confidence range.</div>
-                <div class="tech-item"><strong>Spatial Layer:</strong> Leaflet map with transaction markers and district heat visualization.</div>
-                <div class="tech-item"><strong>Analytics Layer:</strong> Interactive charts for trend, district comparison, and market activity.</div>
+                <div class="tech-item"><strong>Spatial Layer:</strong> Leaflet map with transaction markers and location heat visualization.</div>
+                <div class="tech-item"><strong>Analytics Layer:</strong> Interactive charts for trend, location comparison, and market activity.</div>
                 <div class="tech-item"><strong>Access Flow:</strong> Guest discovery with authenticated access for detailed market analysis.</div>
             </div>
         </div>
     </div>
 </section>
 
+<section id="faq-section" class="story-section bg-white" data-reveal>
+  <div class="container">
+    <p class="section-eyebrow">Got Questions</p>
+    <h2 class="section-title">Frequently Asked Questions</h2>
+    <div class="accordion mt-4" id="faqAccordion">
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">
+            How accurate are the price predictions?
+          </button>
+        </h2>
+        <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body bg-soft">
+            Our XGBoost model achieves a Mean Absolute Percentage Error (MAPE) of {{ artefact_mape }}% on unseen test data.
+            Predictions are typically within that percentage of actual transaction prices.
+            Results are strongest for common flat types with high data density.
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">
+            What data powers this platform?
+          </button>
+        </h2>
+        <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            Over {{ '{:,}'.format(total_txns) }} historical HDB resale transactions spanning
+            1990 to the present, sourced from data.gov.sg. Each record includes location,
+            flat attributes, storey, floor area, lease details, and nearby amenity distances.
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">
+            Can I use this to decide whether to buy or sell?
+          </button>
+        </h2>
+        <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body bg-soft">
+            This platform is a research tool, not a replacement for a licensed property agent
+            or HDB valuer. Use it as a reference benchmark alongside official valuations and
+            current market conditions.
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq4">
+            Why do I need an account?
+          </button>
+        </h2>
+        <div id="faq4" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            Guest users see the market overview and teaser map. Registered users unlock the
+            full prediction engine, live transaction map, analytics dashboard, and the ability
+            to save and compare multiple valuations.
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq5">
+            How is the price range (low–high) calculated?
+          </button>
+        </h2>
+        <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body bg-soft">
+            The confidence range applies ±{{ artefact_mape }}% MAPE to the central estimate.
+            Most actual transactions for similar properties fall within this band.
+          </div>
+        </div>
+      </div>
+      <div class="accordion-item">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq6">
+            How often is the data updated?
+          </button>
+        </h2>
+        <div id="faq6" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+          <div class="accordion-body">
+            The transaction dataset is periodically refreshed from data.gov.sg. The model
+            reflects market conditions through the most recent available data.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 {% if not g.user %}
 <section class="story-section cta-strip" data-reveal>
     <div class="container text-center">
-        <h3>Access full prediction, analytics, and geospatial market insights</h3>
-        <a href="{{ url_for('register') }}" class="btn btn-light btn-lg mt-2">Create Free Account</a>
+        <h3>Don't overpay. Don't undersell.</h3>
+        <p class="mb-3" style="color:rgba(255,255,255,0.85);">Join users making data-driven HDB decisions — backed by {{ '{:,}'.format(total_txns) }} real transactions.</p>
+        <a href="{{ url_for('register') }}" class="btn btn-light btn-lg mt-2">Get Free Access — No Credit Card Required</a>
+        <div class="mt-2" style="color:rgba(255,255,255,0.7);font-size:0.85rem;">⚡ Takes 30 seconds</div>
     </div>
 </section>
+{% endif %}
+
+{% if not g.user %}
+<div class="modal fade" id="mapAccessModal" tabindex="-1" aria-labelledby="mapAccessModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content access-modal">
+            <div class="modal-body">
+                <p class="section-eyebrow mb-2">Live Map Access</p>
+                <h3 class="h4 mb-3" id="mapAccessModalLabel">Sign in to use the live interactive map</h3>
+                <p class="text-muted mb-4">
+                    You can preview the map here, but login is required to use the live interactive map features,
+                    filters, and detailed transaction layers.
+                </p>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary">Sign In</a>
+                    <a href="{{ url_for('register') }}" class="btn btn-outline-primary">Register</a>
+                    <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
+const IS_GUEST = {{ 'true' if not g.user else 'false' }};
+
+// Reveal animations
 const revealItems = document.querySelectorAll('[data-reveal]');
 const revealObs = new IntersectionObserver((entries) => {
     entries.forEach(entry => {
@@ -246,49 +355,270 @@ const revealObs = new IntersectionObserver((entries) => {
     });
 }, { threshold: 0.12 });
 revealItems.forEach(el => revealObs.observe(el));
-</script>
-{% if g.user %}
-<script>
-const homeMap = L.map('homeMap', { zoomControl: false, attributionControl: false }).setView([1.3521, 103.8198], 11);
+
+// Slider live display
+document.getElementById('homeFloorRange').oninput = function() {
+    document.getElementById('homeFloorVal').textContent = this.value;
+};
+document.getElementById('homeLeaseRange').oninput = function() {
+    document.getElementById('homeLeaseVal').textContent = this.value;
+};
+
+// Store original dropdown options
+const homeFlatTypeSelect = document.getElementById('homeFlatType');
+const homeFlatModelSelect = document.getElementById('homeFlatModel');
+const homeStoreyRangeSelect = document.getElementById('homeStoreyRange');
+const originalHomeFlatTypeOptions = homeFlatTypeSelect.innerHTML;
+const originalHomeFlatModelOptions = homeFlatModelSelect.innerHTML;
+const originalHomeStoreyOptions = homeStoreyRangeSelect.innerHTML;
+const homeForm = document.getElementById('homeForm');
+const homeSubmitBtn = document.getElementById('homeSubmitBtn');
+const defaultHomeSubmitHtml = homeSubmitBtn ? homeSubmitBtn.innerHTML : '';
+
+// Cascading dropdowns + dynamic sliders
+const homeTownSelect = document.getElementById('homeTown');
+let homeTownRequestToken = 0;
+let homeFlatTypeRequestToken = 0;
+let homePendingOptionRequests = 0;
+
+function setHomeSubmitState(mode) {
+    if (!homeSubmitBtn) return;
+    if (mode === 'loading-options') {
+        homeSubmitBtn.disabled = true;
+        homeSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading options...';
+        return;
+    }
+    if (mode === 'submitting') {
+        homeSubmitBtn.disabled = true;
+        homeSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Estimating...';
+        return;
+    }
+    homeSubmitBtn.disabled = false;
+    homeSubmitBtn.innerHTML = defaultHomeSubmitHtml;
+}
+
+function beginHomeOptionLoad() {
+    if (IS_GUEST) return;
+    homePendingOptionRequests += 1;
+    setHomeSubmitState('loading-options');
+}
+
+function endHomeOptionLoad() {
+    if (IS_GUEST) return;
+    homePendingOptionRequests = Math.max(0, homePendingOptionRequests - 1);
+    if (homePendingOptionRequests === 0) {
+        setHomeSubmitState('idle');
+    }
+}
+
+homeTownSelect.addEventListener('change', async function() {
+    const town = this.value;
+    if (!town) return;
+    const requestToken = ++homeTownRequestToken;
+
+    // Update lease year range
+    if (!IS_GUEST) {
+        beginHomeOptionLoad();
+        try {
+            const responses = await Promise.all([
+                fetch('/api/lease_year_range?town=' + encodeURIComponent(town)),
+                fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town))
+            ]);
+            if (requestToken !== homeTownRequestToken) return;
+
+            const leaseResp = responses[0];
+            const flatTypeResp = responses[1];
+
+            if (leaseResp.ok) {
+                const data = await leaseResp.json();
+                const leaseRange = document.getElementById('homeLeaseRange');
+                leaseRange.min = data.min_year;
+                leaseRange.max = data.max_year;
+                leaseRange.value = data.avg_year;
+                document.getElementById('homeLeaseVal').textContent = data.avg_year;
+            }
+
+            if (flatTypeResp.ok) {
+                const data = await flatTypeResp.json();
+                const validTypes = data.filter(d => d.txn_count > 0).map(d => d.flat_type);
+                Array.from(homeFlatTypeSelect.options).forEach(opt => {
+                    if (opt.value && validTypes.length > 0) {
+                        opt.disabled = !validTypes.includes(opt.value);
+                    }
+                });
+            }
+        } catch(e) {
+            homeFlatTypeSelect.innerHTML = originalHomeFlatTypeOptions;
+        } finally {
+            // Reset flat model
+            homeFlatModelSelect.innerHTML = originalHomeFlatModelOptions;
+            endHomeOptionLoad();
+        }
+    }
+});
+
+homeFlatTypeSelect.addEventListener('change', async function() {
+    const town = homeTownSelect.value;
+    const flatType = this.value;
+    if (!town || !flatType) return;
+    const requestToken = ++homeFlatTypeRequestToken;
+
+    if (!IS_GUEST) {
+        beginHomeOptionLoad();
+        try {
+            const responses = await Promise.all([
+                fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+                fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType))
+            ]);
+            if (requestToken !== homeFlatTypeRequestToken) return;
+
+            const floorAreaResp = responses[0];
+            const modelResp = responses[1];
+            const storeyResp = responses[2];
+
+            if (floorAreaResp.ok) {
+                const data = await floorAreaResp.json();
+                const floorRange = document.getElementById('homeFloorRange');
+                floorRange.min = data.min_area;
+                floorRange.max = data.max_area;
+                floorRange.value = data.avg_area;
+                document.getElementById('homeFloorVal').textContent = data.avg_area;
+            }
+
+            if (modelResp.ok) {
+                const data = await modelResp.json();
+                if (data.models && data.models.length > 0) {
+                    homeFlatModelSelect.innerHTML = data.models.map(m => `<option value="${m}">${m}</option>`).join('');
+                } else {
+                    homeFlatModelSelect.innerHTML = originalHomeFlatModelOptions;
+                }
+            }
+
+            if (storeyResp.ok) {
+                const data = await storeyResp.json();
+                if (data.storey_ranges && data.storey_ranges.length > 0) {
+                    homeStoreyRangeSelect.innerHTML = data.storey_ranges.map(sr => `<option value="${sr}">${sr}</option>`).join('');
+                } else {
+                    homeStoreyRangeSelect.innerHTML = originalHomeStoreyOptions;
+                }
+            }
+        } catch(e) {
+            homeFlatModelSelect.innerHTML = originalHomeFlatModelOptions;
+            homeStoreyRangeSelect.innerHTML = originalHomeStoreyOptions;
+        } finally {
+            endHomeOptionLoad();
+        }
+    }
+});
+
+// Form submit loading state
+(function() {
+    if (!homeForm || !homeSubmitBtn) return;
+    homeForm.addEventListener('submit', function(e) {
+        if (homePendingOptionRequests > 0) {
+            e.preventDefault();
+            setHomeSubmitState('loading-options');
+            return;
+        }
+        if (!homeForm.checkValidity()) {
+            setHomeSubmitState('idle');
+            return;
+        }
+        setHomeSubmitState('submitting');
+    });
+    window.addEventListener('pageshow', function() {
+        setHomeSubmitState('idle');
+    });
+})();
+
+// Map initialization
+const homeMap = L.map('homeMap', {
+    zoomControl: false,
+    attributionControl: false,
+    dragging: false,
+    scrollWheelZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false,
+    touchZoom: false,
+    tap: false,
+}).setView([1.3521, 103.8198], 11);
 
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 18
 }).addTo(homeMap);
 
-fetch('/api/district_summary')
-    .then(resp => {
-        if (resp.status === 401) {
-            window.location.href = "{{ url_for('login') }}";
-            return [];
-        }
-        return resp.json();
-    })
-    .then(data => {
-        if (!Array.isArray(data)) return;
-        const vals = data.map(d => Number(d.recent_avg || d.avg_price)).filter(Number.isFinite).sort((a, b) => a - b);
-        const idx = q => vals[Math.floor((vals.length - 1) * q)] || vals[vals.length - 1] || 0;
-        const t = [idx(0.2), idx(0.4), idx(0.6), idx(0.8)];
+if (IS_GUEST) {
+    // Guest: real preview with public summary data
+    fetch('/api/public/location_summary')
+        .then(resp => resp.json())
+        .then(data => {
+            if (!Array.isArray(data)) return;
+            const BUCKET_COLORS = {1:'#94a3b8', 2:'#7dd3fc', 3:'#38bdf8', 4:'#0ea5e9', 5:'#0369a1'};
+            data.forEach(d => {
+                if (!d.lat || !d.lng) return;
+                const radius = Math.min(2000, Math.max(800, 800 + (d.total_txns / 50)));
+                L.circle([d.lat, d.lng], {
+                    radius: radius,
+                    color: BUCKET_COLORS[d.price_bucket] || '#94a3b8',
+                    fillColor: BUCKET_COLORS[d.price_bucket] || '#94a3b8',
+                    fillOpacity: 0.45,
+                    weight: 1.5,
+                    interactive: false,
+                }).addTo(homeMap);
+            });
+        })
+        .catch(() => {});
+} else {
+    // Authenticated: full map
+    fetch('/api/district_summary')
+        .then(resp => {
+            if (resp.status === 401) {
+                window.location.href = "{{ url_for('login') }}";
+                return [];
+            }
+            return resp.json();
+        })
+        .then(data => {
+            if (!Array.isArray(data)) return;
+            const vals = data.map(d => Number(d.recent_avg || d.avg_price)).filter(Number.isFinite).sort((a, b) => a - b);
+            const idx = q => vals[Math.floor((vals.length - 1) * q)] || vals[vals.length - 1] || 0;
+            const t = [idx(0.2), idx(0.4), idx(0.6), idx(0.8)];
 
-        function pick(v) {
-            if (v <= t[0]) return '#e2e8f0';
-            if (v <= t[1]) return '#bfdbfe';
-            if (v <= t[2]) return '#93c5fd';
-            if (v <= t[3]) return '#60a5fa';
-            return '#2563eb';
-        }
+            function pick(v) {
+                if (v <= t[0]) return '#e2e8f0';
+                if (v <= t[1]) return '#bfdbfe';
+                if (v <= t[2]) return '#93c5fd';
+                if (v <= t[3]) return '#60a5fa';
+                return '#2563eb';
+            }
 
-        data.forEach(d => {
-            if (!d.lat || !d.lng) return;
-            const val = Number(d.recent_avg || d.avg_price || 0);
-            L.circle([d.lat, d.lng], {
-                radius: 1050,
-                color: pick(val),
-                fillColor: pick(val),
-                fillOpacity: 0.45,
-                weight: 1.5,
-            }).addTo(homeMap).bindPopup(`<strong>${d.town}</strong><br>Avg Price: $${Math.round(val).toLocaleString()}`);
+            data.forEach(d => {
+                if (!d.lat || !d.lng) return;
+                const val = Number(d.recent_avg || d.avg_price || 0);
+                L.circle([d.lat, d.lng], {
+                    radius: 1050,
+                    color: pick(val),
+                    fillColor: pick(val),
+                    fillOpacity: 0.45,
+                    weight: 1.5,
+                }).addTo(homeMap).bindPopup(`<strong>${d.town}</strong><br>Avg Price: $${Math.round(val).toLocaleString()}`);
+            });
         });
-    });
+}
+</script>
+{% if not g.user %}
+<div class="nudge-bar" id="nudgeBar">
+  <span>🏠 Find out what your flat is worth — free in 30 seconds</span>
+  <a href="{{ url_for('register') }}" class="btn btn-sm btn-primary ms-3">Try it free →</a>
+  <button class="nudge-close" onclick="document.getElementById('nudgeBar').style.display='none'">✕</button>
+</div>
+<script>
+setTimeout(function() {
+  var bar = document.getElementById('nudgeBar');
+  if (bar) bar.classList.add('visible');
+}, 3500);
 </script>
 {% endif %}
 {% endblock %}

@@ -17,7 +17,13 @@ import os
 import pickle
 import sqlite3
 from datetime import datetime
-from functools import wraps
+from functools import lru_cache, wraps
+from socket import timeout as SocketTimeout
+from urllib import error, parse, request as urllib_request
+
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
 import numpy as np
 import pandas as pd
@@ -50,11 +56,35 @@ def _first_existing_path(paths):
     return fallback or paths[0]
 
 
-DB_PATH = _first_existing_path([
+def _first_existing_sqlite_path(paths, required_table):
+    """Pick the first existing SQLite DB that contains the required table."""
+    fallback = None
+    for p in paths:
+        if not p:
+            continue
+        if fallback is None:
+            fallback = p
+        if not os.path.exists(p) or os.path.isdir(p):
+            continue
+        try:
+            conn = sqlite3.connect(p)
+            row = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1",
+                (required_table,),
+            ).fetchone()
+            conn.close()
+            if row:
+                return p
+        except sqlite3.Error:
+            continue
+    return fallback or paths[0]
+
+
+DB_PATH = _first_existing_sqlite_path([
     os.environ.get("DB_PATH", ""),
     os.path.join(PROJECT_DIR, "hdb_resale.db"),
     os.path.join(PROJECT_DIR, "Database ", "hdb_resale.db"),
-])
+], required_table="resale_prices")
 
 USER_DB_PATH = _first_existing_path([
     os.environ.get("USER_DB_PATH", ""),
@@ -67,6 +97,18 @@ ASSETS_DIR = _first_existing_path([
     os.path.join(PROJECT_DIR, "model_assets"),
     os.path.join(PROJECT_DIR, "ML", "model_assets"),
 ])
+
+
+SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
+SUPABASE_KEY = (
+    os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+    or os.environ.get("SUPABASE_KEY", "")
+).strip()
+SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+SUPABASE_USERS_TABLE = os.environ.get("SUPABASE_USERS_TABLE", "users")
+SUPABASE_PREDICTIONS_TABLE = os.environ.get(
+    "SUPABASE_PREDICTIONS_TABLE", "saved_predictions"
+)
 
 # ---------------------------------------------------------------------------
 # Constants (mirrored from feature_engineering.py)
@@ -190,6 +232,36 @@ def _get_user_db():
     return conn
 
 
+def _has_local_resale_db():
+    return os.path.exists(DB_PATH) and not os.path.isdir(DB_PATH)
+
+
+def _ensure_sqlite_prediction_indexes():
+    """Create the composite indexes used by prediction page lookups."""
+    if not os.path.exists(DB_PATH):
+        return
+
+    try:
+        conn = _get_db()
+        conn.executescript("""
+            CREATE INDEX IF NOT EXISTS idx_resale_town_flat_type
+                ON resale_prices(town, flat_type);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_flat_type_model
+                ON resale_prices(town, flat_type, flat_model);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_flat_type_storey
+                ON resale_prices(town, flat_type, storey_range);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_lease
+                ON resale_prices(town, lease_commence_date);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_year_flat_type
+                ON resale_prices(town, year, flat_type);
+        """)
+        conn.commit()
+        conn.close()
+    except sqlite3.Error:
+        # Keep startup resilient if the local DB is unavailable.
+        pass
+
+
 def _init_user_db():
     """Create user tables if they don't exist."""
     conn = _get_user_db()
@@ -216,49 +288,726 @@ def _init_user_db():
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
         );
+        CREATE TABLE IF NOT EXISTS pending_registrations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            username TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            code TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     conn.commit()
     conn.close()
 
 
+# Always init local DB — needed for pending_registrations even when Supabase is the main store
 _init_user_db()
+_ensure_sqlite_prediction_indexes()
+
+
+class SupabaseError(RuntimeError):
+    """Raised when the Supabase REST API returns an error."""
+
+
+# Circuit breaker: after first timeout, skip Supabase for rest of process
+_supabase_circuit_open = False
+
+
+def _supabase_headers(prefer=None):
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Authorization": f"Bearer {SUPABASE_KEY}",
+        "Accept": "application/json",
+    }
+    if prefer:
+        headers["Prefer"] = prefer
+    return headers
+
+
+def _supabase_request(table, method="GET", filters=None, payload=None, prefer=None):
+    if not SUPABASE_ENABLED:
+        raise SupabaseError("Supabase is not configured.")
+
+    url = f"{SUPABASE_URL}/rest/v1/{table}"
+    if filters:
+        url = f"{url}?{parse.urlencode(filters)}"
+
+    data = None
+    headers = _supabase_headers(prefer=prefer)
+    if payload is not None:
+        data = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+
+    req = urllib_request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib_request.urlopen(req) as resp:
+            raw = resp.read().decode("utf-8")
+            if not raw:
+                return None
+            return json.loads(raw)
+    except error.HTTPError as exc:
+        details = exc.read().decode("utf-8")
+        raise SupabaseError(details or f"Supabase request failed with {exc.code}") from exc
+
+
+def _supabase_rpc(function_name, params=None):
+    """Call a Supabase PostgreSQL RPC function."""
+    global _supabase_circuit_open
+    if not SUPABASE_ENABLED or _supabase_circuit_open:
+        raise SupabaseError("Supabase is not configured.")
+
+    url = f"{SUPABASE_URL}/rest/v1/rpc/{function_name}"
+    payload = params or {}
+    data = json.dumps(payload).encode("utf-8")
+    headers = _supabase_headers()
+    headers["Content-Type"] = "application/json"
+
+    req = urllib_request.Request(url, data=data, headers=headers, method="POST")
+    try:
+        with urllib_request.urlopen(req, timeout=5) as resp:
+            raw = resp.read().decode("utf-8")
+            if not raw:
+                return []
+            return json.loads(raw)
+    except error.HTTPError as exc:
+        details = exc.read().decode("utf-8")
+        raise SupabaseError(details or f"Supabase RPC failed with {exc.code}") from exc
+    except (error.URLError, SocketTimeout, OSError) as exc:
+        _supabase_circuit_open = True
+        raise SupabaseError(f"Supabase RPC timed out: {exc}") from exc
+
+
+def _supabase_auth(path, method="POST", payload=None, access_token=None):
+    """Call a Supabase Auth API endpoint."""
+    if not SUPABASE_ENABLED:
+        raise SupabaseError("Supabase is not configured.")
+    url = f"{SUPABASE_URL}/auth/v1{path}"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token or SUPABASE_KEY}",
+    }
+    data = json.dumps(payload).encode() if payload is not None else None
+    req = urllib_request.Request(url, data=data, headers=headers, method=method)
+    try:
+        with urllib_request.urlopen(req) as resp:
+            raw = resp.read().decode()
+            return json.loads(raw) if raw else None
+    except error.HTTPError as exc:
+        details = exc.read().decode()
+        raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+
+
+# SQLite-only user helpers (used when SUPABASE_ENABLED is False)
+
+def _sqlite_get_user_by_id(user_id):
+    conn = _get_user_db()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    return user
+
+
+def _sqlite_get_user_by_email(email):
+    conn = _get_user_db()
+    user = conn.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    conn.close()
+    return user
+
+
+def _sqlite_create_user(username, email, password_hash):
+    conn = _get_user_db()
+    conn.execute(
+        "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
+        (username, email, password_hash),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _save_prediction_record(user_id, prediction):
+    if SUPABASE_ENABLED:
+        rows = _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            method="POST",
+            payload={"user_id": user_id, **prediction},
+            prefer="return=representation",
+        )
+        return rows[0] if rows else None
+
+    conn = _get_user_db()
+    conn.execute(
+        """INSERT INTO saved_predictions
+           (user_id, town, flat_type, flat_model, floor_area,
+            storey_range, lease_commence, predicted_price, price_low, price_high)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            user_id,
+            prediction["town"],
+            prediction["flat_type"],
+            prediction["flat_model"],
+            prediction["floor_area"],
+            prediction["storey_range"],
+            prediction["lease_commence"],
+            prediction["predicted_price"],
+            prediction["price_low"],
+            prediction["price_high"],
+        ),
+    )
+    conn.commit()
+    conn.close()
+    return None
+
+
+def _get_saved_predictions(user_id):
+    if SUPABASE_ENABLED:
+        return _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            filters={"user_id": f"eq.{user_id}", "order": "created_at.desc"},
+        ) or []
+
+    conn = _get_user_db()
+    preds = conn.execute(
+        "SELECT * FROM saved_predictions WHERE user_id = ? ORDER BY created_at DESC",
+        (user_id,),
+    ).fetchall()
+    conn.close()
+    return preds
+
+
+def _parse_saved_prediction_timestamp(value):
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        text = str(value).strip()
+        normalized = f"{text[:-1]}+00:00" if text.endswith("Z") else text
+        parsed = None
+
+        try:
+            parsed = datetime.fromisoformat(normalized)
+        except ValueError:
+            for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+                try:
+                    parsed = datetime.strptime(text, fmt)
+                    break
+                except ValueError:
+                    continue
+
+    if parsed and parsed.tzinfo is not None:
+        return parsed.astimezone()
+    return parsed
+
+
+def _normalize_saved_prediction(prediction):
+    item = dict(prediction) if not isinstance(prediction, dict) else dict(prediction)
+
+    try:
+        item["id"] = int(item["id"])
+    except (KeyError, TypeError, ValueError):
+        pass
+
+    created_at = _parse_saved_prediction_timestamp(item.get("created_at"))
+    if created_at:
+        item["created_at_display"] = created_at.strftime("%d %b %Y, %I:%M %p")
+        item["created_at_date_display"] = created_at.strftime("%d %b %Y")
+        item["created_at_time_display"] = created_at.strftime("%I:%M %p").lstrip("0")
+    else:
+        fallback = str(item.get("created_at") or "Unknown")
+        item["created_at_display"] = fallback
+        item["created_at_date_display"] = fallback
+        item["created_at_time_display"] = ""
+
+    try:
+        price_label = f"${float(item.get('predicted_price', 0)):,.0f}"
+    except (TypeError, ValueError):
+        price_label = "N/A"
+
+    item["comparison_option_label"] = " · ".join(
+        part
+        for part in (
+            item.get("town"),
+            item.get("flat_type"),
+            price_label,
+            item["created_at_display"],
+        )
+        if part
+    )
+    return item
+
+
+def _prepare_saved_predictions(predictions):
+    return [_normalize_saved_prediction(p) for p in predictions]
+
+
+def _get_saved_prediction_by_id(predictions, prediction_id):
+    try:
+        target_id = int(prediction_id)
+    except (TypeError, ValueError):
+        return None
+    return next((p for p in predictions if p.get("id") == target_id), None)
+
+
+def _format_comparison_delta(value, suffix="", currency=False):
+    if value is None:
+        return "N/A"
+
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return "N/A"
+
+    sign = "+" if numeric > 0 else "-" if numeric < 0 else ""
+    magnitude = abs(numeric)
+
+    if currency:
+        return f"{sign}${magnitude:,.0f}"
+
+    if magnitude.is_integer():
+        formatted = f"{int(magnitude):,}"
+    else:
+        formatted = f"{magnitude:,.1f}".rstrip("0").rstrip(".")
+    return f"{sign}{formatted}{suffix}"
+
+
+def _build_prediction_comparison(left, right):
+    if not left or not right:
+        return None
+
+    predicted_delta = float(right["predicted_price"]) - float(left["predicted_price"])
+    area_delta = float(right["floor_area"]) - float(left["floor_area"])
+    lease_delta = int(right["lease_commence"]) - int(left["lease_commence"])
+    overlap_low = max(float(left["price_low"]), float(right["price_low"]))
+    overlap_high = min(float(left["price_high"]), float(right["price_high"]))
+    overlap_exists = overlap_low <= overlap_high
+
+    return {
+        "predicted_delta_label": _format_comparison_delta(predicted_delta, currency=True),
+        "area_delta_label": _format_comparison_delta(area_delta, suffix=" sqm"),
+        "lease_delta_label": _format_comparison_delta(lease_delta, suffix=" yrs"),
+        "range_overlap_exists": overlap_exists,
+        "range_overlap_label": (
+            f"${overlap_low:,.0f} - ${overlap_high:,.0f}"
+            if overlap_exists
+            else "No overlap"
+        ),
+    }
+
+
+def _get_comparison_saved_prediction_ids():
+    raw_ids = session.get("comparison_saved_prediction_ids", [])
+    ids = []
+    for value in raw_ids[:2]:
+        try:
+            ids.append(int(value))
+        except (TypeError, ValueError):
+            continue
+    return ids
+
+
+def _set_comparison_saved_prediction_ids(prediction_ids):
+    session["comparison_saved_prediction_ids"] = [int(pid) for pid in prediction_ids[:2]]
+
+
+def _push_comparison_saved_prediction_id(prediction_id):
+    updated = [pid for pid in _get_comparison_saved_prediction_ids() if pid != prediction_id]
+    updated.append(int(prediction_id))
+    updated = updated[-2:]
+    _set_comparison_saved_prediction_ids(updated)
+    return updated
+
+
+def _default_prediction_form_data():
+    return {
+        "town": "",
+        "flat_type": next(iter(FLAT_TYPE_ORDINAL.keys()), ""),
+        "flat_model": FLAT_MODELS[0] if FLAT_MODELS else "",
+        "floor_area": 90,
+        "storey_range": STOREY_RANGES[0] if STOREY_RANGES else "",
+        "lease_commence": 1990,
+    }
+
+
+def _prediction_form_from_saved(saved_prediction):
+    form_data = _default_prediction_form_data()
+    if not saved_prediction:
+        return form_data
+
+    form_data.update({
+        "town": saved_prediction.get("town", ""),
+        "flat_type": saved_prediction.get("flat_type", form_data["flat_type"]),
+        "flat_model": saved_prediction.get("flat_model", form_data["flat_model"]),
+        "floor_area": saved_prediction.get("floor_area", form_data["floor_area"]),
+        "storey_range": saved_prediction.get("storey_range", form_data["storey_range"]),
+        "lease_commence": saved_prediction.get("lease_commence", form_data["lease_commence"]),
+    })
+    return form_data
+
+
+def _extract_prediction_form_data(source, prefix, seed=None):
+    form_data = _default_prediction_form_data()
+    if seed:
+        form_data.update(seed)
+
+    for field in ("town", "flat_type", "flat_model", "storey_range"):
+        value = source.get(f"{prefix}_{field}", "")
+        if value:
+            form_data[field] = value.strip()
+
+    for field in ("floor_area", "lease_commence"):
+        value = source.get(f"{prefix}_{field}", "")
+        if value != "":
+            form_data[field] = value.strip() if isinstance(value, str) else value
+
+    return form_data
+
+
+def _run_prediction_form(form_data):
+    floor_area_raw = str(form_data.get("floor_area", "")).strip()
+    lease_commence_raw = str(form_data.get("lease_commence", "")).strip()
+    floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
+        form_data["town"],
+        form_data["flat_type"],
+        floor_area_raw,
+        lease_commence_raw,
+    )
+
+    resolved_form = dict(form_data)
+    resolved_form["floor_area"] = floor_area
+    resolved_form["lease_commence"] = lease_commence
+
+    result = predict_price(
+        resolved_form["town"],
+        resolved_form["flat_type"],
+        resolved_form["flat_model"],
+        resolved_form["floor_area"],
+        resolved_form["storey_range"],
+        resolved_form["lease_commence"],
+    )
+    result["assumptions"] = assumptions
+
+    return resolved_form, result, {**resolved_form, **result}
+
+
+def _delete_saved_prediction(pred_id, user_id):
+    if SUPABASE_ENABLED:
+        _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            method="DELETE",
+            filters={"id": f"eq.{int(pred_id)}", "user_id": f"eq.{user_id}"},
+        )
+        return
+
+    conn = _get_user_db()
+    conn.execute(
+        "DELETE FROM saved_predictions WHERE id = ? AND user_id = ?",
+        (pred_id, user_id),
+    )
+    conn.commit()
+    conn.close()
 
 
 def _get_towns():
-    conn = _get_db()
-    rows = conn.execute(
-        "SELECT DISTINCT town FROM resale_prices ORDER BY town"
-    ).fetchall()
-    conn.close()
-    return [r["town"] for r in rows]
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            rows = conn.execute(
+                "SELECT DISTINCT town FROM resale_prices ORDER BY town"
+            ).fetchall()
+            conn.close()
+            return [r["town"] for r in rows]
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_get_towns") or []
+            return [r["town"] for r in rows]
+        except SupabaseError:
+            pass
+
+    return []
 
 
 def _get_flat_models():
-    conn = _get_db()
-    rows = conn.execute(
-        "SELECT DISTINCT flat_model FROM resale_prices ORDER BY flat_model"
-    ).fetchall()
-    conn.close()
-    return [r["flat_model"] for r in rows]
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            rows = conn.execute(
+                "SELECT DISTINCT flat_model FROM resale_prices ORDER BY flat_model"
+            ).fetchall()
+            conn.close()
+            return [r["flat_model"] for r in rows]
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_get_flat_models") or []
+            return [r["flat_model"] for r in rows]
+        except SupabaseError:
+            pass
+
+    return []
 
 
 def _get_town_avg_distances():
     """Pre-compute average distances per town for prediction fallback."""
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            rows = conn.execute("""
+                SELECT town,
+                       AVG(dist_mrt) as avg_dist_mrt,
+                       AVG(dist_cbd) as avg_dist_cbd,
+                       AVG(dist_primary_school) as avg_dist_school,
+                       AVG(dist_major_mall) as avg_dist_mall,
+                       AVG(latitude) as avg_lat,
+                       AVG(longitude) as avg_lng
+                FROM resale_prices
+                WHERE dist_mrt IS NOT NULL
+                GROUP BY town
+            """).fetchall()
+            conn.close()
+            return {r["town"]: dict(r) for r in rows}
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_get_town_avg_distances") or []
+            return {
+                r["town"]: {
+                    "avg_dist_mrt":    r["avg_dist_mrt"],
+                    "avg_dist_cbd":    r["avg_dist_cbd"],
+                    "avg_dist_school": r["avg_dist_school"],
+                    "avg_dist_mall":   r["avg_dist_mall"],
+                    "avg_lat":         r["avg_lat"],
+                    "avg_lng":         r["avg_lng"],
+                }
+                for r in rows
+            }
+        except SupabaseError:
+            pass
+
+    return {}
+
+
+@lru_cache(maxsize=1)
+def _get_district_summary_data():
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            rows = conn.execute("""
+                SELECT town,
+                       ROUND(AVG(resale_price)) as avg_price,
+                       ROUND(AVG(CASE WHEN year >= 2023 THEN resale_price END)) as recent_avg,
+                       COUNT(*) as total_txns,
+                       SUM(CASE WHEN year >= 2023 THEN 1 ELSE 0 END) as recent_txns,
+                       AVG(latitude) as lat,
+                       AVG(longitude) as lng
+                FROM resale_prices
+                WHERE latitude IS NOT NULL
+                GROUP BY town
+                ORDER BY town
+            """).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            return _supabase_rpc("rpc_api_district_summary") or []
+        except SupabaseError:
+            pass
+
+    return []
+
+
+@lru_cache(maxsize=64)
+def _get_flat_type_breakdown_data(town):
+    town = town or ""
+
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            query = """
+                SELECT flat_type,
+                       ROUND(AVG(resale_price)) as avg_price,
+                       COUNT(*) as txn_count,
+                       ROUND(AVG(floor_area_sqm)) as avg_area
+                FROM resale_prices
+                WHERE year >= 2023
+            """
+            params = []
+            if town:
+                query += " AND town = ?"
+                params.append(town)
+            query += " GROUP BY flat_type ORDER BY flat_type"
+            rows = conn.execute(query, params).fetchall()
+            conn.close()
+            return [dict(r) for r in rows]
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            return _supabase_rpc(
+                "rpc_api_flat_type_breakdown", {"p_town": town or None}
+            ) or []
+        except SupabaseError:
+            pass
+
+    return []
+
+
+@lru_cache(maxsize=128)
+def _get_available_models_data(town, flat_type):
+    town = town or ""
+    flat_type = flat_type or ""
+
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            rows = conn.execute(
+                "SELECT DISTINCT flat_model FROM resale_prices WHERE town = ? AND flat_type = ? ORDER BY flat_model",
+                (town, flat_type),
+            ).fetchall()
+            conn.close()
+            return [r["flat_model"] for r in rows]
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_api_available_models", {
+                "p_town": town, "p_flat_type": flat_type,
+            }) or []
+            return [r["flat_model"] for r in rows]
+        except SupabaseError:
+            pass
+
+    return []
+
+
+@lru_cache(maxsize=128)
+def _get_available_storey_ranges_data(town, flat_type):
+    town = town or ""
+    flat_type = flat_type or ""
+
+    if not _has_local_resale_db():
+        return []
+
     conn = _get_db()
-    rows = conn.execute("""
-        SELECT town,
-               AVG(dist_mrt) as avg_dist_mrt,
-               AVG(dist_cbd) as avg_dist_cbd,
-               AVG(dist_primary_school) as avg_dist_school,
-               AVG(dist_major_mall) as avg_dist_mall,
-               AVG(latitude) as avg_lat,
-               AVG(longitude) as avg_lng
-        FROM resale_prices
-        WHERE dist_mrt IS NOT NULL
-        GROUP BY town
-    """).fetchall()
+    query = "SELECT DISTINCT storey_range FROM resale_prices WHERE 1=1"
+    params = []
+    if town:
+        query += " AND town = ?"
+        params.append(town)
+    if flat_type:
+        query += " AND flat_type = ?"
+        params.append(flat_type)
+    query += " ORDER BY storey_range"
+    rows = conn.execute(query, params).fetchall()
     conn.close()
-    return {r["town"]: dict(r) for r in rows}
+    return [r["storey_range"] for r in rows]
+
+
+@lru_cache(maxsize=128)
+def _get_floor_area_stats_data(town, flat_type):
+    town = town or ""
+    flat_type = flat_type or ""
+
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            query = """
+                SELECT ROUND(MIN(floor_area_sqm)) as min_area,
+                       ROUND(MAX(floor_area_sqm)) as max_area,
+                       ROUND(AVG(floor_area_sqm)) as avg_area
+                FROM resale_prices
+                WHERE 1=1
+            """
+            params = []
+            if town:
+                query += " AND town = ?"
+                params.append(town)
+            if flat_type:
+                query += " AND flat_type = ?"
+                params.append(flat_type)
+            row = conn.execute(query, params).fetchone()
+            conn.close()
+
+            if row and row["min_area"]:
+                return {
+                    "min_area": int(row["min_area"]),
+                    "max_area": int(row["max_area"]),
+                    "avg_area": int(row["avg_area"]),
+                }
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_api_floor_area_stats", {
+                "p_town": town or None, "p_flat_type": flat_type or None,
+            }) or []
+            if rows and isinstance(rows, list):
+                return rows[0]
+            if rows and isinstance(rows, dict):
+                return rows
+        except SupabaseError:
+            pass
+
+    return {"min_area": 30, "max_area": 300, "avg_area": 90}
+
+
+@lru_cache(maxsize=64)
+def _get_lease_year_range_data(town):
+    town = town or ""
+
+    if _has_local_resale_db():
+        try:
+            conn = _get_db()
+            query = """
+                SELECT MIN(lease_commence_date) as min_year,
+                       MAX(lease_commence_date) as max_year,
+                       ROUND(AVG(lease_commence_date)) as avg_year
+                FROM resale_prices
+            """
+            params = []
+            if town:
+                query += " WHERE town = ?"
+                params.append(town)
+            row = conn.execute(query, params).fetchone()
+            conn.close()
+
+            if row and row["min_year"]:
+                return {
+                    "min_year": int(row["min_year"]),
+                    "max_year": int(row["max_year"]),
+                    "avg_year": int(row["avg_year"]),
+                }
+        except sqlite3.Error:
+            pass
+
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc(
+                "rpc_api_lease_year_range", {"p_town": town or None}
+            ) or []
+            if rows and isinstance(rows, list):
+                return rows[0]
+            if rows and isinstance(rows, dict):
+                return rows
+        except SupabaseError:
+            pass
+
+    return {"min_year": 1960, "max_year": 2024, "avg_year": 1990}
 
 
 TOWNS = _get_towns()
@@ -293,11 +1042,15 @@ def api_login_required(f):
 def load_user():
     g.user = None
     if "user_id" in session:
-        conn = _get_user_db()
-        g.user = conn.execute(
-            "SELECT * FROM users WHERE id = ?", (session["user_id"],)
-        ).fetchone()
-        conn.close()
+        if SUPABASE_ENABLED:
+            # Reconstruct from session — no extra DB round-trip needed
+            g.user = {
+                "id": session["user_id"],
+                "username": session.get("username", ""),
+                "email": session.get("email", ""),
+            }
+        else:
+            g.user = _sqlite_get_user_by_id(session["user_id"])
 
 
 # ---------------------------------------------------------------------------
@@ -403,53 +1156,65 @@ def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_r
     If floor_area or lease_commence is missing, infer from historical averages.
     """
     assumptions = []
-    conn = _get_db()
 
     floor_area = None
     if floor_area_raw:
         floor_area = float(floor_area_raw)
     else:
-        row = conn.execute(
-            """
-            SELECT ROUND(AVG(floor_area_sqm), 1) AS v
-            FROM resale_prices
-            WHERE town = ? AND flat_type = ?
-            """,
-            (town, flat_type),
-        ).fetchone()
-        if row and row["v"]:
-            floor_area = float(row["v"])
-        else:
+        resolved = False
+        if SUPABASE_ENABLED:
+            try:
+                v = _supabase_rpc("rpc_resolve_floor_area", {"p_town": town, "p_flat_type": flat_type})
+                floor_area = float(v) if v else 90.0
+                resolved = True
+            except SupabaseError:
+                pass
+        if not resolved:
+            conn = _get_db()
             row = conn.execute(
-                "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ?",
-                (town,),
+                "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ? AND flat_type = ?",
+                (town, flat_type),
             ).fetchone()
-            floor_area = float(row["v"]) if row and row["v"] else 90.0
+            if row and row["v"]:
+                floor_area = float(row["v"])
+            else:
+                row = conn.execute(
+                    "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ?",
+                    (town,),
+                ).fetchone()
+                floor_area = float(row["v"]) if row and row["v"] else 90.0
+            conn.close()
         assumptions.append(f"Used inferred floor area: {floor_area} sqm")
 
     lease_commence = None
     if lease_commence_raw:
         lease_commence = int(lease_commence_raw)
     else:
-        row = conn.execute(
-            """
-            SELECT ROUND(AVG(lease_commence_date), 0) AS v
-            FROM resale_prices
-            WHERE town = ? AND flat_type = ?
-            """,
-            (town, flat_type),
-        ).fetchone()
-        if row and row["v"]:
-            lease_commence = int(row["v"])
-        else:
+        resolved = False
+        if SUPABASE_ENABLED:
+            try:
+                v = _supabase_rpc("rpc_resolve_lease_commence", {"p_town": town, "p_flat_type": flat_type})
+                lease_commence = int(v) if v else 1990
+                resolved = True
+            except SupabaseError:
+                pass
+        if not resolved:
+            conn = _get_db()
             row = conn.execute(
-                "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ?",
-                (town,),
+                "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ? AND flat_type = ?",
+                (town, flat_type),
             ).fetchone()
-            lease_commence = int(row["v"]) if row and row["v"] else 1990
+            if row and row["v"]:
+                lease_commence = int(row["v"])
+            else:
+                row = conn.execute(
+                    "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ?",
+                    (town,),
+                ).fetchone()
+                lease_commence = int(row["v"]) if row and row["v"] else 1990
+            conn.close()
         assumptions.append(f"Used inferred lease start year: {lease_commence}")
 
-    conn.close()
     return floor_area, lease_commence, assumptions
 
 
@@ -461,22 +1226,60 @@ def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_r
 def register():
     if request.method == "POST":
         username = request.form["username"].strip()
-        email = request.form["email"].strip()
+        email = request.form["email"].strip().lower()
         password = request.form["password"]
 
-        conn = _get_user_db()
-        try:
-            conn.execute(
-                "INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)",
-                (username, email, generate_password_hash(password)),
-            )
-            conn.commit()
-            flash("Account created! Please log in.", "success")
-            return redirect(url_for("login"))
-        except sqlite3.IntegrityError:
-            flash("Username or email already exists.", "danger")
-        finally:
-            conn.close()
+        if len(username) < 3:
+            flash("Username must be at least 3 characters.", "danger")
+            return render_template("register.html")
+        if len(password) < 6:
+            flash("Password must be at least 6 characters.", "danger")
+            return render_template("register.html")
+
+        if SUPABASE_ENABLED:
+            try:
+                result = _supabase_auth("/signup", payload={
+                    "email": email,
+                    "password": password,
+                    "data": {"username": username},
+                })
+            except SupabaseError as exc:
+                msg = str(exc)
+                if "already registered" in msg or "already exists" in msg:
+                    flash("An account with that email already exists.", "danger")
+                else:
+                    flash(f"Registration failed: {exc}", "danger")
+                return render_template("register.html")
+
+            # Also write to public.users so saved_predictions integer FK keeps working
+            try:
+                rows = _supabase_request(
+                    SUPABASE_USERS_TABLE,
+                    method="POST",
+                    payload={"username": username, "email": email, "password_hash": "supabase-auth"},
+                    prefer="return=representation",
+                )
+                db_user = rows[0] if rows else {}
+            except SupabaseError:
+                db_user = {}
+
+            if result.get("access_token"):
+                session["user_id"] = db_user.get("id")
+                session["username"] = username
+                session["email"] = email
+                session["access_token"] = result["access_token"]
+                flash("Account created! Welcome.", "success")
+                return redirect(url_for("home"))
+            else:
+                flash("Account created! Check your email to confirm before logging in.", "success")
+                return redirect(url_for("login"))
+        else:
+            try:
+                _sqlite_create_user(username, email, generate_password_hash(password))
+                flash("Account created! Please log in.", "success")
+                return redirect(url_for("login"))
+            except sqlite3.IntegrityError:
+                flash("Username or email already exists.", "danger")
 
     return render_template("register.html")
 
@@ -484,21 +1287,45 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        username = request.form["username"].strip()
+        email = request.form["email"].strip().lower()
         password = request.form["password"]
 
-        conn = _get_user_db()
-        user = conn.execute(
-            "SELECT * FROM users WHERE username = ?", (username,)
-        ).fetchone()
-        conn.close()
+        if SUPABASE_ENABLED:
+            try:
+                result = _supabase_auth(
+                    "/token?grant_type=password",
+                    payload={"email": email, "password": password},
+                )
+            except SupabaseError:
+                flash("Invalid email or password.", "danger")
+                return render_template("login.html")
 
-        if user and check_password_hash(user["password_hash"], password):
-            session["user_id"] = user["id"]
-            flash(f"Welcome back, {username}!", "success")
+            # Fetch public.users record for integer ID (used by saved_predictions FK)
+            try:
+                rows = _supabase_request(
+                    SUPABASE_USERS_TABLE,
+                    filters={"email": f"eq.{email}", "limit": "1"},
+                )
+                db_user = rows[0] if rows else {}
+            except SupabaseError:
+                db_user = {}
+
+            auth_user = result.get("user") or {}
+            session["user_id"] = db_user.get("id")
+            session["username"] = db_user.get("username") or auth_user.get("user_metadata", {}).get("username", email.split("@")[0])
+            session["email"] = email
+            session["access_token"] = result.get("access_token", "")
+            flash(f"Welcome back, {session['username']}!", "success")
             return redirect(url_for("home"))
         else:
-            flash("Invalid username or password.", "danger")
+            user = _sqlite_get_user_by_email(email)
+            if user and check_password_hash(user["password_hash"], password):
+                session["user_id"] = user["id"]
+                session["username"] = user["username"]
+                session["email"] = user["email"]
+                flash(f"Welcome back, {user['username']}!", "success")
+                return redirect(url_for("home"))
+            flash("Invalid email or password.", "danger")
 
     return render_template("login.html")
 
@@ -506,45 +1333,30 @@ def login():
 @app.route("/forgot-password", methods=["GET", "POST"])
 def forgot_password():
     if request.method == "POST":
-        username = request.form["username"].strip()
-        email = request.form["email"].strip()
-        new_password = request.form["new_password"]
-        confirm_password = request.form["confirm_password"]
+        email = request.form["email"].strip().lower()
 
-        if new_password != confirm_password:
-            flash("New passwords do not match.", "danger")
-            return render_template("forgot_password.html")
-
-        if len(new_password) < 6:
-            flash("Password must be at least 6 characters.", "danger")
-            return render_template("forgot_password.html")
-
-        conn = _get_user_db()
-        user = conn.execute(
-            "SELECT id FROM users WHERE username = ? AND email = ?",
-            (username, email),
-        ).fetchone()
-
-        if not user:
-            conn.close()
-            flash("No account found for that username and email.", "danger")
-            return render_template("forgot_password.html")
-
-        conn.execute(
-            "UPDATE users SET password_hash = ? WHERE id = ?",
-            (generate_password_hash(new_password), user["id"]),
-        )
-        conn.commit()
-        conn.close()
-
-        flash("Password updated. Please log in with your new password.", "success")
-        return redirect(url_for("login"))
+        if SUPABASE_ENABLED:
+            try:
+                _supabase_auth("/recover", payload={"email": email})
+            except SupabaseError:
+                pass  # Don't reveal whether the email exists
+            flash("If that email is registered, you'll receive a password reset link.", "info")
+            return redirect(url_for("login"))
+        else:
+            flash("Password reset is not available in offline mode.", "warning")
 
     return render_template("forgot_password.html")
 
 
 @app.route("/logout")
 def logout():
+    if SUPABASE_ENABLED:
+        token = session.get("access_token")
+        if token:
+            try:
+                _supabase_auth("/logout", access_token=token)
+            except SupabaseError:
+                pass
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("home"))
@@ -556,13 +1368,114 @@ def logout():
 
 @app.route("/")
 def home():
+    # Total transaction count
+    try:
+        if SUPABASE_ENABLED:
+            try:
+                result = _supabase_rpc("rpc_count_transactions")
+                total_txns = int(result) if result else 0
+            except SupabaseError:
+                conn = _get_db()
+                total_txns = conn.execute("SELECT COUNT(*) as c FROM resale_prices").fetchone()["c"]
+                conn.close()
+        else:
+            conn = _get_db()
+            total_txns = conn.execute("SELECT COUNT(*) as c FROM resale_prices").fetchone()["c"]
+            conn.close()
+    except Exception:
+        total_txns = 970000
+
+    # Model MAPE
+    try:
+        artefact_mape = round(ARTEFACTS["metrics"]["winner"]["test_mape"], 1)
+    except Exception:
+        artefact_mape = 6.5
+
     return render_template(
         "home.html",
         towns=TOWNS,
         flat_types=list(FLAT_TYPE_ORDINAL.keys()),
         flat_models=FLAT_MODELS,
         storey_ranges=STOREY_RANGES,
+        total_txns=total_txns,
+        artefact_mape=artefact_mape,
     )
+
+
+@app.route("/comparison", methods=["GET", "POST"])
+def comparison():
+    saved_predictions = []
+    if g.user:
+        try:
+            saved_predictions = _prepare_saved_predictions(_get_saved_predictions(session["user_id"]))
+        except SupabaseError:
+            flash("Could not load saved predictions from Supabase.", "danger")
+
+    selected_saved_ids = _get_comparison_saved_prediction_ids() if g.user else []
+    left_id = request.values.get("left_id", "").strip() or (
+        str(selected_saved_ids[0]) if len(selected_saved_ids) >= 1 else ""
+    )
+    right_id = request.values.get("right_id", "").strip() or (
+        str(selected_saved_ids[1]) if len(selected_saved_ids) >= 2 else ""
+    )
+
+    left_saved = _get_saved_prediction_by_id(saved_predictions, left_id)
+    right_saved = _get_saved_prediction_by_id(saved_predictions, right_id)
+
+    left_form_data = _prediction_form_from_saved(left_saved)
+    right_form_data = _prediction_form_from_saved(right_saved)
+    left_result = None
+    right_result = None
+    comparison_summary = None
+
+    if request.method == "POST":
+        left_form_data = _extract_prediction_form_data(request.form, "left", seed=left_form_data)
+        right_form_data = _extract_prediction_form_data(request.form, "right", seed=right_form_data)
+    should_compare = request.method == "POST" or bool(left_saved and right_saved)
+
+    if should_compare and left_form_data.get("town") and right_form_data.get("town"):
+        left_form_data, left_result, left_payload = _run_prediction_form(left_form_data)
+        right_form_data, right_result, right_payload = _run_prediction_form(right_form_data)
+        comparison_summary = _build_prediction_comparison(left_payload, right_payload)
+
+    return render_template(
+        "comparison.html",
+        saved_predictions=saved_predictions,
+        towns=TOWNS,
+        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        flat_models=FLAT_MODELS,
+        storey_ranges=STOREY_RANGES,
+        left_prefilled=bool(left_saved),
+        right_prefilled=bool(right_saved),
+        left_form_data=left_form_data,
+        right_form_data=right_form_data,
+        left_result=left_result,
+        right_result=right_result,
+        comparison_summary=comparison_summary,
+    )
+
+
+@app.route("/comparison/select/<int:pred_id>")
+@login_required
+def comparison_select_saved(pred_id):
+    try:
+        predictions = _prepare_saved_predictions(_get_saved_predictions(session["user_id"]))
+    except SupabaseError:
+        flash("Could not load saved predictions from Supabase.", "danger")
+        return redirect(url_for("my_predictions"))
+
+    selected_prediction = _get_saved_prediction_by_id(predictions, pred_id)
+    if not selected_prediction:
+        flash("That saved prediction could not be found.", "warning")
+        return redirect(url_for("my_predictions"))
+
+    updated_ids = _push_comparison_saved_prediction_id(pred_id)
+    if len(updated_ids) == 1:
+        flash("Saved prediction added to comparison. Choose one more to auto-fill the second side.", "info")
+    else:
+        flash("Saved prediction added. The latest two saved selections are now auto-filled in comparison.", "success")
+
+    return redirect(url_for("comparison"))
 
 
 @app.route("/predict", methods=["GET", "POST"])
@@ -600,48 +1513,6 @@ def predict():
         )
         result["assumptions"] = assumptions
 
-        # Get trend data for context
-        conn = _get_db()
-        trend = conn.execute("""
-            SELECT year, ROUND(AVG(resale_price)) as avg_price,
-                   COUNT(*) as txn_count
-            FROM resale_prices
-            WHERE town = ? AND flat_type = ?
-            GROUP BY year ORDER BY year
-        """, (form_data["town"], form_data["flat_type"])).fetchall()
-        conn.close()
-
-        result["trend"] = [dict(r) for r in trend]
-
-        # Momentum indicator
-        if len(result["trend"]) >= 2:
-            recent = result["trend"][-1]["avg_price"]
-            prev = result["trend"][-2]["avg_price"]
-            pct_change = (recent - prev) / prev * 100
-            if pct_change > 3:
-                result["momentum"] = "Rising"
-                result["momentum_class"] = "success"
-            elif pct_change < -3:
-                result["momentum"] = "Declining"
-                result["momentum_class"] = "danger"
-            else:
-                result["momentum"] = "Stable"
-                result["momentum_class"] = "warning"
-            result["momentum_pct"] = round(pct_change, 1)
-
-        # Nearby benchmarks
-        conn = _get_db()
-        benchmarks = conn.execute("""
-            SELECT flat_type, ROUND(AVG(resale_price)) as avg_price,
-                   COUNT(*) as txn_count,
-                   ROUND(AVG(floor_area_sqm)) as avg_area
-            FROM resale_prices
-            WHERE town = ? AND year >= 2023
-            GROUP BY flat_type ORDER BY flat_type
-        """, (form_data["town"],)).fetchall()
-        conn.close()
-        result["benchmarks"] = [dict(r) for r in benchmarks]
-
     return render_template(
         "predict.html",
         result=result,
@@ -656,54 +1527,44 @@ def predict():
 @app.route("/save_prediction", methods=["POST"])
 @login_required
 def save_prediction():
-    conn = _get_user_db()
-    conn.execute(
-        """INSERT INTO saved_predictions
-           (user_id, town, flat_type, flat_model, floor_area,
-            storey_range, lease_commence, predicted_price, price_low, price_high)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-        (
-            session["user_id"],
-            request.form["town"],
-            request.form["flat_type"],
-            request.form["flat_model"],
-            float(request.form["floor_area"]),
-            request.form["storey_range"],
-            int(request.form["lease_commence"]),
-            float(request.form["predicted_price"]),
-            float(request.form["price_low"]),
-            float(request.form["price_high"]),
-        ),
-    )
-    conn.commit()
-    conn.close()
-    flash("Prediction saved!", "success")
+    prediction = {
+        "town": request.form["town"],
+        "flat_type": request.form["flat_type"],
+        "flat_model": request.form["flat_model"],
+        "floor_area": float(request.form["floor_area"]),
+        "storey_range": request.form["storey_range"],
+        "lease_commence": int(request.form["lease_commence"]),
+        "predicted_price": float(request.form["predicted_price"]),
+        "price_low": float(request.form["price_low"]),
+        "price_high": float(request.form["price_high"]),
+    }
+    try:
+        _save_prediction_record(session["user_id"], prediction)
+        flash("Prediction saved!", "success")
+    except SupabaseError:
+        flash("Could not save prediction to Supabase.", "danger")
     return redirect(url_for("my_predictions"))
 
 
 @app.route("/my_predictions")
 @login_required
 def my_predictions():
-    conn = _get_user_db()
-    preds = conn.execute(
-        "SELECT * FROM saved_predictions WHERE user_id = ? ORDER BY created_at DESC",
-        (session["user_id"],),
-    ).fetchall()
-    conn.close()
+    try:
+        preds = _prepare_saved_predictions(_get_saved_predictions(session["user_id"]))
+    except SupabaseError:
+        flash("Could not load saved predictions from Supabase.", "danger")
+        preds = []
     return render_template("my_predictions.html", predictions=preds)
 
 
 @app.route("/delete_prediction/<int:pred_id>", methods=["POST"])
 @login_required
 def delete_prediction(pred_id):
-    conn = _get_user_db()
-    conn.execute(
-        "DELETE FROM saved_predictions WHERE id = ? AND user_id = ?",
-        (pred_id, session["user_id"]),
-    )
-    conn.commit()
-    conn.close()
-    flash("Prediction deleted.", "info")
+    try:
+        _delete_saved_prediction(pred_id, session["user_id"])
+        flash("Prediction deleted.", "info")
+    except SupabaseError:
+        flash("Could not delete prediction from Supabase.", "danger")
     return redirect(url_for("my_predictions"))
 
 
@@ -730,6 +1591,15 @@ def api_transactions():
     town = request.args.get("town", "")
     limit = min(int(request.args.get("limit", 500)), 2000)
 
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_api_transactions", {
+                "p_town": town or None, "p_limit": limit
+            }) or []
+            return jsonify(rows)
+        except SupabaseError:
+            pass
+
     conn = _get_db()
     query = """
         SELECT town, flat_type, block, street_name, storey_range,
@@ -742,10 +1612,8 @@ def api_transactions():
     if town:
         query += " AND town = ?"
         params.append(town)
-
     query += " ORDER BY year DESC, month DESC LIMIT ?"
     params.append(limit)
-
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -755,22 +1623,7 @@ def api_transactions():
 @api_login_required
 def api_district_summary():
     """Return per-town summary stats for district heatmap."""
-    conn = _get_db()
-    rows = conn.execute("""
-        SELECT town,
-               ROUND(AVG(resale_price)) as avg_price,
-               ROUND(AVG(CASE WHEN year >= 2023 THEN resale_price END)) as recent_avg,
-               COUNT(*) as total_txns,
-               SUM(CASE WHEN year >= 2023 THEN 1 ELSE 0 END) as recent_txns,
-               AVG(latitude) as lat,
-               AVG(longitude) as lng
-        FROM resale_prices
-        WHERE latitude IS NOT NULL
-        GROUP BY town
-        ORDER BY town
-    """).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(_get_district_summary_data())
 
 
 @app.route("/api/price_trend")
@@ -809,6 +1662,14 @@ def api_price_trend_simple():
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
 
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_price_trend_simple", {
+                "p_town": town or None, "p_flat_type": flat_type or None
+            }) or [])
+        except SupabaseError:
+            pass  # fall through to SQLite
+
     conn = _get_db()
     query = """
         SELECT year,
@@ -825,7 +1686,6 @@ def api_price_trend_simple():
     if flat_type:
         query += " AND flat_type = ?"
         params.append(flat_type)
-
     query += " GROUP BY year ORDER BY year"
     rows = conn.execute(query, params).fetchall()
     conn.close()
@@ -836,6 +1696,12 @@ def api_price_trend_simple():
 @api_login_required
 def api_district_comparison():
     """Return per-town avg prices for the most recent year."""
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_district_comparison") or [])
+        except SupabaseError:
+            pass
+
     conn = _get_db()
     rows = conn.execute("""
         SELECT town,
@@ -857,24 +1723,7 @@ def api_district_comparison():
 def api_flat_type_breakdown():
     """Return flat type breakdown for a town."""
     town = request.args.get("town", "")
-    conn = _get_db()
-    query = """
-        SELECT flat_type,
-               ROUND(AVG(resale_price)) as avg_price,
-               COUNT(*) as txn_count,
-               ROUND(AVG(floor_area_sqm)) as avg_area
-        FROM resale_prices
-        WHERE year >= 2023
-    """
-    params = []
-    if town:
-        query += " AND town = ?"
-        params.append(town)
-    query += " GROUP BY flat_type ORDER BY flat_type"
-
-    rows = conn.execute(query, params).fetchall()
-    conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify(_get_flat_type_breakdown_data(town))
 
 
 @app.route("/api/monthly_volume")
@@ -882,6 +1731,13 @@ def api_flat_type_breakdown():
 def api_monthly_volume():
     """Return monthly transaction volume."""
     town = request.args.get("town", "")
+
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_monthly_volume", {"p_town": town or None}) or [])
+        except SupabaseError:
+            pass
+
     conn = _get_db()
     query = """
         SELECT month, COUNT(*) as txn_count,
@@ -896,6 +1752,103 @@ def api_monthly_volume():
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
+
+
+# ---------------------------------------------------------------------------
+# API endpoints: Public (no auth required)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/public/location_summary")
+def api_public_location_summary():
+    """Per-town centroids with blurred price bucket (1-5) for guest teaser map."""
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_public_location_summary") or [])
+        except SupabaseError:
+            pass  # fall through to SQLite
+
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT town,
+               AVG(latitude) as lat,
+               AVG(longitude) as lng,
+               COUNT(*) as total_txns,
+               AVG(resale_price) as avg_price
+        FROM resale_prices
+        WHERE latitude IS NOT NULL
+        GROUP BY town
+        ORDER BY town
+    """).fetchall()
+    conn.close()
+
+    town_list = [dict(r) for r in rows]
+    # Compute quintile buckets manually
+    town_list.sort(key=lambda x: x["avg_price"] or 0)
+    n = len(town_list)
+    for i, t in enumerate(town_list):
+        t["price_bucket"] = min(5, int(i / max(n, 1) * 5) + 1)
+        del t["avg_price"]  # Don't expose actual prices to guests
+    town_list.sort(key=lambda x: x["town"])
+    return jsonify(town_list)
+
+
+@app.route("/api/public/recent_ticker")
+def api_public_recent_ticker():
+    """20 most recent transactions for homepage ticker. No auth required."""
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_public_recent_ticker") or [])
+        except SupabaseError:
+            pass
+
+    conn = _get_db()
+    rows = conn.execute("""
+        SELECT town, flat_type, resale_price, year
+        FROM resale_prices
+        ORDER BY year DESC, month DESC
+        LIMIT 20
+    """).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+# ---------------------------------------------------------------------------
+# API endpoints: Authenticated helpers
+# ---------------------------------------------------------------------------
+
+@app.route("/api/available_models")
+@api_login_required
+def api_available_models():
+    """Returns flat models available for a given town and flat_type."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    return jsonify({"models": _get_available_models_data(town, flat_type)})
+
+
+@app.route("/api/available_storey_ranges")
+@api_login_required
+def api_available_storey_ranges():
+    """Returns storey ranges available for a given town and flat_type."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    return jsonify({"storey_ranges": _get_available_storey_ranges_data(town, flat_type)})
+
+
+@app.route("/api/floor_area_stats")
+@api_login_required
+def api_floor_area_stats():
+    """Min, max, avg floor area for a town + flat_type combination."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    return jsonify(_get_floor_area_stats_data(town, flat_type))
+
+
+@app.route("/api/lease_year_range")
+@api_login_required
+def api_lease_year_range():
+    """Min and max lease_commence_date for a town."""
+    town = request.args.get("town", "")
+    return jsonify(_get_lease_year_range_data(town))
 
 
 # ---------------------------------------------------------------------------

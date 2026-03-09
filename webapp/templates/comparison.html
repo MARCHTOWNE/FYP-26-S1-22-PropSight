@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% block title %}Property Comparison — HDB Resale Analytics{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+        <div>
+            <p class="section-eyebrow mb-2">Comparison</p>
+            <h1 class="section-title mb-2">Property Comparison</h1>
+            <p class="section-subtitle mb-0">Compare two HDB resale predictions side by side without saving them first.</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ url_for('predict') }}" class="btn btn-outline-primary">
+                <i class="bi bi-calculator me-1"></i>Prediction Page
+            </a>
+            {% if g.user %}
+            <a href="{{ url_for('my_predictions') }}" class="btn btn-outline-primary">
+                <i class="bi bi-bookmark me-1"></i>Saved Predictions
+            </a>
+            {% endif %}
+        </div>
+    </div>
+
+    {% if g.user and saved_predictions %}
+    <div class="alert alert-info py-2 px-3 small">
+        You can start from scratch here, or click <strong>Compare</strong> on saved predictions. The latest two saved selections will auto-fill this page.
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{{ url_for('comparison') }}" id="comparisonForm">
+        <div class="row g-4">
+            <div class="col-xl-6">
+                <div class="card h-100">
+                    <div class="card-body predict-form">
+                        <h4 class="card-title mb-4">
+                            <i class="bi bi-1-circle me-2 text-primary"></i>Prediction A
+                        </h4>
+                        {% if left_prefilled %}
+                        <div class="alert alert-light border small py-2 px-3">Prefilled from a saved prediction.</div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Town</label>
+                            <select name="left_town" class="form-select" required>
+                                <option value="">Select town...</option>
+                                {% for t in towns %}
+                                <option value="{{ t }}" {% if left_form_data.get('town') == t %}selected{% endif %}>{{ t }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Flat Type</label>
+                            <select name="left_flat_type" class="form-select" required>
+                                {% for ft in flat_types %}
+                                <option value="{{ ft }}" {% if left_form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Flat Model</label>
+                            <select name="left_flat_model" class="form-select" required>
+                                {% for fm in flat_models %}
+                                <option value="{{ fm }}" {% if left_form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Floor Area (sqm)</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="leftFloorRange" name="left_floor_area"
+                                           min="30" max="300" value="{{ left_form_data.get('floor_area', 90) or 90 }}" step="1"
+                                           class="form-range accent-range">
+                                    <div class="slider-display"><span id="leftFloorVal">{{ left_form_data.get('floor_area', 90) or 90 }}</span> sqm</div>
+                                </div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Lease Start Year</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="leftLeaseRange" name="left_lease_commence"
+                                           min="1960" max="2024" value="{{ left_form_data.get('lease_commence', 1990) or 1990 }}" step="1"
+                                           class="form-range accent-range">
+                                    <div class="slider-display"><span id="leftLeaseVal">{{ left_form_data.get('lease_commence', 1990) or 1990 }}</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Storey Range</label>
+                            <select name="left_storey_range" class="form-select" required>
+                                {% for sr in storey_ranges %}
+                                <option value="{{ sr }}" {% if left_form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-xl-6">
+                <div class="card h-100">
+                    <div class="card-body predict-form">
+                        <h4 class="card-title mb-4">
+                            <i class="bi bi-2-circle me-2 text-primary"></i>Prediction B
+                        </h4>
+                        {% if right_prefilled %}
+                        <div class="alert alert-light border small py-2 px-3">Prefilled from a saved prediction.</div>
+                        {% endif %}
+
+                        <div class="mb-3">
+                            <label class="form-label">Town</label>
+                            <select name="right_town" class="form-select" required>
+                                <option value="">Select town...</option>
+                                {% for t in towns %}
+                                <option value="{{ t }}" {% if right_form_data.get('town') == t %}selected{% endif %}>{{ t }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Flat Type</label>
+                            <select name="right_flat_type" class="form-select" required>
+                                {% for ft in flat_types %}
+                                <option value="{{ ft }}" {% if right_form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Flat Model</label>
+                            <select name="right_flat_model" class="form-select" required>
+                                {% for fm in flat_models %}
+                                <option value="{{ fm }}" {% if right_form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Floor Area (sqm)</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="rightFloorRange" name="right_floor_area"
+                                           min="30" max="300" value="{{ right_form_data.get('floor_area', 90) or 90 }}" step="1"
+                                           class="form-range accent-range">
+                                    <div class="slider-display"><span id="rightFloorVal">{{ right_form_data.get('floor_area', 90) or 90 }}</span> sqm</div>
+                                </div>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <label class="form-label">Lease Start Year</label>
+                                <div class="slider-wrap">
+                                    <input type="range" id="rightLeaseRange" name="right_lease_commence"
+                                           min="1960" max="2024" value="{{ right_form_data.get('lease_commence', 1990) or 1990 }}" step="1"
+                                           class="form-range accent-range">
+                                    <div class="slider-display"><span id="rightLeaseVal">{{ right_form_data.get('lease_commence', 1990) or 1990 }}</span></div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Storey Range</label>
+                            <select name="right_storey_range" class="form-select" required>
+                                {% for sr in storey_ranges %}
+                                <option value="{{ sr }}" {% if right_form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-grid d-md-flex justify-content-center mt-4">
+            <button type="submit" class="btn btn-primary px-5">Compare Predictions</button>
+        </div>
+    </form>
+
+    {% if left_result and right_result %}
+    <div class="row g-4 mt-2">
+        <div class="col-xl-6">
+            <div class="card comparison-prediction-card h-100">
+                <div class="card-body">
+                    <small class="kicker">Prediction A</small>
+                    <h2 class="h4 mt-2 mb-1">{{ left_form_data['town'] }}</h2>
+                    <p class="text-muted mb-3">{{ left_form_data['flat_type'] }} · {{ left_form_data['flat_model'] }}</p>
+                    <div class="price-display mb-1">${{ "{:,.0f}".format(left_result['predicted_price']) }}</div>
+                    <div class="price-range mb-4">
+                        Range: ${{ "{:,.0f}".format(left_result['price_low']) }} -
+                        ${{ "{:,.0f}".format(left_result['price_high']) }}
+                    </div>
+                    <div class="comparison-detail-grid">
+                        <div class="comparison-detail-item">
+                            <span>Floor Area</span>
+                            <strong>{{ "{:,.0f}".format(left_form_data['floor_area']) }} sqm</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Storey</span>
+                            <strong>{{ left_form_data['storey_range'] }}</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Lease Start</span>
+                            <strong>{{ left_form_data['lease_commence'] }}</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Confidence</span>
+                            <strong>±{{ left_result['mape'] }}% MAPE</strong>
+                        </div>
+                    </div>
+                    {% if left_result.assumptions %}
+                    <div class="alert alert-info mt-3 py-2 px-3 small text-start mb-0">
+                        {% for note in left_result.assumptions %}
+                        <div>{{ note }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6">
+            <div class="card comparison-prediction-card h-100">
+                <div class="card-body">
+                    <small class="kicker">Prediction B</small>
+                    <h2 class="h4 mt-2 mb-1">{{ right_form_data['town'] }}</h2>
+                    <p class="text-muted mb-3">{{ right_form_data['flat_type'] }} · {{ right_form_data['flat_model'] }}</p>
+                    <div class="price-display mb-1">${{ "{:,.0f}".format(right_result['predicted_price']) }}</div>
+                    <div class="price-range mb-4">
+                        Range: ${{ "{:,.0f}".format(right_result['price_low']) }} -
+                        ${{ "{:,.0f}".format(right_result['price_high']) }}
+                    </div>
+                    <div class="comparison-detail-grid">
+                        <div class="comparison-detail-item">
+                            <span>Floor Area</span>
+                            <strong>{{ "{:,.0f}".format(right_form_data['floor_area']) }} sqm</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Storey</span>
+                            <strong>{{ right_form_data['storey_range'] }}</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Lease Start</span>
+                            <strong>{{ right_form_data['lease_commence'] }}</strong>
+                        </div>
+                        <div class="comparison-detail-item">
+                            <span>Confidence</span>
+                            <strong>±{{ right_result['mape'] }}% MAPE</strong>
+                        </div>
+                    </div>
+                    {% if right_result.assumptions %}
+                    <div class="alert alert-info mt-3 py-2 px-3 small text-start mb-0">
+                        {% for note in right_result.assumptions %}
+                        <div>{{ note }}</div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="comparison-summary-grid mt-4">
+        <div class="comparison-summary-card">
+            <small class="kicker">Estimated Price Gap</small>
+            <h3>{{ comparison_summary['predicted_delta_label'] }}</h3>
+            <p>Prediction B compared with Prediction A.</p>
+        </div>
+        <div class="comparison-summary-card">
+            <small class="kicker">Floor Area Gap</small>
+            <h3>{{ comparison_summary['area_delta_label'] }}</h3>
+            <p>Useful for size-adjusted comparisons.</p>
+        </div>
+        <div class="comparison-summary-card">
+            <small class="kicker">Lease Start Gap</small>
+            <h3>{{ comparison_summary['lease_delta_label'] }}</h3>
+            <p>Difference in lease commencement year.</p>
+        </div>
+        <div class="comparison-summary-card">
+            <small class="kicker">Range Overlap</small>
+            <h3>{{ comparison_summary['range_overlap_label'] }}</h3>
+            <p>
+                {% if comparison_summary['range_overlap_exists'] %}
+                The two prediction ranges intersect.
+                {% else %}
+                The two prediction ranges do not intersect.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function bindRange(rangeId, valueId) {
+    var range = document.getElementById(rangeId);
+    var value = document.getElementById(valueId);
+    if (!range || !value) return;
+
+    value.textContent = range.value;
+    range.addEventListener('input', function() {
+        value.textContent = range.value;
+    });
+}
+
+bindRange('leftFloorRange', 'leftFloorVal');
+bindRange('leftLeaseRange', 'leftLeaseVal');
+bindRange('rightFloorRange', 'rightFloorVal');
+bindRange('rightLeaseRange', 'rightLeaseVal');
+</script>
+{% endblock %}

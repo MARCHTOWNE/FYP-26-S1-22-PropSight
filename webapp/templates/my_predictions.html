@@ -3,9 +3,16 @@
 
 {% block content %}
 <div class="container py-4">
-    <h4 class="mb-4">
-        <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
-    </h4>
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+        <h4 class="mb-0">
+            <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
+        </h4>
+        {% if predictions|length >= 2 %}
+        <a href="{{ url_for('comparison') }}" class="btn btn-primary btn-sm">
+            <i class="bi bi-columns-gap me-1"></i>Compare Saved Predictions
+        </a>
+        {% endif %}
+    </div>
 
     {% if predictions %}
     <div class="card">
@@ -20,8 +27,8 @@
                         <th>Storey</th>
                         <th class="text-end">Predicted</th>
                         <th class="text-end">Range</th>
-                        <th>Date</th>
-                        <th></th>
+                        <th>Saved On</th>
+                        <th class="text-end">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -30,7 +37,7 @@
                         <td>{{ p['town'] }}</td>
                         <td>{{ p['flat_type'] }}</td>
                         <td>{{ p['flat_model'] }}</td>
-                        <td class="text-end">{{ p['floor_area'] }} sqm</td>
+                        <td class="text-end">{{ "{:,.0f}".format(p['floor_area']) }} sqm</td>
                         <td>{{ p['storey_range'] }}</td>
                         <td class="text-end fw-bold text-primary">
                             ${{ "{:,.0f}".format(p['predicted_price']) }}
@@ -39,15 +46,27 @@
                             ${{ "{:,.0f}".format(p['price_low']) }} -
                             ${{ "{:,.0f}".format(p['price_high']) }}
                         </td>
-                        <td class="small text-muted">{{ p['created_at'][:10] }}</td>
+                        <td class="small saved-date">
+                            <div class="fw-semibold">{{ p['created_at_date_display'] }}</div>
+                            {% if p['created_at_time_display'] %}
+                            <div class="text-muted">{{ p['created_at_time_display'] }}</div>
+                            {% endif %}
+                        </td>
                         <td>
-                            <form method="POST"
-                                  action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
-                                  onsubmit="return confirm('Delete this prediction?')">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="bi bi-trash"></i>
-                                </button>
-                            </form>
+                            <div class="saved-predictions-actions">
+                                {% if predictions|length >= 1 %}
+                                <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="bi bi-columns-gap me-1"></i>Compare
+                                </a>
+                                {% endif %}
+                                <form method="POST"
+                                      action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
+                                      onsubmit="return confirm('Delete this prediction?')">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}

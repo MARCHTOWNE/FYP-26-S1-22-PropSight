@@ -320,7 +320,7 @@
             <div class="map-sidebar">
                 <div class="map-kicker">Spatial Market Explorer</div>
                 <h2>Interactive transaction heatmap for Singapore HDB resale.</h2>
-                <p>Switch between point-level transactions and district heat intensity to read price pressure and market activity faster.</p>
+                <p>Switch between point-level transactions and location heat intensity to read price pressure and market activity faster.</p>
 
                 <div class="map-stat-grid">
                     <div class="map-stat">
@@ -378,14 +378,14 @@
                     </div>
 
                     <div class="map-insight" id="mapInsight">
-                        Pin mode shows individual resale transactions. Switch to heatmap mode to compare districts by pricing pressure.
+                        Pin mode shows individual resale transactions. Switch to heatmap mode to compare locations by pricing pressure.
                     </div>
                 </div>
             </div>
 
             <div class="map-float-note">
                 <i class="bi bi-cursor-fill"></i>
-                <span>Click a district bubble to jump into town-level transactions</span>
+                <span>Click a location bubble to jump into town-level transactions</span>
             </div>
 
             <div id="map"></div>
@@ -594,8 +594,8 @@ async function loadHeatmap() {
     updateStats(data);
     setInsight(
         metric === 'price'
-            ? 'Heatmap mode ranks districts by pricing pressure. Red zones indicate premium resale clusters.'
-            : 'Heatmap mode ranks districts by transaction volume. Warmer zones indicate stronger market activity.'
+            ? 'Heatmap mode ranks locations by pricing pressure. Red zones indicate premium resale clusters.'
+            : 'Heatmap mode ranks locations by transaction volume. Warmer zones indicate stronger market activity.'
     );
 }
 

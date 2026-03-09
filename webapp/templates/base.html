@@ -44,6 +44,12 @@
                         </a>
                         {% endif %}
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'comparison' %}active{% endif %}"
+                           href="{{ url_for('comparison') }}">
+                            <i class="bi bi-columns-gap me-1"></i>Compare
+                        </a>
+                    </li>
                     {% if g.user %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'map_view' %}active{% endif %}"
@@ -96,6 +102,24 @@
             </div>
         </div>
     </nav>
+
+    <!-- Top progress bar -->
+    <div id="pageProgress" style="
+        position: fixed; top: 0; left: 0; height: 3px; width: 0%;
+        background: linear-gradient(90deg, #2563eb, #06b6d4);
+        z-index: 9998; transition: width 0.3s ease, opacity 0.4s ease;
+        pointer-events: none;">
+    </div>
+    <script>
+    (function() {
+      var bar = document.getElementById('pageProgress');
+      bar.style.width = '70%';
+      document.addEventListener('DOMContentLoaded', function() {
+        bar.style.width = '100%';
+        setTimeout(function() { bar.style.opacity = '0'; }, 400);
+      });
+    })();
+    </script>
 
     <!-- Flash messages -->
     <div class="container mt-3">

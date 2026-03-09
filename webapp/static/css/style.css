@@ -284,9 +284,35 @@ h6,
     padding: 1.05rem;
 }
 
+.access-modal {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+}
+
+.access-modal .modal-body {
+    padding: 2rem;
+}
+
 .map-showcase {
     padding: 0;
     overflow: hidden;
+}
+
+.map-preview-link {
+    position: absolute;
+    inset: 0;
+    z-index: 450;
+    display: block;
+    background: transparent;
+    border: 0;
+    padding: 0;
+    cursor: pointer;
+}
+
+.map-preview-link:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.42);
+    outline-offset: -3px;
 }
 
 .home-map {
@@ -402,6 +428,71 @@ h6,
     padding: 0.95rem 1rem;
     box-shadow: var(--shadow-sm);
     color: var(--text-soft);
+}
+
+.comparison-picker .form-label {
+    font-weight: 700;
+    color: var(--text-soft);
+}
+
+.comparison-prediction-card .card-body {
+    padding: 1.5rem;
+}
+
+.comparison-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.comparison-detail-item {
+    background: linear-gradient(165deg, #ffffff, #f5f9ff);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    padding: 0.95rem 1rem;
+}
+
+.comparison-detail-item span {
+    display: block;
+    margin-bottom: 0.35rem;
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-soft);
+    font-weight: 700;
+}
+
+.comparison-detail-item strong {
+    display: block;
+    font-size: 1rem;
+    color: var(--text);
+}
+
+.comparison-summary-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.comparison-summary-card {
+    background: linear-gradient(165deg, #ffffff, #f5f9ff);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    padding: 1.15rem;
+}
+
+.comparison-summary-card h3 {
+    margin: 0.45rem 0 0.35rem;
+    font-size: 1.45rem;
+    color: var(--text);
+}
+
+.comparison-summary-card p {
+    margin-bottom: 0;
+    color: var(--text-soft);
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
 .cta-strip {
@@ -527,10 +618,30 @@ footer {
     color: var(--text-soft);
 }
 
+.saved-date {
+    min-width: 140px;
+}
+
+.saved-predictions-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 992px) {
     .split-grid,
     .insight-grid,
     .metric-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .comparison-summary-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .comparison-detail-grid {
         grid-template-columns: 1fr;
     }
 
@@ -554,6 +665,39 @@ footer {
     }
 }
 
+/* Slider styles */
+.slider-wrap { position: relative; }
+.slider-display {
+    text-align: center; font-size: 0.82rem; font-weight: 700;
+    color: var(--accent); margin-top: 0.2rem;
+}
+.accent-range::-webkit-slider-thumb { background: var(--accent); }
+.accent-range::-moz-range-thumb { background: var(--accent); }
+
+/* Chart loading shimmer */
+.is-loading { position: relative; pointer-events: none; }
+.is-loading::after {
+    content: ''; position: absolute; inset: 0; border-radius: inherit;
+    background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.6) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: shimmer 1.4s infinite; z-index: 10;
+}
+@keyframes shimmer { from { background-position: -200% 0; } to { background-position: 200% 0; } }
+
+/* Nudge bar */
+.nudge-bar {
+    position: fixed; bottom: -80px; left: 0; right: 0; z-index: 9999;
+    background: linear-gradient(90deg, #0b1f3f, #173f8f);
+    color: #fff; padding: 0.9rem 1.5rem;
+    display: flex; align-items: center; justify-content: center;
+    gap: 0.5rem; flex-wrap: wrap;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.3);
+    transition: bottom 0.5s cubic-bezier(.22,.61,.36,1);
+}
+.nudge-bar.visible { bottom: 0; }
+.nudge-close { background: none; border: none; color: #94a3b8;
+    font-size: 1rem; margin-left: 1rem; cursor: pointer; }
+
 @media (max-width: 768px) {
     .story-section {
         padding: 3.6rem 0;
@@ -561,6 +705,18 @@ footer {
 
     .hero-inner {
         padding: 3.6rem 0;
+    }
+
+    .access-modal .modal-body {
+        padding: 1.5rem;
+    }
+
+    .comparison-summary-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .saved-predictions-actions {
+        justify-content: flex-start;
     }
 
     #map {

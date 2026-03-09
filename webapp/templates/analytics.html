@@ -52,7 +52,7 @@
     <div class="dashboard-hero p-3 mb-4">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
             <h4 class="mb-0"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Interactive Market Dashboard</h4>
-            <span class="hint-text"><i class="bi bi-mouse me-1"></i>Click a district bar to drill down into that town</span>
+            <span class="hint-text"><i class="bi bi-mouse me-1"></i>Click a location bar to drill down into that town</span>
         </div>
 
         <div class="row g-2 align-items-end">
@@ -131,7 +131,7 @@
         <div class="col-lg-7">
             <div class="card">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-buildings me-1 text-primary"></i>District Comparison (Latest Year)</h6>
+                    <h6 class="card-title"><i class="bi bi-buildings me-1 text-primary"></i>Location Comparison (Latest Year)</h6>
                     <div style="height: 410px;"><canvas id="districtChart"></canvas></div>
                 </div>
             </div>
@@ -260,7 +260,7 @@ function buildInsights(data, districtData) {
     box.innerHTML = `
         <p class="mb-2"><strong>Market movement:</strong> Selected segment shows a <strong>${direction}</strong> of <strong>${trendPct.toFixed(1)}%</strong> across the chosen years.</p>
         <p class="mb-2"><strong>Activity:</strong> ${data.reduce((s, d) => s + Number(d.txn_count || 0), 0).toLocaleString()} transactions in scope.</p>
-        <p class="mb-0"><strong>District spread:</strong> Highest latest avg price is <strong>${topDistrict ? topDistrict.town : '-'}</strong> (${topDistrict ? formatMoney(topDistrict.avg_price) : '-'}) while lower end is <strong>${lowDistrict ? lowDistrict.town : '-'}</strong> (${lowDistrict ? formatMoney(lowDistrict.avg_price) : '-'}).</p>
+        <p class="mb-0"><strong>Location spread:</strong> Highest latest avg price is <strong>${topDistrict ? topDistrict.town : '-'}</strong> (${topDistrict ? formatMoney(topDistrict.avg_price) : '-'}) while lower end is <strong>${lowDistrict ? lowDistrict.town : '-'}</strong> (${lowDistrict ? formatMoney(lowDistrict.avg_price) : '-'}).</p>
     `;
 }
 
@@ -281,12 +281,21 @@ function ensureYearSelectors(data) {
     toEl.value = String(years[years.length - 1]);
 }
 
+function setLoading(canvasId, loading) {
+    var card = document.getElementById(canvasId).closest('.card');
+    if (card) {
+        if (loading) card.classList.add('is-loading');
+        else card.classList.remove('is-loading');
+    }
+}
+
 async function loadPriceTrend() {
     const f = getFilters();
     const params = new URLSearchParams();
     if (f.town) params.set('town', f.town);
     if (f.flat_type) params.set('flat_type', f.flat_type);
 
+    setLoading('priceTrendChart', true);
     const raw = await fetchJSON('/api/price_trend_simple?' + params);
     ensureYearSelectors(raw);
     const data = clipByYear(raw);
@@ -322,6 +331,7 @@ async function loadPriceTrend() {
         }
     });
 
+    setLoading('priceTrendChart', false);
     return data;
 }
 
@@ -330,6 +340,7 @@ async function loadFlatType() {
     const params = new URLSearchParams();
     if (f.town) params.set('town', f.town);
 
+    setLoading('flatTypeChart', true);
     const data = await fetchJSON('/api/flat_type_breakdown?' + params);
     const ctx = document.getElementById('flatTypeChart').getContext('2d');
 
@@ -356,9 +367,11 @@ async function loadFlatType() {
             }
         }
     });
+    setLoading('flatTypeChart', false);
 }
 
 async function loadDistrict() {
+    setLoading('districtChart', true);
     let data = await fetchJSON('/api/district_comparison');
     const f = getFilters();
     if (f.town) {
@@ -398,10 +411,12 @@ async function loadDistrict() {
         }
     });
 
+    setLoading('districtChart', false);
     return data;
 }
 
 async function loadVolume() {
+    setLoading('volumeChart', true);
     const data = latestTrendData;
     const ctx = document.getElementById('volumeChart').getContext('2d');
 
@@ -423,9 +438,11 @@ async function loadVolume() {
             plugins: { legend: { display: false } }
         }
     });
+    setLoading('volumeChart', false);
 }
 
 async function loadPSF() {
+    setLoading('psfChart', true);
     let data = await fetchJSON('/api/district_comparison');
     const f = getFilters();
     if (f.town) data = data.filter(d => d.town === f.town);
@@ -453,6 +470,7 @@ async function loadPSF() {
             scales: { x: { ticks: { callback: v => '$' + v.toLocaleString() } } }
         }
     });
+    setLoading('psfChart', false);
 }
 
 async function refreshDashboard() {

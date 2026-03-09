@@ -8,13 +8,18 @@
         <div class="col-lg-5 mb-4">
             <div class="card">
                 <div class="card-body predict-form">
-                    <h4 class="card-title mb-4">
-                        <i class="bi bi-calculator me-2 text-primary"></i>Property Valuation
-                    </h4>
-                    <form method="POST" action="{{ url_for('predict') }}">
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
+                        <h4 class="card-title mb-0">
+                            <i class="bi bi-calculator me-2 text-primary"></i>Property Valuation
+                        </h4>
+                        <a href="{{ url_for('comparison') }}" class="btn btn-outline-primary btn-sm">
+                            <i class="bi bi-columns-gap me-1"></i>Compare
+                        </a>
+                    </div>
+                    <form method="POST" action="{{ url_for('predict') }}" id="predictForm">
                         <div class="mb-3">
                             <label class="form-label">Town</label>
-                            <select name="town" class="form-select" required>
+                            <select name="town" id="predictTown" class="form-select" required>
                                 <option value="">Select town...</option>
                                 {% for t in towns %}
                                 <option value="{{ t }}"
@@ -27,7 +32,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Flat Type</label>
-                            <select name="flat_type" class="form-select" required>
+                            <select name="flat_type" id="predictFlatType" class="form-select" required>
                                 {% for ft in flat_types %}
                                 <option value="{{ ft }}"
                                     {% if form_data.get('flat_type') == ft %}selected{% endif %}>
@@ -39,7 +44,7 @@
 
                         <div class="mb-3">
                             <label class="form-label">Flat Model</label>
-                            <select name="flat_model" class="form-select" required>
+                            <select name="flat_model" id="predictFlatModel" class="form-select" required>
                                 {% for fm in flat_models %}
                                 <option value="{{ fm }}"
                                     {% if form_data.get('flat_model') == fm %}selected{% endif %}>
@@ -52,25 +57,27 @@
                         <div class="row">
                             <div class="col-6 mb-3">
                                 <label class="form-label">Floor Area (sqm)</label>
-                                <input type="number" name="floor_area" class="form-control"
-                                       min="30" max="300" step="1"
-                                       value="{{ form_data.get('floor_area', '') }}"
-                                       placeholder="Optional (e.g. 95)">
-                                <div class="form-text">Optional. We can infer from similar homes.</div>
+                                <div class="slider-wrap">
+                                  <input type="range" id="predictFloorRange" name="floor_area"
+                                         min="30" max="300" value="{{ form_data.get('floor_area', 90) or 90 }}" step="1"
+                                         class="form-range accent-range">
+                                  <div class="slider-display"><span id="predictFloorVal">{{ form_data.get('floor_area', 90) or 90 }}</span> sqm</div>
+                                </div>
                             </div>
                             <div class="col-6 mb-3">
                                 <label class="form-label">Lease Start Year</label>
-                                <input type="number" name="lease_commence" class="form-control"
-                                       min="1960" max="2025" step="1"
-                                       value="{{ form_data.get('lease_commence', '') }}"
-                                       placeholder="Optional (e.g. 1990)">
-                                <div class="form-text">Optional. We can infer from town history.</div>
+                                <div class="slider-wrap">
+                                  <input type="range" id="predictLeaseRange" name="lease_commence"
+                                         min="1960" max="2024" value="{{ form_data.get('lease_commence', 1990) or 1990 }}" step="1"
+                                         class="form-range accent-range">
+                                  <div class="slider-display"><span id="predictLeaseVal">{{ form_data.get('lease_commence', 1990) or 1990 }}</span></div>
+                                </div>
                             </div>
                         </div>
 
                         <div class="mb-3">
                             <label class="form-label">Storey Range</label>
-                            <select name="storey_range" class="form-select" required>
+                            <select name="storey_range" id="predictStoreyRange" class="form-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}"
                                     {% if form_data.get('storey_range') == sr %}selected{% endif %}>
@@ -80,7 +87,7 @@
                             </select>
                         </div>
 
-                        <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
+                        <button type="submit" id="predictSubmitBtn" class="btn btn-primary w-100 py-2 fw-bold">
                             <i class="bi bi-lightning-charge me-1"></i> Get Estimate
                         </button>
                     </form>
@@ -100,21 +107,6 @@
                         Range: ${{ "{:,}".format(result.price_low) }} &mdash;
                         ${{ "{:,}".format(result.price_high) }}
                     </div>
-
-                    {% if result.momentum %}
-                    <div class="mt-3">
-                        <span class="badge bg-{{ result.momentum_class }} momentum-badge">
-                            {% if result.momentum == 'Rising' %}
-                            <i class="bi bi-arrow-up-right"></i>
-                            {% elif result.momentum == 'Declining' %}
-                            <i class="bi bi-arrow-down-right"></i>
-                            {% else %}
-                            <i class="bi bi-arrow-right"></i>
-                            {% endif %}
-                            {{ result.momentum }} ({{ result.momentum_pct }}% YoY)
-                        </span>
-                    </div>
-                    {% endif %}
 
                     <div class="mt-3 small text-muted">
                         Based on XGBoost model &middot; MAPE &plusmn;{{ result.mape }}%
@@ -172,55 +164,6 @@
                 </div>
             </div>
 
-            <!-- Price trend chart -->
-            {% if result.trend %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h6 class="card-title">
-                        <i class="bi bi-graph-up me-1 text-primary"></i>
-                        Historical Price Trend — {{ form_data.town }}, {{ form_data.flat_type }}
-                    </h6>
-                    <div class="chart-container">
-                        <canvas id="trendChart"></canvas>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Benchmarks -->
-            {% if result.benchmarks %}
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="card-title">
-                        <i class="bi bi-bar-chart me-1 text-primary"></i>
-                        {{ form_data.town }} — Recent Averages (2023+)
-                    </h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th>Flat Type</th>
-                                    <th class="text-end">Avg Price</th>
-                                    <th class="text-end">Avg Area</th>
-                                    <th class="text-end">Transactions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for b in result.benchmarks %}
-                                <tr {% if b.flat_type == form_data.flat_type %}class="table-primary"{% endif %}>
-                                    <td>{{ b.flat_type }}</td>
-                                    <td class="text-end">${{ "{:,.0f}".format(b.avg_price) }}</td>
-                                    <td class="text-end">{{ b.avg_area }} sqm</td>
-                                    <td class="text-end">{{ "{:,}".format(b.txn_count) }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
             {% else %}
             <!-- Empty state -->
             <div class="card">
@@ -240,44 +183,174 @@
 {% endblock %}
 
 {% block extra_scripts %}
-{% if result and result.trend %}
 <script>
-const trendData = {{ result.trend | tojson }};
-const ctx = document.getElementById('trendChart').getContext('2d');
-new Chart(ctx, {
-    type: 'line',
-    data: {
-        labels: trendData.map(d => d.year),
-        datasets: [{
-            label: 'Average Price (SGD)',
-            data: trendData.map(d => d.avg_price),
-            borderColor: '#0d6efd',
-            backgroundColor: 'rgba(13, 110, 253, 0.1)',
-            fill: true,
-            tension: 0.3,
-            pointRadius: 3,
-        }]
-    },
-    options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-            legend: { display: false },
-            tooltip: {
-                callbacks: {
-                    label: ctx => `$${ctx.parsed.y.toLocaleString()}`
-                }
-            }
-        },
-        scales: {
-            y: {
-                ticks: {
-                    callback: v => '$' + (v/1000).toFixed(0) + 'K'
-                }
-            }
+// Slider live display
+document.getElementById('predictFloorRange').oninput = function() {
+    document.getElementById('predictFloorVal').textContent = this.value;
+};
+document.getElementById('predictLeaseRange').oninput = function() {
+    document.getElementById('predictLeaseVal').textContent = this.value;
+};
+
+// Store original dropdown options
+var predictFlatTypeSelect = document.getElementById('predictFlatType');
+var predictFlatModelSelect = document.getElementById('predictFlatModel');
+var predictStoreyRangeSelect = document.getElementById('predictStoreyRange');
+var originalPredictFlatTypeOptions = predictFlatTypeSelect.innerHTML;
+var originalPredictFlatModelOptions = predictFlatModelSelect.innerHTML;
+var originalPredictStoreyOptions = predictStoreyRangeSelect.innerHTML;
+var predictForm = document.getElementById('predictForm');
+var predictSubmitBtn = document.getElementById('predictSubmitBtn');
+var defaultSubmitHtml = predictSubmitBtn ? predictSubmitBtn.innerHTML : '';
+
+// Cascading dropdowns + dynamic sliders
+var predictTownSelect = document.getElementById('predictTown');
+var townRequestToken = 0;
+var flatTypeRequestToken = 0;
+var pendingOptionRequests = 0;
+
+function setSubmitButtonState(mode) {
+    if (!predictSubmitBtn) return;
+    if (mode === 'loading-options') {
+        predictSubmitBtn.disabled = true;
+        predictSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading options...';
+        return;
+    }
+    if (mode === 'submitting') {
+        predictSubmitBtn.disabled = true;
+        predictSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Estimating...';
+        return;
+    }
+    predictSubmitBtn.disabled = false;
+    predictSubmitBtn.innerHTML = defaultSubmitHtml;
+}
+
+function beginOptionLoad() {
+    pendingOptionRequests += 1;
+    setSubmitButtonState('loading-options');
+}
+
+function endOptionLoad() {
+    pendingOptionRequests = Math.max(0, pendingOptionRequests - 1);
+    if (pendingOptionRequests === 0) {
+        setSubmitButtonState('idle');
+    }
+}
+
+predictTownSelect.addEventListener('change', async function() {
+    var town = this.value;
+    if (!town) return;
+    var requestToken = ++townRequestToken;
+    beginOptionLoad();
+
+    try {
+        var responses = await Promise.all([
+            fetch('/api/lease_year_range?town=' + encodeURIComponent(town)),
+            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town))
+        ]);
+        if (requestToken !== townRequestToken) return;
+
+        var leaseResp = responses[0];
+        var flatTypeResp = responses[1];
+
+        if (leaseResp.ok) {
+            var data = await leaseResp.json();
+            var leaseRange = document.getElementById('predictLeaseRange');
+            leaseRange.min = data.min_year;
+            leaseRange.max = data.max_year;
+            leaseRange.value = data.avg_year;
+            document.getElementById('predictLeaseVal').textContent = data.avg_year;
         }
+
+        if (flatTypeResp.ok) {
+            var data2 = await flatTypeResp.json();
+            var validTypes = data2.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
+            Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
+                if (opt.value && validTypes.length > 0) {
+                    opt.disabled = !validTypes.includes(opt.value);
+                }
+            });
+        }
+    } catch(e) {
+        predictFlatTypeSelect.innerHTML = originalPredictFlatTypeOptions;
+    } finally {
+        // Reset flat model
+        predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+        endOptionLoad();
     }
 });
+
+predictFlatTypeSelect.addEventListener('change', async function() {
+    var town = predictTownSelect.value;
+    var flatType = this.value;
+    if (!town || !flatType) return;
+    var requestToken = ++flatTypeRequestToken;
+    beginOptionLoad();
+
+    try {
+        var responses = await Promise.all([
+            fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+            fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType)),
+            fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType))
+        ]);
+        if (requestToken !== flatTypeRequestToken) return;
+
+        var floorAreaResp = responses[0];
+        var modelResp = responses[1];
+        var storeyResp = responses[2];
+
+        if (floorAreaResp.ok) {
+            var data = await floorAreaResp.json();
+            var floorRange = document.getElementById('predictFloorRange');
+            floorRange.min = data.min_area;
+            floorRange.max = data.max_area;
+            floorRange.value = data.avg_area;
+            document.getElementById('predictFloorVal').textContent = data.avg_area;
+        }
+        if (modelResp.ok) {
+            var data2 = await modelResp.json();
+            if (data2.models && data2.models.length > 0) {
+                predictFlatModelSelect.innerHTML = data2.models.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
+            } else {
+                predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+            }
+        }
+        if (storeyResp.ok) {
+            var data3 = await storeyResp.json();
+            if (data3.storey_ranges && data3.storey_ranges.length > 0) {
+                predictStoreyRangeSelect.innerHTML = data3.storey_ranges.map(function(sr) { return '<option value="' + sr + '">' + sr + '</option>'; }).join('');
+            } else {
+                predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
+            }
+        }
+    } catch(e) {
+        predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+        predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
+    } finally {
+        endOptionLoad();
+    }
+});
+
+// Form submit loading state
+(function() {
+    if (!predictForm || !predictSubmitBtn) return;
+
+    predictForm.addEventListener('submit', function(e) {
+        if (pendingOptionRequests > 0) {
+            e.preventDefault();
+            setSubmitButtonState('loading-options');
+            return;
+        }
+        if (!predictForm.checkValidity()) {
+            setSubmitButtonState('idle');
+            return;
+        }
+        setSubmitButtonState('submitting');
+    });
+
+    window.addEventListener('pageshow', function() {
+        setSubmitButtonState('idle');
+    });
+})();
 </script>
-{% endif %}
 {% endblock %}

@@ -167,23 +167,10 @@
 </section>
 {% endif %}
 
-<section id="map-section" class="story-section bg-soft accent-map angled-top" data-reveal>
+<section id="map-section" class="story-section bg-soft accent-map" data-reveal>
     <div class="container">
         <div class="split-grid align-items-center mb-4">
-            <div>
-                <p class="section-eyebrow">Geospatial Insight</p>
-                <h2 class="section-title">Interactive Map of Location Price Behaviour</h2>
-                <p class="section-subtitle">
-                    Explore market movement geographically using pin-level transactions and location heat layers.
-                    Shift from area discovery to deep transaction context in one flow.
-                </p>
-                {% if g.user %}
-                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Explore Live Map</a>
-                {% else %}
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mapAccessModal">Explore Live Map</button>
-                {% endif %}
-            </div>
-            <div class="panel-card map-showcase shift-down" style="position:relative;">
+            <div class="panel-card map-showcase" style="position:relative;">
                 <div id="homeMap" class="home-map"></div>
                 {% if g.user %}
                 <a href="{{ url_for('map_view') }}" class="map-preview-link" aria-label="Open the live interactive map">
@@ -198,6 +185,19 @@
                     aria-label="Sign in or register to use the live interactive map">
                     <span class="visually-hidden">Sign in or register to use the live interactive map</span>
                 </button>
+                {% endif %}
+            </div>
+            <div>
+                <p class="section-eyebrow">Geospatial Insight</p>
+                <h2 class="section-title">Interactive Map of Location Price Behaviour</h2>
+                <p class="section-subtitle">
+                    Explore market movement geographically using pin-level transactions and location heat layers.
+                    Shift from area discovery to deep transaction context in one flow.
+                </p>
+                {% if g.user %}
+                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Explore Live Map</a>
+                {% else %}
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mapAccessModal">Explore Live Map</button>
                 {% endif %}
             </div>
         </div>

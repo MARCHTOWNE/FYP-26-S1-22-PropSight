@@ -206,34 +206,36 @@
 
 <section id="insights-section" class="story-section bg-soft accent-insights" data-reveal>
     <div class="container">
-        <p class="section-eyebrow">Market Intelligence</p>
-        <h2 class="section-title">Analytics dashboards for trend, volume, and location comparison</h2>
-        <p class="section-subtitle mb-4">Use card-based insights to compare towns, track yearly movements, and identify market shifts quickly.</p>
-
-        <div class="insight-grid">
-            <div class="panel-card insight-card-lg">
-                <small class="kicker">Trend</small>
-                <h6>Price Trend & Momentum</h6>
-                <p>Visualize long-term average price trajectories with dynamic filtering by town and flat type.</p>
+        <div class="insights-layout">
+            <div class="insights-text">
+                <p class="section-eyebrow">Market Intelligence</p>
+                <h2 class="section-title">Analytics dashboards for trend, volume, and location comparison</h2>
+                <p class="section-subtitle mb-4">Use card-based insights to compare towns, track yearly movements, and identify market shifts quickly.</p>
+                <div>
+                    {% if g.user %}
+                    <a href="{{ url_for('analytics') }}" class="btn btn-primary">Open Analytics Dashboard</a>
+                    {% else %}
+                    <a href="{{ url_for('login') }}" class="btn btn-primary">Login to View Full Dashboard</a>
+                    {% endif %}
+                </div>
             </div>
-            <div class="panel-card">
-                <small class="kicker">Compare</small>
-                <h6>Location Comparison</h6>
-                <p>Benchmark latest average prices and price-per-sqm across locations.</p>
+            <div class="insights-circles">
+                <div class="insight-circle insight-circle-1">
+                    <small class="kicker">Trend</small>
+                    <h6>Price Trend & Momentum</h6>
+                    <p>Visualize long-term average price trajectories with dynamic filtering by town and flat type.</p>
+                </div>
+                <div class="insight-circle insight-circle-2">
+                    <small class="kicker">Compare</small>
+                    <h6>Location Comparison</h6>
+                    <p>Benchmark latest average prices and price-per-sqm across locations.</p>
+                </div>
+                <div class="insight-circle insight-circle-3">
+                    <small class="kicker">Volume</small>
+                    <h6>Transaction Volume</h6>
+                    <p>Track yearly activity concentration to identify high-demand and cooling markets.</p>
+                </div>
             </div>
-            <div class="panel-card">
-                <small class="kicker">Volume</small>
-                <h6>Transaction Volume</h6>
-                <p>Track yearly activity concentration to identify high-demand and cooling markets.</p>
-            </div>
-        </div>
-
-        <div class="mt-4">
-            {% if g.user %}
-            <a href="{{ url_for('analytics') }}" class="btn btn-primary">Open Analytics Dashboard</a>
-            {% else %}
-            <a href="{{ url_for('login') }}" class="btn btn-primary">Login to View Full Dashboard</a>
-            {% endif %}
         </div>
     </div>
 </section>

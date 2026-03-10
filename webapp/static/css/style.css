@@ -409,14 +409,57 @@ h6,
     margin-bottom: 0.25rem;
 }
 
-.insight-grid {
+.insights-layout {
     display: grid;
-    gap: 16px;
-    grid-template-columns: 1.25fr 1fr 1fr;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 2rem;
+    align-items: center;
 }
 
-.insight-card-lg {
-    background: linear-gradient(130deg, #fff, #ecf4ff);
+.insights-circles {
+    position: relative;
+    min-height: 520px;
+}
+
+.insight-circle {
+    width: 220px;
+    height: 220px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #6D9DF2, #BAD1FF);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 2rem 1.5rem;
+    position: absolute;
+}
+
+.insight-circle h6 {
+    font-size: 0.95rem;
+    margin-bottom: 0.4rem;
+}
+
+.insight-circle p {
+    font-size: 0.72rem;
+    color: var(--text-soft);
+    margin-bottom: 0;
+    line-height: 1.45;
+}
+
+.insight-circle-1 {
+    top: 0;
+    right: 0;
+}
+
+.insight-circle-2 {
+    top: 150px;
+    right: 140px;
+}
+
+.insight-circle-3 {
+    top: 300px;
+    right: 280px;
 }
 
 .angled-top::before,
@@ -679,10 +722,27 @@ footer {
 
 @media (max-width: 992px) {
     .split-grid,
-    .insight-grid,
     .metric-grid,
     .popular-grid {
         grid-template-columns: 1fr;
+    }
+
+    .insights-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .insights-circles {
+        min-height: auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 1.2rem;
+    }
+
+    .insight-circle {
+        position: static;
+        width: 200px;
+        height: 200px;
     }
 
     .comparison-summary-grid {

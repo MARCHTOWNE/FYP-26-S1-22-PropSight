@@ -1559,6 +1559,49 @@ def upgrade():
 # Routes: Pages
 # ---------------------------------------------------------------------------
 
+def _get_popular_predictions(limit=3):
+    """Return the most common town+flat_type prediction combos across all users.
+    Falls back to top towns by recent transaction volume from resale data."""
+    # Try saved predictions first
+    try:
+        conn = _get_user_db()
+        rows = conn.execute(
+            """SELECT town, flat_type,
+                      ROUND(AVG(predicted_price)) as avg_price,
+                      COUNT(*) as count
+               FROM saved_predictions
+               GROUP BY town, flat_type
+               ORDER BY count DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+        results = [dict(r) for r in rows]
+        if results:
+            return results
+    except Exception:
+        pass
+
+    # Fallback: top towns by recent transactions from resale data
+    try:
+        conn = _get_db()
+        rows = conn.execute(
+            """SELECT town, flat_type,
+                      ROUND(AVG(resale_price)) as avg_price,
+                      COUNT(*) as count
+               FROM resale_prices
+               WHERE year >= 2023
+               GROUP BY town, flat_type
+               ORDER BY count DESC
+               LIMIT ?""",
+            (limit,),
+        ).fetchall()
+        conn.close()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
 @app.route("/")
 def home():
     # Total transaction count
@@ -1584,6 +1627,33 @@ def home():
     except Exception:
         artefact_mape = 6.5
 
+    # Popular / personalized predictions for homepage cards
+    popular_predictions = []
+    is_personalized = False
+    if g.user:
+        try:
+            user_preds = _prepare_saved_predictions(
+                _get_saved_predictions(session["user_id"])
+            )
+            if user_preds:
+                popular_predictions = user_preds[:3]
+                is_personalized = True
+            else:
+                popular_predictions = _get_popular_predictions()
+        except Exception:
+            popular_predictions = _get_popular_predictions()
+    else:
+        popular_predictions = _get_popular_predictions()
+
+    # Town coordinates for map thumbnails
+    town_coords = {}
+    try:
+        for d in _get_district_summary_data():
+            if d.get("lat") and d.get("lng"):
+                town_coords[d["town"]] = {"lat": d["lat"], "lng": d["lng"]}
+    except Exception:
+        pass
+
     return render_template(
         "home.html",
         towns=TOWNS,
@@ -1592,6 +1662,9 @@ def home():
         storey_ranges=STOREY_RANGES,
         total_txns=total_txns,
         artefact_mape=artefact_mape,
+        popular_predictions=popular_predictions,
+        is_personalized=is_personalized,
+        town_coords=town_coords,
     )
 
 

@@ -29,52 +29,15 @@
 
 <nav class="story-nav">
     <div class="container">
-        <a href="#map-section">Map</a>
         <a href="#predict-section">Predict</a>
+        <a href="#map-section">Map</a>
         <a href="#insights-section">Insights</a>
         <a href="#tech-section">Technology</a>
         <a href="#faq-section">FAQ</a>
     </div>
 </nav>
 
-<section id="map-section" class="story-section bg-soft accent-map angled-top" data-reveal>
-    <div class="container">
-        <div class="split-grid align-items-center mb-4">
-            <div>
-                <p class="section-eyebrow">Geospatial Insight</p>
-                <h2 class="section-title">Interactive Map of Location Price Behaviour</h2>
-                <p class="section-subtitle">
-                    Explore market movement geographically using pin-level transactions and location heat layers.
-                    Shift from area discovery to deep transaction context in one flow.
-                </p>
-                {% if g.user %}
-                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Explore Live Map</a>
-                {% else %}
-                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mapAccessModal">Explore Live Map</button>
-                {% endif %}
-            </div>
-            <div class="panel-card map-showcase shift-down" style="position:relative;">
-                <div id="homeMap" class="home-map"></div>
-                {% if g.user %}
-                <a href="{{ url_for('map_view') }}" class="map-preview-link" aria-label="Open the live interactive map">
-                    <span class="visually-hidden">Open the live interactive map</span>
-                </a>
-                {% else %}
-                <button
-                    type="button"
-                    class="map-preview-link map-preview-button"
-                    data-bs-toggle="modal"
-                    data-bs-target="#mapAccessModal"
-                    aria-label="Sign in or register to use the live interactive map">
-                    <span class="visually-hidden">Sign in or register to use the live interactive map</span>
-                </button>
-                {% endif %}
-            </div>
-        </div>
-    </div>
-</section>
-
-<section id="predict-section" class="story-section bg-white accent-predict angled-bottom" data-reveal>
+<section id="predict-section" class="story-section bg-white accent-predict" data-reveal>
     <div class="container">
         <div class="split-grid align-items-start">
             <div>
@@ -159,6 +122,83 @@
                         <strong>Stable to Rising</strong>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+{% if popular_predictions %}
+<section id="popular-predictions-section" class="story-section bg-soft" data-reveal>
+    <div class="container">
+        <p class="section-eyebrow">{{ "Your Predictions" if is_personalized else "Trending" }}</p>
+        <h2 class="section-title">{{ "Latest Predictions" if is_personalized else "Popular Predictions" }}</h2>
+        <p class="section-subtitle mb-4">{{ "Your most recent saved prediction results" if is_personalized else "Most predicted areas by our users" }}</p>
+
+        <div class="popular-grid">
+            {% for pred in popular_predictions %}
+            <div class="panel-card popular-card">
+                <div class="card-map" id="popMap{{ loop.index }}"
+                     data-lat="{{ town_coords.get(pred.town, {}).get('lat', 1.3521) }}"
+                     data-lng="{{ town_coords.get(pred.town, {}).get('lng', 103.8198) }}"></div>
+                <div class="popular-card-body">
+                    <h6 class="popular-card-town">{{ pred.town | title }}</h6>
+                    {% if is_personalized %}
+                        <span class="popular-card-type">{{ pred.flat_type }} &middot; {{ pred.flat_model }}</span>
+                        <div class="popular-card-price">${{ "{:,.0f}".format(pred.predicted_price) }}</div>
+                        <small class="text-muted">Saved {{ pred.created_at_date_display }}</small>
+                    {% else %}
+                        <span class="popular-card-type">{{ pred.flat_type }}</span>
+                        <div class="popular-card-price">${{ "{:,.0f}".format(pred.avg_price or 0) }}</div>
+                        <small class="text-muted">{{ pred.count }} prediction{{ "s" if pred.count != 1 }} made</small>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div class="text-center mt-4">
+            {% if is_personalized %}
+                <a href="{{ url_for('my_predictions') }}" class="btn btn-outline-primary">View All Predictions</a>
+            {% else %}
+                <a href="{{ url_for('predict') }}" class="btn btn-outline-primary">Try Predicting</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section id="map-section" class="story-section bg-soft accent-map angled-top" data-reveal>
+    <div class="container">
+        <div class="split-grid align-items-center mb-4">
+            <div>
+                <p class="section-eyebrow">Geospatial Insight</p>
+                <h2 class="section-title">Interactive Map of Location Price Behaviour</h2>
+                <p class="section-subtitle">
+                    Explore market movement geographically using pin-level transactions and location heat layers.
+                    Shift from area discovery to deep transaction context in one flow.
+                </p>
+                {% if g.user %}
+                <a href="{{ url_for('map_view') }}" class="btn btn-primary">Explore Live Map</a>
+                {% else %}
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#mapAccessModal">Explore Live Map</button>
+                {% endif %}
+            </div>
+            <div class="panel-card map-showcase shift-down" style="position:relative;">
+                <div id="homeMap" class="home-map"></div>
+                {% if g.user %}
+                <a href="{{ url_for('map_view') }}" class="map-preview-link" aria-label="Open the live interactive map">
+                    <span class="visually-hidden">Open the live interactive map</span>
+                </a>
+                {% else %}
+                <button
+                    type="button"
+                    class="map-preview-link map-preview-button"
+                    data-bs-toggle="modal"
+                    data-bs-target="#mapAccessModal"
+                    aria-label="Sign in or register to use the live interactive map">
+                    <span class="visually-hidden">Sign in or register to use the live interactive map</span>
+                </button>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -616,6 +656,27 @@ if (IS_GUEST) {
         })
         .then(data => loadHomeChoropleth(data));
 }
+
+// Popular predictions mini-maps
+document.querySelectorAll('.card-map').forEach(function(el) {
+    var lat = parseFloat(el.dataset.lat);
+    var lng = parseFloat(el.dataset.lng);
+    if (isNaN(lat) || isNaN(lng)) return;
+    var miniMap = L.map(el.id, {
+        center: [lat, lng],
+        zoom: 14,
+        zoomControl: false,
+        attributionControl: false,
+        dragging: false,
+        scrollWheelZoom: false,
+        doubleClickZoom: false,
+        touchZoom: false
+    });
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19
+    }).addTo(miniMap);
+    L.circleMarker([lat, lng], {radius: 6, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.7, weight: 2}).addTo(miniMap);
+});
 </script>
 {% if not g.user %}
 <div class="nudge-bar" id="nudgeBar">

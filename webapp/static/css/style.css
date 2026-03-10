@@ -357,6 +357,58 @@ h6,
     font-size: 0.95rem;
 }
 
+/* Popular Predictions Grid */
+.popular-grid {
+    display: grid;
+    gap: 20px;
+    grid-template-columns: repeat(3, 1fr);
+}
+
+.popular-card {
+    padding: 0;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.popular-card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-lg);
+}
+
+.card-map {
+    height: 150px;
+    width: 100%;
+    pointer-events: none;
+    border-bottom: 1px solid var(--line);
+}
+
+.popular-card-body {
+    padding: 1rem 1.1rem 1.2rem;
+}
+
+.popular-card-town {
+    font-family: var(--font-heading);
+    font-size: 1.05rem;
+    font-weight: 650;
+    margin-bottom: 0.15rem;
+    color: var(--ink);
+}
+
+.popular-card-type {
+    display: block;
+    font-size: 0.82rem;
+    color: var(--ink-soft);
+    margin-bottom: 0.5rem;
+}
+
+.popular-card-price {
+    font-family: var(--font-heading);
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 0.25rem;
+}
+
 .insight-grid {
     display: grid;
     gap: 16px;
@@ -628,7 +680,8 @@ footer {
 @media (max-width: 992px) {
     .split-grid,
     .insight-grid,
-    .metric-grid {
+    .metric-grid,
+    .popular-grid {
         grid-template-columns: 1fr;
     }
 

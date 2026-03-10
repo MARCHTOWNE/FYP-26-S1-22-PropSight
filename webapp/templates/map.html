@@ -620,6 +620,100 @@ let currentMode = 'heatmap';
 let drilledTown = null;
 let activeAmenities = new Set();
 
+// Auto-zoom to town from URL params (e.g. from predict page or saved predictions)
+(function() {
+    var urlParams = new URLSearchParams(window.location.search);
+    var targetTown = urlParams.get('town');
+    var targetStreet = urlParams.get('street');
+    var targetBlock = urlParams.get('block');
+    if (!targetTown) return;
+
+    // Set the town filter dropdown and switch to pin mode
+    var townFilter = document.getElementById('townFilter');
+    if (townFilter) {
+        // Match case-insensitively
+        Array.from(townFilter.options).forEach(function(opt) {
+            if (opt.value && opt.value.toUpperCase() === targetTown.toUpperCase()) {
+                townFilter.value = opt.value;
+            }
+        });
+    }
+
+    fetch('/api/district_summary')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var match = data.find(function(d) {
+                return d.town && d.town.toUpperCase() === targetTown.toUpperCase();
+            });
+            if (match && match.lat && match.lng) {
+                map.setView([match.lat, match.lng], 16);
+            }
+            // Load pins for the town, then highlight matching street/block
+            var params = new URLSearchParams();
+            params.set('town', targetTown);
+            params.set('limit', 1800);
+            return fetch('/api/transactions?' + params);
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(txns) {
+            markers.clearLayers();
+            var prices = txns.map(function(d) { return Number(d.resale_price); }).filter(Number.isFinite);
+            var thresholds = buildThresholds(prices, PIN_COLORS.length);
+            var matchedLatLngs = [];
+
+            txns.forEach(function(txn) {
+                if (!txn.latitude || !txn.longitude) return;
+                var price = Number(txn.resale_price);
+                var color = scaleColor(price, thresholds, PIN_COLORS);
+                var isMatch = false;
+
+                // Check if this txn matches the street/block filter
+                if (targetStreet && txn.street_name && txn.street_name.toUpperCase() === targetStreet.toUpperCase()) {
+                    if (!targetBlock || (txn.block && txn.block === targetBlock)) {
+                        isMatch = true;
+                        matchedLatLngs.push([txn.latitude, txn.longitude]);
+                    }
+                }
+
+                var radius = isMatch ? 9 : Math.max(4, Math.min(10, Number(txn.floor_area_sqm || 70) / 14));
+                var marker = L.circleMarker([txn.latitude, txn.longitude], {
+                    radius: radius,
+                    fillColor: isMatch ? '#f59e0b' : color,
+                    color: isMatch ? '#fff' : 'rgba(255,255,255,0.6)',
+                    weight: isMatch ? 2 : 0.7,
+                    fillOpacity: isMatch ? 1 : 0.85,
+                });
+
+                var predictUrl = '/predict?town=' + encodeURIComponent(txn.town) + '&flat_type=' + encodeURIComponent(txn.flat_type) + '&street_name=' + encodeURIComponent(txn.street_name || '') + '&block=' + encodeURIComponent(txn.block || '') + '&floor_area=' + (txn.floor_area_sqm || '') + '&storey_range=' + encodeURIComponent(txn.storey_range || '');
+                var analysisUrl = '/analytics?town=' + encodeURIComponent(txn.town) + '&flat_type=' + encodeURIComponent(txn.flat_type);
+
+                marker.bindPopup(
+                    '<strong>' + txn.block + ' ' + txn.street_name + '</strong><br>' +
+                    '<b style="font-size:1.05em;">$' + Number(txn.resale_price).toLocaleString() + '</b><br>' +
+                    txn.flat_type + ' · ' + txn.storey_range + '<br>' +
+                    txn.floor_area_sqm + ' sqm · ' + txn.month + '<br>' +
+                    '<span style="color:#93c5fd">' + txn.town + '</span>' +
+                    '<div style="margin-top:8px; display:flex; gap:6px;">' +
+                        '<a href="' + predictUrl + '" style="flex:1; text-align:center; padding:4px 8px; background:#2563eb; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">' +
+                            '<i class="bi bi-calculator" style="margin-right:3px;"></i>Predict</a>' +
+                        '<a href="' + analysisUrl + '" style="flex:1; text-align:center; padding:4px 8px; background:#7c3aed; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">' +
+                            '<i class="bi bi-bar-chart-line" style="margin-right:3px;"></i>Analysis</a>' +
+                    '</div>'
+                );
+
+                markers.addLayer(marker);
+            });
+
+            map.addLayer(markers);
+
+            // Zoom to matched pins if any
+            if (matchedLatLngs.length > 0) {
+                map.fitBounds(matchedLatLngs, { padding: [60, 60], maxZoom: 17 });
+            }
+        })
+        .catch(function() {});
+})();
+
 // Amenity layers
 let mrtLayer = L.layerGroup();
 let schoolLayer = L.layerGroup();
@@ -867,12 +961,23 @@ async function loadPins() {
                 fillOpacity: 0.85,
             });
 
+            const predictUrl = `/predict?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
+            const analysisUrl = `/analytics?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}`;
+
             marker.bindPopup(`
                 <strong>${txn.block} ${txn.street_name}</strong><br>
                 <b style="font-size:1.05em;">$${Number(txn.resale_price).toLocaleString()}</b><br>
                 ${txn.flat_type} · ${txn.storey_range}<br>
                 ${txn.floor_area_sqm} sqm · ${txn.month}<br>
                 <span style="color:#93c5fd">${txn.town}</span>
+                <div style="margin-top:8px; display:flex; gap:6px;">
+                    <a href="${predictUrl}" style="flex:1; text-align:center; padding:4px 8px; background:#2563eb; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">
+                        <i class="bi bi-calculator" style="margin-right:3px;"></i>Predict
+                    </a>
+                    <a href="${analysisUrl}" style="flex:1; text-align:center; padding:4px 8px; background:#7c3aed; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">
+                        <i class="bi bi-bar-chart-line" style="margin-right:3px;"></i>Analysis
+                    </a>
+                </div>
             `);
 
             markers.addLayer(marker);

@@ -135,20 +135,27 @@
                     {% endif %}
 
                     {% if g.user %}
-                    <form method="POST" action="{{ url_for('save_prediction') }}" class="mt-3">
-                        <input type="hidden" name="town" value="{{ form_data.town }}">
-                        <input type="hidden" name="flat_type" value="{{ form_data.flat_type }}">
-                        <input type="hidden" name="flat_model" value="{{ form_data.flat_model }}">
-                        <input type="hidden" name="floor_area" value="{{ form_data.floor_area }}">
-                        <input type="hidden" name="storey_range" value="{{ form_data.storey_range }}">
-                        <input type="hidden" name="lease_commence" value="{{ form_data.lease_commence }}">
-                        <input type="hidden" name="predicted_price" value="{{ result.predicted_price }}">
-                        <input type="hidden" name="price_low" value="{{ result.price_low }}">
-                        <input type="hidden" name="price_high" value="{{ result.price_high }}">
-                        <button type="submit" class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-bookmark-plus me-1"></i> Save Prediction
-                        </button>
-                    </form>
+                    <div class="mt-3 d-flex gap-2 flex-wrap justify-content-center">
+                        <form method="POST" action="{{ url_for('save_prediction') }}" class="d-inline">
+                            <input type="hidden" name="town" value="{{ form_data.town }}">
+                            <input type="hidden" name="flat_type" value="{{ form_data.flat_type }}">
+                            <input type="hidden" name="flat_model" value="{{ form_data.flat_model }}">
+                            <input type="hidden" name="floor_area" value="{{ form_data.floor_area }}">
+                            <input type="hidden" name="storey_range" value="{{ form_data.storey_range }}">
+                            <input type="hidden" name="lease_commence" value="{{ form_data.lease_commence }}">
+                            <input type="hidden" name="street_name" value="{{ form_data.get('street_name', '') }}">
+                            <input type="hidden" name="block" value="{{ form_data.get('block', '') }}">
+                            <input type="hidden" name="predicted_price" value="{{ result.predicted_price }}">
+                            <input type="hidden" name="price_low" value="{{ result.price_low }}">
+                            <input type="hidden" name="price_high" value="{{ result.price_high }}">
+                            <button type="submit" class="btn btn-outline-primary btn-sm">
+                                <i class="bi bi-bookmark-plus me-1"></i> Save Prediction
+                            </button>
+                        </form>
+                        <a href="{{ url_for('map_view') }}?town={{ form_data.town|urlencode }}{% if form_data.get('street_name') %}&street={{ form_data.street_name|urlencode }}{% endif %}{% if form_data.get('block') %}&block={{ form_data.block|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                            <i class="bi bi-geo-alt me-1"></i> View on Map
+                        </a>
+                    </div>
                     {% else %}
                     <p class="mt-3 small text-muted">
                         <a href="{{ url_for('login') }}">Log in</a> to save this prediction.
@@ -434,6 +441,80 @@ predictStreetSelect.addEventListener('change', async function() {
         }
     } catch(e) {}
 });
+
+// Auto-init cascading dropdowns if town is pre-filled (e.g. from saved prediction link)
+(async function() {
+    var initTown = predictTownSelect.value;
+    if (!initTown) return;
+    var prefillStreet = '{{ form_data.get("street_name", "") | e }}';
+    var prefillBlock = '{{ form_data.get("block", "") | e }}';
+    var prefillFlatType = '{{ form_data.get("flat_type", "") | e }}';
+    var prefillFlatModel = '{{ form_data.get("flat_model", "") | e }}';
+    var prefillStorey = '{{ form_data.get("storey_range", "") | e }}';
+
+    try {
+        var responses = await Promise.all([
+            fetch('/api/available_streets?town=' + encodeURIComponent(initTown)),
+            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(initTown)),
+            fetch('/api/lease_year_range?town=' + encodeURIComponent(initTown))
+        ]);
+
+        if (responses[0].ok) {
+            var data = await responses[0].json();
+            predictStreetSelect.innerHTML = '<option value="">Any street...</option>' +
+                (data.streets || []).map(function(s) {
+                    var sel = (s === prefillStreet) ? ' selected' : '';
+                    return '<option value="' + s + '"' + sel + '>' + s + '</option>';
+                }).join('');
+
+            // Load blocks if street is pre-filled
+            if (prefillStreet) {
+                var blockResp = await fetch('/api/available_blocks?town=' + encodeURIComponent(initTown) + '&street_name=' + encodeURIComponent(prefillStreet));
+                if (blockResp.ok) {
+                    var blockData = await blockResp.json();
+                    predictBlockSelect.innerHTML = '<option value="">Any block...</option>' +
+                        (blockData.blocks || []).map(function(b) {
+                            var sel = (b === prefillBlock) ? ' selected' : '';
+                            return '<option value="' + b + '"' + sel + '>' + b + '</option>';
+                        }).join('');
+                }
+            }
+        }
+
+        // Load flat type dependent options
+        if (prefillFlatType && responses[1].ok) {
+            var ftData = await responses[1].json();
+            var validTypes = ftData.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
+            Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
+                if (opt.value && validTypes.length > 0) opt.disabled = !validTypes.includes(opt.value);
+            });
+
+            var detailResponses = await Promise.all([
+                fetch('/api/available_models?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType)),
+                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType))
+            ]);
+
+            if (detailResponses[0].ok) {
+                var modelData = await detailResponses[0].json();
+                if (modelData.models && modelData.models.length > 0) {
+                    predictFlatModelSelect.innerHTML = modelData.models.map(function(m) {
+                        var sel = (m === prefillFlatModel) ? ' selected' : '';
+                        return '<option value="' + m + '"' + sel + '>' + m + '</option>';
+                    }).join('');
+                }
+            }
+            if (detailResponses[1].ok) {
+                var storeyData = await detailResponses[1].json();
+                if (storeyData.storey_ranges && storeyData.storey_ranges.length > 0) {
+                    predictStoreyRangeSelect.innerHTML = storeyData.storey_ranges.map(function(sr) {
+                        var sel = (sr === prefillStorey) ? ' selected' : '';
+                        return '<option value="' + sr + '"' + sel + '>' + sr + '</option>';
+                    }).join('');
+                }
+            }
+        }
+    } catch(e) {}
+})();
 
 predictFlatTypeSelect.addEventListener('change', async function() {
     var town = predictTownSelect.value;

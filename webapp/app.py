@@ -311,6 +311,13 @@ def _init_user_db():
         conn.commit()
     except sqlite3.OperationalError:
         pass  # column already exists
+    # Migrate: add street_name and block columns to saved_predictions
+    for col in ("street_name TEXT DEFAULT ''", "block TEXT DEFAULT ''"):
+        try:
+            conn.execute(f"ALTER TABLE saved_predictions ADD COLUMN {col}")
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass
     conn.commit()
     conn.close()
 
@@ -441,20 +448,34 @@ def _sqlite_create_user(username, email, password_hash):
 
 def _save_prediction_record(user_id, prediction):
     if SUPABASE_ENABLED:
-        rows = _supabase_request(
-            SUPABASE_PREDICTIONS_TABLE,
-            method="POST",
-            payload={"user_id": user_id, **prediction},
-            prefer="return=representation",
-        )
-        return rows[0] if rows else None
+        payload = {"user_id": user_id, **prediction}
+        try:
+            rows = _supabase_request(
+                SUPABASE_PREDICTIONS_TABLE,
+                method="POST",
+                payload=payload,
+                prefer="return=representation",
+            )
+            return rows[0] if rows else None
+        except SupabaseError:
+            # Retry without street_name/block if columns don't exist yet
+            payload.pop("street_name", None)
+            payload.pop("block", None)
+            rows = _supabase_request(
+                SUPABASE_PREDICTIONS_TABLE,
+                method="POST",
+                payload=payload,
+                prefer="return=representation",
+            )
+            return rows[0] if rows else None
 
     conn = _get_user_db()
     conn.execute(
         """INSERT INTO saved_predictions
            (user_id, town, flat_type, flat_model, floor_area,
-            storey_range, lease_commence, predicted_price, price_low, price_high)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            storey_range, lease_commence, predicted_price, price_low, price_high,
+            street_name, block)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             user_id,
             prediction["town"],
@@ -466,6 +487,8 @@ def _save_prediction_record(user_id, prediction):
             prediction["predicted_price"],
             prediction["price_low"],
             prediction["price_high"],
+            prediction.get("street_name", ""),
+            prediction.get("block", ""),
         ),
     )
     conn.commit()
@@ -564,56 +587,249 @@ def _get_saved_prediction_by_id(predictions, prediction_id):
     return next((p for p in predictions if p.get("id") == target_id), None)
 
 
-def _format_comparison_delta(value, suffix="", currency=False):
+def _format_distance(value):
+    """Format a distance value in meters to a readable string."""
     if value is None:
         return "N/A"
-
     try:
-        numeric = float(value)
+        m = float(value)
     except (TypeError, ValueError):
         return "N/A"
-
-    sign = "+" if numeric > 0 else "-" if numeric < 0 else ""
-    magnitude = abs(numeric)
-
-    if currency:
-        return f"{sign}${magnitude:,.0f}"
-
-    if magnitude.is_integer():
-        formatted = f"{int(magnitude):,}"
-    else:
-        formatted = f"{magnitude:,.1f}".rstrip("0").rstrip(".")
-    return f"{sign}{formatted}{suffix}"
+    if m >= 1000:
+        return f"{m / 1000:,.1f} km"
+    return f"{m:,.0f}m"
 
 
-def _build_prediction_comparison(left, right):
-    if not left or not right:
+def _build_comparison_analysis(payloads):
+    """Analyze ALL properties together and return unified comparison data."""
+    if len(payloads) < 2:
         return None
 
-    predicted_delta = float(right["predicted_price"]) - float(left["predicted_price"])
-    area_delta = float(right["floor_area"]) - float(left["floor_area"])
-    lease_delta = int(right["lease_commence"]) - int(left["lease_commence"])
-    overlap_low = max(float(left["price_low"]), float(right["price_low"]))
-    overlap_high = min(float(left["price_high"]), float(right["price_high"]))
-    overlap_exists = overlap_low <= overlap_high
+    labels = [chr(ord("A") + i) for i in range(len(payloads))]
+
+    # Define feature rows: (key, label, format_type, best_direction)
+    # best_direction: "min" = lower is better, "max" = higher is better, None = neutral
+    feature_defs = [
+        ("predicted_price", "Predicted Price", "currency", None),
+        ("price_per_sqm", "Price / sqm", "currency", None),
+        ("floor_area", "Floor Area", "sqm", "max"),
+        ("storey_midpoint", "Storey (mid)", "floor", "max"),
+        ("remaining_lease", "Remaining Lease", "yrs", "max"),
+        ("flat_age", "Flat Age", "yrs", "min"),
+        ("dist_mrt", "Nearest MRT", "dist", "min"),
+        ("dist_school", "Nearest School", "dist", "min"),
+        ("dist_mall", "Nearest Mall", "dist", "min"),
+        ("dist_cbd", "Distance to CBD", "dist", "min"),
+        ("is_mature", "Mature Estate", "yesno", None),
+    ]
+
+    features = []
+    for key, label, fmt, best_dir in feature_defs:
+        raw_values = [p.get(key) for p in payloads]
+
+        # Format display values
+        display_values = []
+        for v in raw_values:
+            if v is None:
+                display_values.append("N/A")
+            elif fmt == "currency":
+                display_values.append(f"${float(v):,.0f}")
+            elif fmt == "sqm":
+                display_values.append(f"{float(v):,.0f} sqm")
+            elif fmt == "floor":
+                display_values.append(f"{float(v):,.0f}")
+            elif fmt == "yrs":
+                display_values.append(f"{int(v)} yrs")
+            elif fmt == "dist":
+                display_values.append(_format_distance(v))
+            elif fmt == "yesno":
+                display_values.append("Yes" if v else "No")
+            else:
+                display_values.append(str(v))
+
+        # Determine best/worst indices
+        best_idx = None
+        worst_idx = None
+        if best_dir:
+            numeric = []
+            for i, v in enumerate(raw_values):
+                try:
+                    numeric.append((i, float(v)))
+                except (TypeError, ValueError):
+                    pass
+            if len(numeric) >= 2:
+                if best_dir == "min":
+                    best_idx = min(numeric, key=lambda x: x[1])[0]
+                    worst_idx = max(numeric, key=lambda x: x[1])[0]
+                else:
+                    best_idx = max(numeric, key=lambda x: x[1])[0]
+                    worst_idx = min(numeric, key=lambda x: x[1])[0]
+                # Don't highlight if all values are the same
+                if all(n[1] == numeric[0][1] for n in numeric):
+                    best_idx = None
+                    worst_idx = None
+
+        features.append({
+            "label": label,
+            "values": display_values,
+            "best_idx": best_idx,
+            "worst_idx": worst_idx,
+        })
+
+    # Generate dynamic insights from the actual data
+    insights = _generate_comparison_insights(payloads, labels)
 
     return {
-        "predicted_delta_label": _format_comparison_delta(predicted_delta, currency=True),
-        "area_delta_label": _format_comparison_delta(area_delta, suffix=" sqm"),
-        "lease_delta_label": _format_comparison_delta(lease_delta, suffix=" yrs"),
-        "range_overlap_exists": overlap_exists,
-        "range_overlap_label": (
-            f"${overlap_low:,.0f} - ${overlap_high:,.0f}"
-            if overlap_exists
-            else "No overlap"
-        ),
+        "labels": labels,
+        "features": features,
+        "insights": insights,
     }
 
 
+def _generate_comparison_insights(payloads, labels):
+    """Generate dynamic insights by analyzing real feature data across all properties."""
+    insights = []
+
+    def _best_worst(key, direction="min"):
+        """Find best and worst property for a numeric key."""
+        vals = []
+        for i, p in enumerate(payloads):
+            v = p.get(key)
+            if v is not None:
+                try:
+                    vals.append((i, float(v)))
+                except (TypeError, ValueError):
+                    pass
+        if len(vals) < 2:
+            return None, None, None, None
+        if all(v[1] == vals[0][1] for v in vals):
+            return None, None, None, None  # all same
+        if direction == "min":
+            best = min(vals, key=lambda x: x[1])
+            worst = max(vals, key=lambda x: x[1])
+        else:
+            best = max(vals, key=lambda x: x[1])
+            worst = min(vals, key=lambda x: x[1])
+        return labels[best[0]], best[1], labels[worst[0]], worst[1]
+
+    # MRT distance insight
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_mrt", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is closest to an MRT station ({_format_distance(best_v)}), "
+            f"while {worst_l} is farthest ({_format_distance(worst_v)}). "
+            f"Proximity to MRT typically increases property value."
+        )
+
+    # School distance insight
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_school", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is nearest to a primary school ({_format_distance(best_v)}), "
+            f"while {worst_l} is farthest ({_format_distance(worst_v)})."
+        )
+
+    # Mall distance insight
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_mall", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is closest to a major mall ({_format_distance(best_v)}), "
+            f"while {worst_l} is farthest ({_format_distance(worst_v)})."
+        )
+
+    # CBD distance insight
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_cbd", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is closest to the CBD ({_format_distance(best_v)}), "
+            f"while {worst_l} is farthest ({_format_distance(worst_v)}). "
+            f"Closer CBD proximity generally commands a premium."
+        )
+
+    # Remaining lease
+    best_l, best_v, worst_l, worst_v = _best_worst("remaining_lease", "max")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} has the most remaining lease ({int(best_v)} yrs) "
+            f"vs {worst_l} ({int(worst_v)} yrs). "
+            f"Longer remaining lease supports higher valuations."
+        )
+
+    # Price per sqm (value for money)
+    best_l, best_v, worst_l, worst_v = _best_worst("price_per_sqm", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} offers the best value at ${best_v:,.0f}/sqm, "
+            f"while {worst_l} is the most expensive at ${worst_v:,.0f}/sqm."
+        )
+
+    # Storey premium
+    best_l, best_v, worst_l, worst_v = _best_worst("storey_midpoint", "max")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is on a higher floor (level {int(best_v)}) "
+            f"vs {worst_l} (level {int(worst_v)}). "
+            f"Higher floors generally command a premium for better views and ventilation."
+        )
+
+    # Mature estate
+    mature_flags = [p.get("is_mature", False) for p in payloads]
+    towns = [p.get("town", "") for p in payloads]
+    unique_towns = list(dict.fromkeys(towns))  # preserve order, deduplicate
+    if all(mature_flags):
+        if len(unique_towns) == 1:
+            insights.append(
+                f"All properties are in {unique_towns[0]} (mature estate), "
+                f"so estate maturity is not a differentiating factor."
+            )
+        else:
+            insights.append(
+                f"All properties are in mature estates ({', '.join(unique_towns)}), "
+                f"which tend to have established amenities and higher demand."
+            )
+    elif not any(mature_flags):
+        insights.append(
+            f"All properties are in non-mature estates ({', '.join(unique_towns)}), "
+            f"which may offer newer developments but typically lower prices."
+        )
+    else:
+        mature_labels = [labels[i] for i, m in enumerate(mature_flags) if m]
+        non_mature_labels = [labels[i] for i, m in enumerate(mature_flags) if not m]
+        insights.append(
+            f"Predictions {', '.join(mature_labels)} are in mature estates, "
+            f"while {', '.join(non_mature_labels)} are in non-mature estates. "
+            f"Mature estates typically command higher prices due to established amenities."
+        )
+
+    # Different flat types
+    flat_types = [p.get("flat_type", "") for p in payloads]
+    unique_ft = set(flat_types)
+    if len(unique_ft) > 1:
+        insights.append(
+            f"Properties have different flat types ({', '.join(unique_ft)}), "
+            f"which significantly affects pricing."
+        )
+
+    if not insights:
+        insights.append(
+            "All properties have very similar attributes and location features, "
+            "resulting in close valuations."
+        )
+
+    return insights
+
+
+def _comparison_max_panels():
+    """Return maximum number of comparison panels for the current user."""
+    tier = session.get("subscription_tier", "general")
+    return 5 if tier == "premium" else 2
+
+
 def _get_comparison_saved_prediction_ids():
+    max_panels = _comparison_max_panels()
     raw_ids = session.get("comparison_saved_prediction_ids", [])
     ids = []
-    for value in raw_ids[:2]:
+    for value in raw_ids[:max_panels]:
         try:
             ids.append(int(value))
         except (TypeError, ValueError):
@@ -622,13 +838,15 @@ def _get_comparison_saved_prediction_ids():
 
 
 def _set_comparison_saved_prediction_ids(prediction_ids):
-    session["comparison_saved_prediction_ids"] = [int(pid) for pid in prediction_ids[:2]]
+    max_panels = _comparison_max_panels()
+    session["comparison_saved_prediction_ids"] = [int(pid) for pid in prediction_ids[:max_panels]]
 
 
 def _push_comparison_saved_prediction_id(prediction_id):
+    max_panels = _comparison_max_panels()
     updated = [pid for pid in _get_comparison_saved_prediction_ids() if pid != prediction_id]
     updated.append(int(prediction_id))
-    updated = updated[-2:]
+    updated = updated[-max_panels:]
     _set_comparison_saved_prediction_ids(updated)
     return updated
 
@@ -658,6 +876,8 @@ def _prediction_form_from_saved(saved_prediction):
         "floor_area": saved_prediction.get("floor_area", form_data["floor_area"]),
         "storey_range": saved_prediction.get("storey_range", form_data["storey_range"]),
         "lease_commence": saved_prediction.get("lease_commence", form_data["lease_commence"]),
+        "street_name": saved_prediction.get("street_name", ""),
+        "block": saved_prediction.get("block", ""),
     })
     return form_data
 
@@ -712,7 +932,39 @@ def _run_prediction_form(form_data):
     )
     result["assumptions"] = assumptions
 
-    return resolved_form, result, {**resolved_form, **result}
+    # Enrich payload with distances and derived features for comparison
+    town = resolved_form["town"]
+    if block_distances:
+        dists = block_distances
+    else:
+        town_dists = TOWN_DISTANCES.get(town, {})
+        dists = {
+            "dist_mrt": town_dists.get("avg_dist_mrt"),
+            "dist_cbd": town_dists.get("avg_dist_cbd"),
+            "dist_school": town_dists.get("avg_dist_school"),
+            "dist_mall": town_dists.get("avg_dist_mall"),
+        }
+
+    flat_age = datetime.now().year - resolved_form["lease_commence"]
+    remaining_lease = max(0, 99 - flat_age)
+    storey_parts = resolved_form["storey_range"].split(" TO ")
+    storey_mid = (int(storey_parts[0]) + int(storey_parts[1])) / 2
+    price_per_sqm = round(result["predicted_price"] / resolved_form["floor_area"], 2) if resolved_form["floor_area"] else 0
+
+    payload = {
+        **resolved_form, **result,
+        "dist_mrt": dists.get("dist_mrt"),
+        "dist_cbd": dists.get("dist_cbd"),
+        "dist_school": dists.get("dist_school"),
+        "dist_mall": dists.get("dist_mall"),
+        "is_mature": town in MATURE_ESTATES,
+        "flat_age": flat_age,
+        "remaining_lease": remaining_lease,
+        "storey_midpoint": storey_mid,
+        "price_per_sqm": price_per_sqm,
+    }
+
+    return resolved_form, result, payload
 
 
 def _delete_saved_prediction(pred_id, user_id):
@@ -1683,32 +1935,70 @@ def comparison():
         except SupabaseError:
             flash("Could not load saved predictions from Supabase.", "danger")
 
+    is_premium = session.get("subscription_tier", "general") == "premium"
+    max_panels = _comparison_max_panels()
+
     selected_saved_ids = _get_comparison_saved_prediction_ids() if g.user else []
-    left_id = request.values.get("left_id", "").strip() or (
-        str(selected_saved_ids[0]) if len(selected_saved_ids) >= 1 else ""
-    )
-    right_id = request.values.get("right_id", "").strip() or (
-        str(selected_saved_ids[1]) if len(selected_saved_ids) >= 2 else ""
-    )
 
-    left_saved = _get_saved_prediction_by_id(saved_predictions, left_id)
-    right_saved = _get_saved_prediction_by_id(saved_predictions, right_id)
-
-    left_form_data = _prediction_form_from_saved(left_saved)
-    right_form_data = _prediction_form_from_saved(right_saved)
-    left_result = None
-    right_result = None
-    comparison_summary = None
-
+    # Determine how many panels to show
+    is_add_or_remove = False
     if request.method == "POST":
-        left_form_data = _extract_prediction_form_data(request.form, "left", seed=left_form_data)
-        right_form_data = _extract_prediction_form_data(request.form, "right", seed=right_form_data)
-    should_compare = request.method == "POST" or bool(left_saved and right_saved)
+        panel_count = int(request.form.get("panel_count", 2))
+        if request.form.get("add_panel"):
+            is_add_or_remove = True
+        if request.form.get("remove_panel") is not None:
+            is_add_or_remove = True
+    else:
+        # Check query param panel_count first (from saved predictions page)
+        panel_count = int(request.args.get("panel_count", 0)) or max(2, len(selected_saved_ids))
+    panel_count = max(2, min(panel_count, max_panels))
 
-    if should_compare and left_form_data.get("town") and right_form_data.get("town"):
-        left_form_data, left_result, left_payload = _run_prediction_form(left_form_data)
-        right_form_data, right_result, right_payload = _run_prediction_form(right_form_data)
-        comparison_summary = _build_prediction_comparison(left_payload, right_payload)
+    # Build panels data
+    panels = []
+    for i in range(panel_count):
+        prefix = f"p{i}"
+        label = chr(ord("A") + i)  # A, B, C, D, E
+
+        saved_id = request.values.get(f"{prefix}_id", "").strip() or (
+            str(selected_saved_ids[i]) if i < len(selected_saved_ids) else ""
+        )
+        saved = _get_saved_prediction_by_id(saved_predictions, saved_id)
+        form_data = _prediction_form_from_saved(saved)
+        result = None
+
+        if request.method == "POST":
+            form_data = _extract_prediction_form_data(request.form, prefix, seed=form_data)
+
+        panels.append({
+            "index": i,
+            "prefix": prefix,
+            "label": label,
+            "prefilled": bool(saved),
+            "form_data": form_data,
+            "result": result,
+        })
+
+    # Run predictions (skip if just adding/removing a panel)
+    should_compare = not is_add_or_remove and (
+        request.method == "POST" or all(
+            _get_saved_prediction_by_id(saved_predictions,
+                request.values.get(f"p{i}_id", "").strip() or
+                (str(selected_saved_ids[i]) if i < len(selected_saved_ids) else ""))
+            for i in range(panel_count)
+        )
+    )
+    all_have_town = all(p["form_data"].get("town") for p in panels)
+
+    payloads = []
+    if should_compare and all_have_town:
+        for p in panels:
+            resolved_form, result, payload = _run_prediction_form(p["form_data"])
+            p["form_data"] = resolved_form
+            p["result"] = result
+            payloads.append(payload)
+
+    # Build unified comparison analysis across all properties
+    comparison_analysis = _build_comparison_analysis(payloads) if len(payloads) >= 2 else None
 
     return render_template(
         "comparison.html",
@@ -1717,13 +2007,11 @@ def comparison():
         flat_types=list(FLAT_TYPE_ORDINAL.keys()),
         flat_models=FLAT_MODELS,
         storey_ranges=STOREY_RANGES,
-        left_prefilled=bool(left_saved),
-        right_prefilled=bool(right_saved),
-        left_form_data=left_form_data,
-        right_form_data=right_form_data,
-        left_result=left_result,
-        right_result=right_result,
-        comparison_summary=comparison_summary,
+        panels=panels,
+        panel_count=panel_count,
+        max_panels=max_panels,
+        is_premium=is_premium,
+        comparison_analysis=comparison_analysis,
     )
 
 
@@ -1742,10 +2030,12 @@ def comparison_select_saved(pred_id):
         return redirect(url_for("my_predictions"))
 
     updated_ids = _push_comparison_saved_prediction_id(pred_id)
-    if len(updated_ids) == 1:
-        flash("Saved prediction added to comparison. Choose one more to auto-fill the second side.", "info")
+    max_panels = _comparison_max_panels()
+    if len(updated_ids) < max_panels:
+        remaining = max_panels - len(updated_ids)
+        flash(f"Saved prediction added to comparison. You can add {remaining} more.", "info")
     else:
-        flash("Saved prediction added. The latest two saved selections are now auto-filled in comparison.", "success")
+        flash(f"Saved prediction added. All {max_panels} comparison slots are now filled.", "success")
 
     return redirect(url_for("comparison"))
 
@@ -1754,7 +2044,16 @@ def comparison_select_saved(pred_id):
 @login_required
 def predict():
     result = None
-    form_data = {}
+    form_data = {
+        "town": request.args.get("town", ""),
+        "flat_type": request.args.get("flat_type", ""),
+        "flat_model": request.args.get("flat_model", ""),
+        "floor_area": request.args.get("floor_area", ""),
+        "storey_range": request.args.get("storey_range", ""),
+        "lease_commence": request.args.get("lease_commence", ""),
+        "street_name": request.args.get("street_name", ""),
+        "block": request.args.get("block", ""),
+    }
     timeline = None
     flat_age = None
     remaining_lease = None
@@ -1870,6 +2169,8 @@ def save_prediction():
         "predicted_price": float(request.form["predicted_price"]),
         "price_low": float(request.form["price_low"]),
         "price_high": float(request.form["price_high"]),
+        "street_name": request.form.get("street_name", "").strip(),
+        "block": request.form.get("block", "").strip(),
     }
     try:
         _save_prediction_record(session["user_id"], prediction)
@@ -1898,6 +2199,22 @@ def delete_prediction(pred_id):
         flash("Prediction deleted.", "info")
     except SupabaseError:
         flash("Could not delete prediction from Supabase.", "danger")
+    return redirect(url_for("my_predictions"))
+
+
+@app.route("/my_predictions/bulk_delete", methods=["POST"])
+@login_required
+def bulk_delete_predictions():
+    ids = request.form.getlist("ids")
+    deleted = 0
+    for pred_id in ids:
+        try:
+            _delete_saved_prediction(int(pred_id), session["user_id"])
+            deleted += 1
+        except (SupabaseError, ValueError):
+            continue
+    if deleted:
+        flash(f"Deleted {deleted} prediction(s).", "info")
     return redirect(url_for("my_predictions"))
 
 
@@ -2068,6 +2385,8 @@ def api_price_trend_simple():
     """Yearly avg price trend (SQLite-compatible, no PERCENTILE)."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
 
     if SUPABASE_ENABLED:
         try:
@@ -2093,6 +2412,12 @@ def api_price_trend_simple():
     if flat_type:
         query += " AND flat_type = ?"
         params.append(flat_type)
+    if street_name:
+        query += " AND street_name = ?"
+        params.append(street_name)
+    if block:
+        query += " AND block = ?"
+        params.append(block)
     query += " GROUP BY year ORDER BY year"
     rows = conn.execute(query, params).fetchall()
     conn.close()
@@ -2130,6 +2455,33 @@ def api_district_comparison():
 def api_flat_type_breakdown():
     """Return flat type breakdown for a town."""
     town = request.args.get("town", "")
+    street_name = request.args.get("street_name", "")
+
+    # If street_name provided, run a custom query instead of the helper
+    if street_name and _has_local_resale_db():
+        try:
+            conn = _get_db()
+            query = """
+                SELECT flat_type,
+                       ROUND(AVG(resale_price)) as avg_price,
+                       COUNT(*) as txn_count,
+                       ROUND(AVG(floor_area_sqm)) as avg_area
+                FROM resale_prices
+                WHERE year >= 2023
+            """
+            params = []
+            if town:
+                query += " AND town = ?"
+                params.append(town)
+            query += " AND street_name = ?"
+            params.append(street_name)
+            query += " GROUP BY flat_type ORDER BY flat_type"
+            rows = conn.execute(query, params).fetchall()
+            conn.close()
+            return jsonify([dict(r) for r in rows])
+        except sqlite3.Error:
+            pass
+
     return jsonify(_get_flat_type_breakdown_data(town))
 
 
@@ -2320,6 +2672,8 @@ def api_prediction_context():
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
     predicted_price = request.args.get("predicted_price", type=float, default=0)
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
 
     # Lease decay
     lease_decay = []
@@ -2344,6 +2698,12 @@ def api_prediction_context():
             if flat_type:
                 query += " AND flat_type = ?"
                 params.append(flat_type)
+            if street_name:
+                query += " AND street_name = ?"
+                params.append(street_name)
+            if block:
+                query += " AND block = ?"
+                params.append(block)
             query += " GROUP BY lease_bucket ORDER BY lease_bucket DESC"
             rows = conn.execute(query, params).fetchall()
             conn.close()
@@ -2354,11 +2714,71 @@ def api_prediction_context():
     # Recent transactions
     recent = _get_recent_similar_transactions(town, flat_type, limit=20)
 
+    # Post-filter recent transactions by street_name / block if provided
+    if street_name:
+        recent = [r for r in recent if r.get("street_name") == street_name]
+    if block:
+        recent = [r for r in recent if r.get("block") == block]
+
     return jsonify({
         "lease_decay": lease_decay,
         "recent_transactions": recent,
         "predicted_price": predicted_price,
     })
+
+
+# ---------------------------------------------------------------------------
+# API: Future Prediction
+# ---------------------------------------------------------------------------
+
+@app.route("/api/future_prediction")
+@api_login_required
+def api_future_prediction():
+    """Return a 5-year price forecast as JSON."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    flat_model = request.args.get("flat_model", "")
+    floor_area = request.args.get("floor_area", type=float, default=90)
+    storey_range = request.args.get("storey_range", "")
+    lease_commence = request.args.get("lease_commence", type=int, default=1990)
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+
+    if not town or not flat_type:
+        return jsonify({"error": "town and flat_type are required"}), 400
+
+    # Resolve block distances if street_name and block provided
+    block_distances = None
+    if street_name and block:
+        block_distances = _get_block_distances(town, street_name, block)
+
+    current_year = datetime.now().year
+    try:
+        result = predict_price(
+            town, flat_type, flat_model, floor_area, storey_range,
+            lease_commence, override_distances=block_distances,
+        )
+    except Exception:
+        return jsonify({"error": "Prediction failed"}), 500
+
+    timeline = [{"year": current_year, "predicted_price": result["predicted_price"],
+                 "price_low": result["price_low"], "price_high": result["price_high"],
+                 "remaining_lease": max(0, 99 - (current_year - lease_commence))}]
+    for y_offset in range(1, 6):
+        future_year = current_year + y_offset
+        try:
+            fp = predict_price(
+                town, flat_type, flat_model, floor_area, storey_range,
+                lease_commence, override_year=future_year,
+                override_distances=block_distances,
+            )
+        except Exception:
+            fp = {"predicted_price": 0, "price_low": 0, "price_high": 0}
+        fp["year"] = future_year
+        fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
+        timeline.append(fp)
+
+    return jsonify({"timeline": timeline})
 
 
 # ---------------------------------------------------------------------------

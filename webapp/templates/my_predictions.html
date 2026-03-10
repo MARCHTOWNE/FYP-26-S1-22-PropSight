@@ -8,13 +8,19 @@
             <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
         </h4>
         {% if predictions|length >= 1 %}
-        <button id="compare-btn" class="btn btn-primary btn-sm" disabled>
-            <i class="bi bi-columns-gap me-1"></i>Compare Selected (<span id="compare-count">0</span>)
-        </button>
+        <div class="d-flex gap-2">
+            <button id="delete-selected-btn" class="btn btn-outline-danger btn-sm" disabled>
+                <i class="bi bi-trash me-1"></i>Delete Selected (<span id="delete-count">0</span>)
+            </button>
+            <button id="compare-btn" class="btn btn-primary btn-sm" disabled>
+                <i class="bi bi-columns-gap me-1"></i>Compare Selected (<span id="compare-count">0</span>)
+            </button>
+        </div>
         {% endif %}
     </div>
 
     {% if predictions %}
+    <form id="bulkDeleteForm" method="POST" action="{{ url_for('bulk_delete_predictions') }}">
     <div class="card">
         <div class="table-responsive">
             <table class="table table-hover table-predictions mb-0">
@@ -22,6 +28,7 @@
                     <tr>
                         <th class ="text-center" style="width:50px">Select</th>
                         <th>Town</th>
+                        <th>Street / Block</th>
                         <th>Flat Type</th>
                         <th>Model</th>
                         <th class="text-end">Area</th>
@@ -34,11 +41,19 @@
                 </thead>
                 <tbody>
                     {% for p in predictions %}
-                    <tr>
-                        <td class="text-center">
-                            <input type="checkbox" class="form-check-input compare-check" value="{{ p['id'] }}">
+                    <tr class="prediction-row" style="cursor:pointer"
+                        data-href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}">
+                        <td class="text-center" onclick="event.stopPropagation()">
+                            <input type="checkbox" class="form-check-input compare-check" name="ids" value="{{ p['id'] }}">
                         </td>
                         <td>{{ p['town'] }}</td>
+                        <td class="small">
+                            {% if p.get('street_name') or p.get('block') %}
+                                {% if p.get('block') %}{{ p['block'] }} {% endif %}{{ p.get('street_name', '') }}
+                            {% else %}
+                                <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
                         <td>{{ p['flat_type'] }}</td>
                         <td>{{ p['flat_model'] }}</td>
                         <td class="text-end">{{ "{:,.0f}".format(p['floor_area']) }} sqm</td>
@@ -56,16 +71,21 @@
                             <div class="text-muted">{{ p['created_at_time_display'] }}</div>
                             {% endif %}
                         </td>
-                        <td>
+                        <td onclick="event.stopPropagation()">
                             <div class="saved-predictions-actions">
-                                {% if predictions|length >= 1 %}
+                                <a href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}" class="btn btn-sm btn-outline-secondary" title="Edit in Predict page">
+                                    <i class="bi bi-pencil"></i>
+                                </a>
+                                <a href="{{ url_for('map_view') }}?town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" class="btn btn-sm btn-outline-success" title="View on Map">
+                                    <i class="bi bi-geo-alt"></i>
+                                </a>
                                 <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" class="btn btn-sm btn-outline-primary">
                                     <i class="bi bi-columns-gap me-1"></i>Compare
                                 </a>
-                                {% endif %}
                                 <form method="POST"
                                       action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
-                                      onsubmit="return confirm('Delete this prediction?')">
+                                      onsubmit="return confirm('Delete this prediction?')"
+                                      style="display:inline">
                                     <button type="submit" class="btn btn-sm btn-outline-danger">
                                         <i class="bi bi-trash"></i>
                                     </button>
@@ -78,32 +98,51 @@
             </table>
         </div>
     </div>
+    </form>
         <script>
+            var IS_PREMIUM = {{ 'true' if session.get('subscription_tier') == 'premium' else 'false' }};
+            var MAX_COMPARE = IS_PREMIUM ? 5 : 2;
             const checkboxes = document.querySelectorAll('.compare-check');
             const compareBtn = document.getElementById('compare-btn');
             const compareCount = document.getElementById('compare-count');
+            const deleteBtn = document.getElementById('delete-selected-btn');
+            const deleteCount = document.getElementById('delete-count');
             const baseUrl = "{{ url_for('comparison') }}";
+
+            function updateCounts() {
+                const checked = document.querySelectorAll('.compare-check:checked');
+                compareCount.textContent = checked.length;
+                deleteCount.textContent = checked.length;
+                compareBtn.disabled = checked.length < 2;
+                deleteBtn.disabled = checked.length === 0;
+            }
 
             checkboxes.forEach(cb=> {
                 cb.addEventListener('change', () => {
                     const checked = document.querySelectorAll('.compare-check:checked');
 
-                    if (checked.length > 2) {
+                    if (checked.length > MAX_COMPARE) {
                         cb.checked = false;
                         const old = document.getElementById('compare-warning');
                         if (old) old.remove();
                         const warning = document.createElement('div');
                         warning.id = 'compare-warning';
-                        warning.className = 'alert alert-warning alert-dismissible fade show';
+                        warning.className = 'alert alert-warning alert-dismissible fade show mt-3';
                         warning.setAttribute('role', 'alert');
-                        warning.innerHTML = 'You can only select up to 2 predictions to compare.' +
+                        warning.innerHTML = 'You can select up to ' + MAX_COMPARE + ' predictions to compare.' +
+                            (IS_PREMIUM ? '' : ' <a href="/pricing">Upgrade to Premium</a> for up to 5.') +
                             '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
-                        document.querySelector('.container.mt-3').appendChild(warning);
+                        document.querySelector('.container.py-4').appendChild(warning);
                         return;
                     }
 
-                    compareCount.textContent = checked.length;
-                    compareBtn.disabled = checked.length === 0;
+                    updateCounts();
+                });
+            });
+
+            document.querySelectorAll('.prediction-row').forEach(row => {
+                row.addEventListener('click', () => {
+                    window.location.href = row.dataset.href;
                 });
             });
 
@@ -111,9 +150,18 @@
                 const checked = document.querySelectorAll('.compare-check:checked');
                 const ids = Array.from(checked).map(cb=>cb.value);
                 const params = new URLSearchParams();
-                params.set('left_id', ids[0]);
-                if (ids[1]) params.set('right_id', ids[1]);
+                ids.forEach((id, i) => {
+                    params.set('p' + i + '_id', id);
+                });
+                params.set('panel_count', ids.length);
                 window.location.href = baseUrl + '?' + params.toString();
+            });
+
+            deleteBtn.addEventListener('click', () => {
+                const checked = document.querySelectorAll('.compare-check:checked');
+                if (checked.length === 0) return;
+                if (!confirm('Delete ' + checked.length + ' selected prediction(s)?')) return;
+                document.getElementById('bulkDeleteForm').submit();
             });
         </script>
     {% else %}

@@ -7,10 +7,10 @@
         <h4 class="mb-0">
             <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
         </h4>
-        {% if predictions|length >= 2 %}
-        <a href="{{ url_for('comparison') }}" class="btn btn-primary btn-sm">
-            <i class="bi bi-columns-gap me-1"></i>Compare Saved Predictions
-        </a>
+        {% if predictions|length >= 1 %}
+        <button id="compare-btn" class="btn btn-primary btn-sm" disabled>
+            <i class="bi bi-columns-gap me-1"></i>Compare Selected (<span id="compare-count">0</span>)
+        </button>
         {% endif %}
     </div>
 
@@ -20,6 +20,7 @@
             <table class="table table-hover table-predictions mb-0">
                 <thead class="table-light">
                     <tr>
+                        <th class ="text-center" style="width:50px">Select</th>
                         <th>Town</th>
                         <th>Flat Type</th>
                         <th>Model</th>
@@ -34,6 +35,9 @@
                 <tbody>
                     {% for p in predictions %}
                     <tr>
+                        <td class="text-center">
+                            <input type="checkbox" class="form-check-input compare-check" value="{{ p['id'] }}">
+                        </td>
                         <td>{{ p['town'] }}</td>
                         <td>{{ p['flat_type'] }}</td>
                         <td>{{ p['flat_model'] }}</td>
@@ -74,6 +78,36 @@
             </table>
         </div>
     </div>
+        <script>
+            const checkboxes = document.querySelectorAll('.compare-check');
+            const compareBtn = document.getElementById('compare-btn');
+            const compareCount = document.getElementById('compare-count');
+            const baseUrl = "{{ url_for('comparison') }}";
+
+            checkboxes.forEach(cb=> {
+                cb.addEventListener('change', () => {
+                    const checked = document.querySelectorAll('.compare-check:checked');
+
+                    if (checked.length > 2) {
+                        cb.checked = false;
+                        alert('You can only select up to 2 predictions to compare.')
+                        return;
+                    }
+
+                    compareCount.textContent = checked.length;
+                    compareBtn.disabled = checked.length === 0;
+                });
+            });
+
+            compareBtn.addEventListener('click', () => {
+                const checked = document.querySelectorAll('.compare-check:checked');
+                const ids = Array.from(checked).map(cb=>cb.value);
+                const params = new URLSearchParams();
+                params.set('left_id', ids[0]);
+                if (ids[1]) params.set('right_id', ids[1]);
+                window.location.href = baseUrl + '?' + params.toString();
+            });
+        </script>
     {% else %}
     <div class="card">
         <div class="card-body text-center py-5">

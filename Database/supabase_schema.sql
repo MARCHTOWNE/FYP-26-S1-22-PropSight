@@ -96,8 +96,16 @@ CREATE TABLE IF NOT EXISTS saved_predictions (
     predicted_price DOUBLE PRECISION NOT NULL,
     price_low       DOUBLE PRECISION NOT NULL,
     price_high      DOUBLE PRECISION NOT NULL,
+    street_name     TEXT             NOT NULL DEFAULT '',
+    block           TEXT             NOT NULL DEFAULT '',
     created_at      TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+ALTER TABLE IF EXISTS saved_predictions
+    ADD COLUMN IF NOT EXISTS street_name TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE IF EXISTS saved_predictions
+    ADD COLUMN IF NOT EXISTS block TEXT NOT NULL DEFAULT '';
 
 -- ── 5. Model Versions Table ───────────────────────────────────
 
@@ -195,7 +203,12 @@ RETURNS TABLE(
 $$;
 
 -- Yearly price trend (simple, no percentile)
-CREATE OR REPLACE FUNCTION rpc_api_price_trend_simple(p_town TEXT DEFAULT NULL, p_flat_type TEXT DEFAULT NULL)
+CREATE OR REPLACE FUNCTION rpc_api_price_trend_simple(
+    p_town TEXT DEFAULT NULL,
+    p_flat_type TEXT DEFAULT NULL,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS TABLE(
     year INTEGER, avg_price DOUBLE PRECISION,
     min_price DOUBLE PRECISION, max_price DOUBLE PRECISION, txn_count BIGINT
@@ -212,8 +225,48 @@ RETURNS TABLE(
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     WHERE (p_town IS NULL OR t.name = p_town)
       AND (p_flat_type IS NULL OR ft.name = p_flat_type)
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block)
     GROUP BY tx.year
     ORDER BY tx.year;
+$$;
+
+-- Yearly street-level price trend within a town
+CREATE OR REPLACE FUNCTION rpc_api_street_price_trend(
+    p_town TEXT,
+    p_flat_type TEXT DEFAULT NULL,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
+RETURNS TABLE(
+    street_name TEXT,
+    year INTEGER,
+    avg_price DOUBLE PRECISION,
+    min_price DOUBLE PRECISION,
+    max_price DOUBLE PRECISION,
+    txn_count BIGINT,
+    avg_area DOUBLE PRECISION,
+    psf DOUBLE PRECISION
+) LANGUAGE SQL STABLE AS $$
+    SELECT
+        b.street_name,
+        tx.year,
+        ROUND(AVG(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(MIN(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(MAX(tx.resale_price)::NUMERIC)::DOUBLE PRECISION,
+        COUNT(*),
+        ROUND(AVG(tx.floor_area_sqm)::NUMERIC)::DOUBLE PRECISION,
+        ROUND(AVG(tx.resale_price / NULLIF(tx.floor_area_sqm, 0))::NUMERIC)::DOUBLE PRECISION
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    WHERE t.name = p_town
+      AND (p_flat_type IS NULL OR ft.name = p_flat_type)
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block)
+    GROUP BY b.street_name, tx.year
+    ORDER BY b.street_name, tx.year;
 $$;
 
 -- District comparison (most recent year)
@@ -237,7 +290,11 @@ RETURNS TABLE(
 $$;
 
 -- Flat type breakdown for a town
-CREATE OR REPLACE FUNCTION rpc_api_flat_type_breakdown(p_town TEXT DEFAULT NULL)
+CREATE OR REPLACE FUNCTION rpc_api_flat_type_breakdown(
+    p_town TEXT DEFAULT NULL,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS TABLE(
     flat_type TEXT, avg_price DOUBLE PRECISION,
     txn_count BIGINT, avg_area DOUBLE PRECISION
@@ -253,6 +310,8 @@ RETURNS TABLE(
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     WHERE tx.year >= 2023
       AND (p_town IS NULL OR t.name = p_town)
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block)
     GROUP BY ft.name
     ORDER BY ft.name;
 $$;
@@ -312,25 +371,41 @@ RETURNS TABLE(
 $$;
 
 -- Resolve floor area for prediction (town + flat_type average)
-CREATE OR REPLACE FUNCTION rpc_resolve_floor_area(p_town TEXT, p_flat_type TEXT)
+CREATE OR REPLACE FUNCTION rpc_resolve_floor_area(
+    p_town TEXT,
+    p_flat_type TEXT,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS DOUBLE PRECISION LANGUAGE SQL STABLE AS $$
     SELECT ROUND(AVG(tx.floor_area_sqm)::NUMERIC, 1)::DOUBLE PRECISION
     FROM transactions tx
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
     JOIN flat_types ft ON tx.flat_type_id = ft.id
-    WHERE t.name = p_town AND ft.name = p_flat_type;
+    WHERE t.name = p_town
+      AND ft.name = p_flat_type
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block);
 $$;
 
 -- Resolve lease commence for prediction (town + flat_type average)
-CREATE OR REPLACE FUNCTION rpc_resolve_lease_commence(p_town TEXT, p_flat_type TEXT)
+CREATE OR REPLACE FUNCTION rpc_resolve_lease_commence(
+    p_town TEXT,
+    p_flat_type TEXT,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS INTEGER LANGUAGE SQL STABLE AS $$
     SELECT ROUND(AVG(tx.lease_commence_date))::INTEGER
     FROM transactions tx
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
     JOIN flat_types ft ON tx.flat_type_id = ft.id
-    WHERE t.name = p_town AND ft.name = p_flat_type;
+    WHERE t.name = p_town
+      AND ft.name = p_flat_type
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block);
 $$;
 
 -- ── 7. Block-Level & Analytics RPC Functions ────────────────────
@@ -365,7 +440,12 @@ LANGUAGE SQL STABLE AS $$
 $$;
 
 -- Lease decay data for analytics
-CREATE OR REPLACE FUNCTION rpc_lease_decay(p_town TEXT, p_flat_type TEXT DEFAULT NULL)
+CREATE OR REPLACE FUNCTION rpc_lease_decay(
+    p_town TEXT,
+    p_flat_type TEXT DEFAULT NULL,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS TABLE(lease_bucket INTEGER, avg_price DOUBLE PRECISION, txn_count BIGINT)
 LANGUAGE SQL STABLE AS $$
     SELECT
@@ -378,12 +458,20 @@ LANGUAGE SQL STABLE AS $$
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     WHERE t.name = p_town
       AND (p_flat_type IS NULL OR ft.name = p_flat_type)
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block)
     GROUP BY (CAST(tx.remaining_lease AS INT) / 10) * 10
     ORDER BY 1 DESC;
 $$;
 
 -- Recent similar transactions for prediction context
-CREATE OR REPLACE FUNCTION rpc_recent_similar_transactions(p_town TEXT, p_flat_type TEXT, p_limit INTEGER DEFAULT 20)
+CREATE OR REPLACE FUNCTION rpc_recent_similar_transactions(
+    p_town TEXT,
+    p_flat_type TEXT,
+    p_limit INTEGER DEFAULT 20,
+    p_street_name TEXT DEFAULT NULL,
+    p_block TEXT DEFAULT NULL
+)
 RETURNS TABLE(
     block TEXT, street_name TEXT, storey_range TEXT,
     floor_area_sqm DOUBLE PRECISION, resale_price DOUBLE PRECISION, month TEXT
@@ -394,7 +482,10 @@ RETURNS TABLE(
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns t ON b.town_id = t.id
     JOIN flat_types ft ON tx.flat_type_id = ft.id
-    WHERE t.name = p_town AND ft.name = p_flat_type
+    WHERE t.name = p_town
+      AND ft.name = p_flat_type
+      AND (p_street_name IS NULL OR b.street_name = p_street_name)
+      AND (p_block IS NULL OR b.block = p_block)
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT p_limit;
 $$;

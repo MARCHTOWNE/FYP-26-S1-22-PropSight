@@ -76,7 +76,7 @@
                                 <a href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}" class="btn btn-sm btn-outline-secondary" title="Edit in Predict page">
                                     <i class="bi bi-pencil"></i>
                                 </a>
-                                <a href="{{ url_for('map_view') }}?town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" class="btn btn-sm btn-outline-success" title="View on Map">
+                                <a href="{{ url_for('map_view') }}?mode=transactions&town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" class="btn btn-sm btn-outline-success" title="View on Map">
                                     <i class="bi bi-geo-alt"></i>
                                 </a>
                                 <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" class="btn btn-sm btn-outline-primary">

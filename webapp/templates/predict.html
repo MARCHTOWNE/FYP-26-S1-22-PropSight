@@ -152,7 +152,7 @@
                                 <i class="bi bi-bookmark-plus me-1"></i> Save Prediction
                             </button>
                         </form>
-                        <a href="{{ url_for('map_view') }}?town={{ form_data.town|urlencode }}{% if form_data.get('street_name') %}&street={{ form_data.street_name|urlencode }}{% endif %}{% if form_data.get('block') %}&block={{ form_data.block|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
+                        <a href="{{ url_for('map_view') }}?mode=transactions&town={{ form_data.town|urlencode }}{% if form_data.get('street_name') %}&street={{ form_data.street_name|urlencode }}{% endif %}{% if form_data.get('block') %}&block={{ form_data.block|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
                             <i class="bi bi-geo-alt me-1"></i> View on Map
                         </a>
                     </div>
@@ -288,7 +288,7 @@
 
             <!-- Explore deeper link -->
             <div class="text-center mb-4">
-                <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&predicted_price={{ result.predicted_price }}"
+                <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&flat_model={{ form_data.flat_model|urlencode }}&floor_area={{ form_data.floor_area }}&storey_range={{ form_data.storey_range|urlencode }}&lease_commence={{ form_data.lease_commence }}&street_name={{ form_data.street_name|urlencode }}&block={{ form_data.block|urlencode }}&predicted_price={{ result.predicted_price }}"
                    class="btn btn-outline-primary">
                     <i class="bi bi-bar-chart-line me-2"></i>Explore Deeper Analysis
                 </a>

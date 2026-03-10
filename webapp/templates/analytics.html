@@ -1,12 +1,84 @@
 {% extends "base.html" %}
-{% block title %}Analytics — HDB Resale Analytics{% endblock %}
+{% block title %}Analytics - HDB Resale Analytics{% endblock %}
 
 {% block extra_head %}
 <style>
     .dashboard-hero {
-        background: linear-gradient(110deg, rgba(37,99,235,0.09), rgba(148,163,184,0.11));
+        background: linear-gradient(118deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.08));
         border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 18px;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+    }
+
+    .dashboard-hero h4 {
+        font-weight: 800;
+        letter-spacing: -0.02em;
+    }
+
+    .hint-text {
+        font-size: 0.82rem;
+        color: #64748b;
+    }
+
+    .rail-stack {
+        display: grid;
+        gap: 1rem;
+        height: 100%;
+    }
+
+    .panel-card {
+        border: 1px solid rgba(148, 163, 184, 0.18);
         border-radius: 16px;
+        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        height: 100%;
+    }
+
+    .panel-card .card-body {
+        padding: 1.1rem 1.1rem 1rem;
+    }
+
+    .section-kicker {
+        font-size: 0.74rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        margin-bottom: 0.4rem;
+    }
+
+    .summary-card {
+        background: linear-gradient(145deg, #ffffff, #f8fbff);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 14px;
+        padding: 0.95rem 1rem;
+        min-height: 126px;
+    }
+
+    .summary-card h6 {
+        margin-bottom: 0.55rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    .summary-meta {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        margin-top: 0.85rem;
+    }
+
+    .summary-pill {
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.08);
+        color: #1d4ed8;
+        font-size: 0.74rem;
+        font-weight: 700;
+        padding: 0.28rem 0.62rem;
+    }
+
+    .kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
     }
 
     .kpi-card {
@@ -15,21 +87,28 @@
         background: #fff;
         border: 1px solid rgba(148, 163, 184, 0.2);
         box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
-        height: 100%;
+        min-height: 108px;
     }
 
     .kpi-label {
-        font-size: 0.78rem;
+        font-size: 0.76rem;
         text-transform: uppercase;
         letter-spacing: 0.05em;
         color: #64748b;
-        margin-bottom: 2px;
+        margin-bottom: 0.15rem;
     }
 
     .kpi-value {
-        font-size: 1.45rem;
+        font-size: 1.42rem;
         font-weight: 800;
         color: #1d4ed8;
+        line-height: 1.2;
+    }
+
+    .kpi-helper {
+        color: #64748b;
+        font-size: 0.8rem;
+        margin-top: 0.25rem;
     }
 
     .insight-box {
@@ -37,46 +116,75 @@
         border: 1px solid rgba(148, 163, 184, 0.22);
         border-radius: 14px;
         padding: 1rem;
-        min-height: 120px;
-    }
-
-    .hint-text {
-        font-size: 0.8rem;
-        color: #64748b;
+        min-height: 180px;
     }
 
     .filter-breadcrumb {
         font-size: 0.82rem;
         color: #64748b;
-        padding: 6px 12px;
+        padding: 0.45rem 0.7rem;
         background: rgba(37, 99, 235, 0.06);
-        border-radius: 8px;
+        border-radius: 10px;
         display: none;
+        align-items: center;
+        gap: 0.45rem;
     }
-    .filter-breadcrumb.active { display: inline-flex; align-items: center; gap: 6px; }
-    .filter-breadcrumb .badge { font-weight: 600; }
 
-    .forecast-table th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: #64748b; }
-    .forecast-table .fw-bold td { background: rgba(37, 99, 235, 0.04); }
+    .filter-breadcrumb.active {
+        display: inline-flex;
+    }
+
+    .chart-note {
+        color: #64748b;
+        font-size: 0.85rem;
+        margin-top: -0.15rem;
+        margin-bottom: 0.75rem;
+    }
+
+    .forecast-table th {
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #64748b;
+    }
+
+    .forecast-table .is-current td {
+        background: rgba(37, 99, 235, 0.05);
+        font-weight: 700;
+    }
 
     .section-divider {
         border: none;
         border-top: 2px solid rgba(148, 163, 184, 0.15);
         margin: 1.5rem 0;
     }
+
+    @media (max-width: 991.98px) {
+        .kpi-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+    @media (max-width: 575.98px) {
+        .kpi-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container py-4">
-    <!-- ═══ FILTERS ═══ -->
-    <div class="dashboard-hero p-3 mb-4">
-        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
-            <h4 class="mb-0"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Interactive Market Dashboard</h4>
-            <span class="hint-text"><i class="bi bi-funnel me-1"></i>Narrow down by street & block for hyper-local insights</span>
+    <div class="dashboard-hero p-3 p-lg-4 mb-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+            <div>
+                <div class="section-kicker">Analytics Dashboard</div>
+                <h4 class="mb-1"><i class="bi bi-bar-chart-steps me-2 text-primary"></i>Interactive Market Dashboard</h4>
+                <p class="text-muted mb-0">Move from town-level market signals into street and block level detail without leaving the page.</p>
+            </div>
+            <span class="hint-text"><i class="bi bi-funnel me-1"></i>Street and block filters drive both the historical trend and prediction context.</span>
         </div>
 
-        <!-- Row 1: Location filters -->
         <div class="row g-2 align-items-end mb-2">
             <div class="col-md-3">
                 <label class="form-label fw-bold small mb-1">Town</label>
@@ -89,13 +197,13 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label fw-bold small mb-1">Street <small class="text-muted">(optional)</small></label>
-                <select id="filterStreet" class="form-select form-select-sm">
+                <select id="filterStreet" class="form-select form-select-sm" disabled>
                     <option value="">All Streets</option>
                 </select>
             </div>
             <div class="col-md-2">
                 <label class="form-label fw-bold small mb-1">Block <small class="text-muted">(optional)</small></label>
-                <select id="filterBlock" class="form-select form-select-sm">
+                <select id="filterBlock" class="form-select form-select-sm" disabled>
                     <option value="">All Blocks</option>
                 </select>
             </div>
@@ -121,7 +229,6 @@
             </div>
         </div>
 
-        <!-- Row 2: Year range + refresh -->
         <div class="row g-2 align-items-end">
             <div class="col-md-2">
                 <label class="form-label fw-bold small mb-1">Year From</label>
@@ -131,69 +238,102 @@
                 <label class="form-label fw-bold small mb-1">Year To</label>
                 <select id="yearTo" class="form-select form-select-sm"></select>
             </div>
-            <div class="col-md-1 d-grid">
-                <button class="btn btn-primary btn-sm" onclick="refreshDashboard()">
-                    <i class="bi bi-arrow-clockwise"></i>
+            <div class="col-md-2 d-grid">
+                <button class="btn btn-primary btn-sm" id="refreshDashboardBtn" type="button">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
                 </button>
             </div>
-            <div class="col-md-7">
+            <div class="col-md-6 d-flex flex-wrap justify-content-md-end gap-2">
                 <div id="filterBreadcrumb" class="filter-breadcrumb">
                     <i class="bi bi-geo-alt"></i>
                     <span id="bcText"></span>
-                    <button class="btn btn-link btn-sm p-0 ms-1 text-danger" onclick="clearLocationFilters()" title="Clear location filters">
-                        <i class="bi bi-x-circle"></i>
-                    </button>
                 </div>
+                <button id="clearLocationBtn" class="btn btn-outline-secondary btn-sm" type="button">
+                    <i class="bi bi-x-circle me-1"></i>Clear Location Filters
+                </button>
             </div>
         </div>
     </div>
 
-    <!-- ═══ KPIs ═══ -->
-    <div class="row g-3 mb-4">
-        <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-label">Average Price</div><div id="kpiAvgPrice" class="kpi-value">-</div></div></div>
-        <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-label">Transactions</div><div id="kpiTxn" class="kpi-value">-</div></div></div>
-        <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-label">Price Momentum</div><div id="kpiMomentum" class="kpi-value">-</div></div></div>
-        <div class="col-6 col-md-3"><div class="kpi-card"><div class="kpi-label">Median-Like Midpoint</div><div id="kpiMid" class="kpi-value">-</div></div></div>
-    </div>
-
-    <!-- ═══ 1. PRICE TREND + INSIGHTS (primary focus) ═══ -->
     <div class="row g-4 mb-4">
-        <div class="col-lg-8">
-            <div class="card h-100">
+        <div class="col-xl-8">
+            <div class="card panel-card h-100">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-graph-up-arrow me-1 text-primary"></i>Price Trend</h6>
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                        <div>
+                            <div class="section-kicker">Primary View</div>
+                            <h6 class="card-title mb-1"><i class="bi bi-graph-up-arrow me-1 text-primary"></i>Price Trend</h6>
+                        </div>
+                        <span class="hint-text">Historical resale performance across the selected scope and year window.</span>
+                    </div>
                     <div class="chart-container"><canvas id="priceTrendChart"></canvas></div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card h-100">
-                <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-lightbulb me-1 text-primary"></i>Dynamic Insights</h6>
-                    <div id="insightBox" class="insight-box">
-                        <div class="text-muted">Apply filters to generate insights from historical transactions.</div>
+        <div class="col-xl-4">
+            <div class="rail-stack">
+                <div class="card panel-card">
+                    <div class="card-body">
+                        <div class="section-kicker">Focus Summary</div>
+                        <div id="focusSummary" class="summary-card">
+                            <h6>No location selected</h6>
+                            <p class="text-muted mb-0">Choose a town, then refine with street and block filters to narrow the analytics scope.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-label">Average Price</div>
+                        <div id="kpiAvgPrice" class="kpi-value">-</div>
+                        <div class="kpi-helper">Across the visible trend range</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Transactions</div>
+                        <div id="kpiTxn" class="kpi-value">-</div>
+                        <div class="kpi-helper">Historical deals in scope</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Price Momentum</div>
+                        <div id="kpiMomentum" class="kpi-value">-</div>
+                        <div class="kpi-helper">Latest year versus prior year</div>
+                    </div>
+                    <div class="kpi-card">
+                        <div class="kpi-label">Midpoint Range</div>
+                        <div id="kpiMid" class="kpi-value">-</div>
+                        <div class="kpi-helper">Average midpoint of yearly ranges</div>
+                    </div>
+                </div>
+                <div class="card panel-card h-100">
+                    <div class="card-body">
+                        <div class="section-kicker">What Stands Out</div>
+                        <h6 class="card-title mb-2"><i class="bi bi-lightbulb me-1 text-primary"></i>Dynamic Insights</h6>
+                        <div id="insightBox" class="insight-box">
+                            <div class="text-muted">Apply filters to generate insights from historical transactions and broader benchmarks.</div>
+                        </div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ═══ 2. FUTURE PREDICTIONS (new) ═══ -->
     <div id="futurePredSection" class="d-none">
         <div class="row g-4 mb-4">
             <div class="col-lg-7">
-                <div class="card h-100">
+                <div class="card panel-card h-100">
                     <div class="card-body">
-                        <h6 class="card-title"><i class="bi bi-rocket-takeoff me-1 text-primary"></i>5-Year Price Forecast</h6>
-                        <p class="text-muted small mb-2">AI-predicted prices for the selected location and flat type over the next 5 years.</p>
+                        <div class="section-kicker">Forward View</div>
+                        <h6 class="card-title mb-1"><i class="bi bi-rocket-takeoff me-1 text-primary"></i>Future Predictions</h6>
+                        <p id="futurePredCaption" class="chart-note">AI-estimated prices for the selected scope over the next five years.</p>
                         <div class="chart-container"><canvas id="futurePredChart"></canvas></div>
                     </div>
                 </div>
             </div>
             <div class="col-lg-5">
-                <div class="card h-100">
+                <div class="card panel-card h-100">
                     <div class="card-body">
-                        <h6 class="card-title"><i class="bi bi-table me-1 text-primary"></i>Forecast Details</h6>
+                        <div class="section-kicker">Forecast Detail</div>
+                        <h6 class="card-title mb-1"><i class="bi bi-table me-1 text-primary"></i>Projection Table</h6>
+                        <p class="chart-note mb-2">Current estimate, confidence band, and remaining lease for each forecast year.</p>
                         <div class="table-responsive">
                             <table class="table table-sm table-hover forecast-table mb-0 small">
                                 <thead>
@@ -213,53 +353,58 @@
         </div>
     </div>
 
-    <!-- ═══ 3. VOLUME + FLAT TYPE (market composition) ═══ -->
     <div class="row g-4 mb-4">
         <div class="col-lg-6">
-            <div class="card h-100">
+            <div class="card panel-card h-100">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-activity me-1 text-primary"></i>Transaction Volume by Year</h6>
+                    <div class="section-kicker">Market Activity</div>
+                    <h6 class="card-title mb-1"><i class="bi bi-activity me-1 text-primary"></i>Transaction Volume by Year</h6>
+                    <p class="chart-note">Uses the same scope as the main trend chart so volume and prices stay aligned.</p>
                     <div class="chart-container"><canvas id="volumeChart"></canvas></div>
                 </div>
             </div>
         </div>
         <div class="col-lg-6">
-            <div class="card h-100">
+            <div class="card panel-card h-100">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-pie-chart me-1 text-primary"></i>Flat Type Share</h6>
+                    <div class="section-kicker">Market Mix</div>
+                    <h6 class="card-title mb-1"><i class="bi bi-pie-chart me-1 text-primary"></i>Flat Type Share</h6>
+                    <p class="chart-note">Recent flat type mix for the selected town, street, or block.</p>
                     <div class="chart-container"><canvas id="flatTypeChart"></canvas></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ═══ 4. LOCATION COMPARISON + $/SQM (benchmarking) ═══ -->
     <div class="row g-4 mb-4">
         <div class="col-lg-7">
-            <div class="card">
+            <div class="card panel-card h-100">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-buildings me-1 text-primary"></i>Location Comparison (Latest Year)</h6>
+                    <div class="section-kicker">Benchmarking</div>
+                    <h6 id="locationComparisonTitle" class="card-title mb-1"><i class="bi bi-buildings me-1 text-primary"></i>Town Benchmark (Latest Year)</h6>
+                    <p id="locationComparisonSubtitle" class="chart-note">Compare broader town performance side by side.</p>
                     <div style="height: 410px;"><canvas id="districtChart"></canvas></div>
                 </div>
             </div>
         </div>
         <div class="col-lg-5">
-            <div class="card h-100">
+            <div class="card panel-card h-100">
                 <div class="card-body">
-                    <h6 class="card-title"><i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm by Town</h6>
+                    <div class="section-kicker">Value Density</div>
+                    <h6 id="psfTitle" class="card-title mb-1"><i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm</h6>
+                    <p id="psfSubtitle" class="chart-note">Average price per square metre for the current benchmark set.</p>
                     <div class="chart-container"><canvas id="psfChart"></canvas></div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- ═══ 5. PREDICTION INSIGHTS (when coming from prediction page) ═══ -->
     <div id="predictionInsights" class="d-none">
         <hr class="section-divider">
         <h5 class="mb-3"><i class="bi bi-bullseye me-2 text-primary"></i>Prediction Insights</h5>
         <div class="row g-4 mb-4">
             <div class="col-lg-12">
-                <div class="card">
+                <div class="card panel-card">
                     <div class="card-body">
                         <h6 class="card-title"><i class="bi bi-graph-up me-1 text-primary"></i>Price Trend vs Your Prediction</h6>
                         <div class="chart-container"><canvas id="trendVsPredictionChart"></canvas></div>
@@ -269,7 +414,7 @@
         </div>
         <div class="row g-4 mb-4">
             <div class="col-lg-6">
-                <div class="card h-100">
+                <div class="card panel-card h-100">
                     <div class="card-body">
                         <h6 class="card-title"><i class="bi bi-bar-chart me-1 text-primary"></i>Prediction vs Recent Actuals</h6>
                         <div class="chart-container"><canvas id="predVsActualsChart"></canvas></div>
@@ -277,7 +422,7 @@
                 </div>
             </div>
             <div class="col-lg-6">
-                <div class="card h-100">
+                <div class="card panel-card h-100">
                     <div class="card-body">
                         <h6 class="card-title"><i class="bi bi-hourglass-split me-1 text-primary"></i>Lease Decay Effect on Price</h6>
                         <div class="chart-container"><canvas id="leaseDecayChart"></canvas></div>
@@ -291,10 +436,37 @@
 
 {% block extra_scripts %}
 <script>
-let priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart, futurePredChart;
+let priceTrendChart;
+let flatTypeChart;
+let districtChart;
+let volumeChart;
+let psfChart;
+let futurePredChart;
 let latestTrendData = [];
 
-const COLORS = ['#1d4ed8', '#3b82f6', '#60a5fa', '#93c5fd', '#bfdbfe', '#1e293b', '#334155', '#64748b'];
+const pageParams = new URLSearchParams(window.location.search);
+const predictionSeed = {
+    town: pageParams.get('town') || '',
+    flat_type: pageParams.get('flat_type') || '',
+    flat_model: pageParams.get('flat_model') || '',
+    floor_area: pageParams.get('floor_area') || '',
+    storey_range: pageParams.get('storey_range') || '',
+    lease_commence: pageParams.get('lease_commence') || '',
+    predicted_price: pageParams.get('predicted_price') || '',
+    street_name: pageParams.get('street_name') || pageParams.get('street') || '',
+    block: pageParams.get('block') || '',
+};
+
+const COLORS = ['#1d4ed8', '#3b82f6', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#64748b', '#0f172a'];
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 
 function getFilters() {
     return {
@@ -323,86 +495,225 @@ function handleAuthFailure(resp) {
 async function fetchJSON(url) {
     const resp = await fetch(url);
     if (handleAuthFailure(resp)) return [];
-    return resp.json();
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+        throw new Error(data.error || 'Request failed');
+    }
+    return data;
 }
 
 function clipByYear(data) {
-    const { from, to } = getYearRange();
-    return data.filter(d => Number(d.year) >= from && Number(d.year) <= to);
+    const years = getYearRange();
+    return data.filter(function(d) {
+        const year = Number(d.year);
+        return year >= years.from && year <= years.to;
+    });
 }
 
-function formatMoney(v) {
-    return '$' + Number(v || 0).toLocaleString();
+function formatMoney(value) {
+    return '$' + Number(value || 0).toLocaleString();
 }
 
-// ── Filter breadcrumb ──
-function updateBreadcrumb() {
-    var f = getFilters();
-    var el = document.getElementById('filterBreadcrumb');
-    var parts = [];
-    if (f.town) parts.push(f.town);
-    if (f.street_name) parts.push(f.street_name);
-    if (f.block) parts.push('Blk ' + f.block);
-    if (f.flat_type) parts.push(f.flat_type);
-    if (parts.length) {
-        document.getElementById('bcText').textContent = parts.join(' > ');
-        el.classList.add('active');
-    } else {
-        el.classList.remove('active');
+function populateSelect(selectEl, placeholder, values, selectedValue) {
+    const options = [placeholder].concat(values || []);
+    selectEl.innerHTML = options.map(function(value, index) {
+        if (index === 0) {
+            return '<option value="">' + escapeHtml(value) + '</option>';
+        }
+        const selected = value === selectedValue ? ' selected' : '';
+        return '<option value="' + escapeHtml(value) + '"' + selected + '>' + escapeHtml(value) + '</option>';
+    }).join('');
+}
+
+function setDependentSelectState(selectEl, enabled) {
+    selectEl.disabled = !enabled;
+    if (!enabled) {
+        selectEl.value = '';
     }
 }
 
+function buildFilterParams() {
+    const filters = getFilters();
+    const params = new URLSearchParams();
+    if (filters.town) params.set('town', filters.town);
+    if (filters.flat_type) params.set('flat_type', filters.flat_type);
+    if (filters.street_name) params.set('street_name', filters.street_name);
+    if (filters.block) params.set('block', filters.block);
+    return params;
+}
+
+function buildFuturePredictionParams() {
+    const params = buildFilterParams();
+    const sameScope =
+        predictionSeed.town === (params.get('town') || '') &&
+        predictionSeed.flat_type === (params.get('flat_type') || '');
+
+    if (sameScope) {
+        ['flat_model', 'floor_area', 'storey_range', 'lease_commence'].forEach(function(key) {
+            if (predictionSeed[key]) {
+                params.set(key, predictionSeed[key]);
+            }
+        });
+    }
+
+    return params;
+}
+
+function updateBreadcrumb() {
+    const filters = getFilters();
+    const parts = [];
+    if (filters.town) parts.push(filters.town);
+    if (filters.street_name) parts.push(filters.street_name);
+    if (filters.block) parts.push('Blk ' + filters.block);
+    if (filters.flat_type) parts.push(filters.flat_type);
+
+    const el = document.getElementById('filterBreadcrumb');
+    if (!parts.length) {
+        el.classList.remove('active');
+        return;
+    }
+
+    document.getElementById('bcText').textContent = parts.join(' > ');
+    el.classList.add('active');
+}
+
+function updateFocusSummary(data) {
+    const filters = getFilters();
+    const summaryEl = document.getElementById('focusSummary');
+    let locationLabel = filters.town || 'All towns';
+    if (filters.street_name) locationLabel += ' > ' + filters.street_name;
+    if (filters.block) locationLabel += ' > Blk ' + filters.block;
+    const flatTypeLabel = filters.flat_type || 'All flat types';
+
+    if (!data.length) {
+        summaryEl.innerHTML =
+            '<h6>' + escapeHtml(locationLabel) + '</h6>' +
+            '<p class="text-muted mb-0">No transactions were found for the current filters and year window. Broaden the scope or change the year range.</p>' +
+            '<div class="summary-meta">' +
+                '<span class="summary-pill">' + escapeHtml(flatTypeLabel) + '</span>' +
+            '</div>';
+        return;
+    }
+
+    const years = getYearRange();
+    const canForecast = Boolean(filters.town && filters.flat_type);
+    summaryEl.innerHTML =
+        '<h6>' + escapeHtml(locationLabel) + '</h6>' +
+        '<p class="mb-0 text-muted">Tracking <strong>' + escapeHtml(flatTypeLabel) + '</strong> transactions from ' +
+            escapeHtml(String(years.from || data[0].year)) + ' to ' + escapeHtml(String(years.to || data[data.length - 1].year)) +
+            '. Use the benchmark cards below to compare against the wider market.</p>' +
+        '<div class="summary-meta">' +
+            '<span class="summary-pill">' + data.length + ' yearly points</span>' +
+            '<span class="summary-pill">' + (canForecast ? 'Forecast ready' : 'Forecast needs town + flat type') + '</span>' +
+        '</div>';
+}
+
 function clearLocationFilters() {
-    document.getElementById('filterTown').value = '';
-    document.getElementById('filterStreet').innerHTML = '<option value="">All Streets</option>';
-    document.getElementById('filterBlock').innerHTML = '<option value="">All Blocks</option>';
-    document.getElementById('filterFlat').value = '';
+    const townEl = document.getElementById('filterTown');
+    const streetEl = document.getElementById('filterStreet');
+    const blockEl = document.getElementById('filterBlock');
+
+    townEl.value = '';
+    populateSelect(streetEl, 'All Streets', [], '');
+    populateSelect(blockEl, 'All Blocks', [], '');
+    setDependentSelectState(streetEl, false);
+    setDependentSelectState(blockEl, false);
+
     updateBreadcrumb();
     refreshDashboard();
 }
 
-// ── Street/Block cascading dropdowns ──
-var streetReqToken = 0;
-var blockReqToken = 0;
+let streetReqToken = 0;
+let blockReqToken = 0;
 
-document.getElementById('filterTown').addEventListener('change', async function() {
-    var town = this.value;
-    var streetEl = document.getElementById('filterStreet');
-    var blockEl = document.getElementById('filterBlock');
-    streetEl.innerHTML = '<option value="">All Streets</option>';
-    blockEl.innerHTML = '<option value="">All Blocks</option>';
+async function loadStreetOptions(town, selectedStreet) {
+    const streetEl = document.getElementById('filterStreet');
+    const blockEl = document.getElementById('filterBlock');
 
-    if (!town) return;
-    var token = ++streetReqToken;
+    populateSelect(streetEl, 'All Streets', [], '');
+    populateSelect(blockEl, 'All Blocks', [], '');
+    setDependentSelectState(blockEl, false);
+
+    if (!town) {
+        setDependentSelectState(streetEl, false);
+        return;
+    }
+
+    setDependentSelectState(streetEl, true);
+    const token = ++streetReqToken;
     try {
-        var resp = await fetch('/api/available_streets?town=' + encodeURIComponent(town));
+        const data = await fetchJSON('/api/available_streets?town=' + encodeURIComponent(town));
         if (token !== streetReqToken) return;
-        if (resp.ok) {
-            var data = await resp.json();
-            streetEl.innerHTML = '<option value="">All Streets</option>' +
-                (data.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
-        }
-    } catch(e) {}
-});
+        populateSelect(streetEl, 'All Streets', data.streets || [], selectedStreet || '');
+    } catch (error) {
+        populateSelect(streetEl, 'All Streets', [], '');
+    }
+}
 
-document.getElementById('filterStreet').addEventListener('change', async function() {
-    var town = document.getElementById('filterTown').value;
-    var street = this.value;
-    var blockEl = document.getElementById('filterBlock');
-    blockEl.innerHTML = '<option value="">All Blocks</option>';
+async function loadBlockOptions(town, street, selectedBlock) {
+    const blockEl = document.getElementById('filterBlock');
+    populateSelect(blockEl, 'All Blocks', [], '');
 
-    if (!town || !street) return;
-    var token = ++blockReqToken;
+    if (!town || !street) {
+        setDependentSelectState(blockEl, false);
+        return;
+    }
+
+    setDependentSelectState(blockEl, true);
+    const token = ++blockReqToken;
     try {
-        var resp = await fetch('/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street));
+        const data = await fetchJSON(
+            '/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street)
+        );
         if (token !== blockReqToken) return;
-        if (resp.ok) {
-            var data = await resp.json();
-            blockEl.innerHTML = '<option value="">All Blocks</option>' +
-                (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
-        }
-    } catch(e) {}
-});
+        populateSelect(blockEl, 'All Blocks', data.blocks || [], selectedBlock || '');
+    } catch (error) {
+        populateSelect(blockEl, 'All Blocks', [], '');
+    }
+}
+
+function syncYearSelectors(data) {
+    const years = Array.from(new Set(
+        (data || []).map(function(d) { return Number(d.year); }).filter(Number.isFinite)
+    )).sort(function(a, b) { return a - b; });
+
+    const fromEl = document.getElementById('yearFrom');
+    const toEl = document.getElementById('yearTo');
+    if (!years.length) return;
+
+    const existingYears = Array.from(fromEl.options).map(function(opt) { return Number(opt.value); });
+    const needsReset = existingYears.length !== years.length || existingYears.some(function(y, index) {
+        return y !== years[index];
+    });
+
+    const currentFrom = Number(fromEl.value || years[0]);
+    const currentTo = Number(toEl.value || years[years.length - 1]);
+
+    if (needsReset) {
+        fromEl.innerHTML = years.map(function(year) {
+            return '<option value="' + year + '">' + year + '</option>';
+        }).join('');
+        toEl.innerHTML = years.map(function(year) {
+            return '<option value="' + year + '">' + year + '</option>';
+        }).join('');
+    }
+
+    fromEl.value = String(years.includes(currentFrom) ? currentFrom : years[0]);
+    toEl.value = String(years.includes(currentTo) ? currentTo : years[years.length - 1]);
+
+    if (Number(fromEl.value) > Number(toEl.value)) {
+        toEl.value = fromEl.value;
+    }
+}
+
+function setLoading(canvasId, loading) {
+    const el = document.getElementById(canvasId);
+    if (!el) return;
+    const card = el.closest('.card');
+    if (!card) return;
+    if (loading) card.classList.add('is-loading');
+    else card.classList.remove('is-loading');
+}
 
 function setKpis(data) {
     if (!data.length) {
@@ -413,17 +724,23 @@ function setKpis(data) {
         return;
     }
 
-    const avgPrice = Math.round(data.reduce((s, d) => s + Number(d.avg_price || 0), 0) / data.length);
-    const txns = data.reduce((s, d) => s + Number(d.txn_count || 0), 0);
-    const midpoint = Math.round((Number(data[0].min_price || 0) + Number(data[data.length - 1].max_price || 0)) / 2);
+    const avgPrice = Math.round(
+        data.reduce(function(sum, item) { return sum + Number(item.avg_price || 0); }, 0) / data.length
+    );
+    const txns = data.reduce(function(sum, item) { return sum + Number(item.txn_count || 0); }, 0);
+    const midpoint = Math.round(
+        data.reduce(function(sum, item) {
+            return sum + ((Number(item.min_price || 0) + Number(item.max_price || 0)) / 2);
+        }, 0) / data.length
+    );
 
     let momentum = 'Stable';
     if (data.length >= 2) {
-        const prev = Number(data[data.length - 2].avg_price || 0);
-        const curr = Number(data[data.length - 1].avg_price || 0);
-        const change = prev ? ((curr - prev) / prev) * 100 : 0;
+        const previous = Number(data[data.length - 2].avg_price || 0);
+        const current = Number(data[data.length - 1].avg_price || 0);
+        const change = previous ? ((current - previous) / previous) * 100 : 0;
         if (change > 3) momentum = 'Rising ' + change.toFixed(1) + '%';
-        else if (change < -3) momentum = 'Cooling ' + change.toFixed(1) + '%';
+        else if (change < -3) momentum = 'Cooling ' + Math.abs(change).toFixed(1) + '%';
         else momentum = 'Stable ' + change.toFixed(1) + '%';
     }
 
@@ -433,286 +750,431 @@ function setKpis(data) {
     document.getElementById('kpiMid').textContent = formatMoney(midpoint);
 }
 
-function buildInsights(data, districtData) {
+function buildInsights(data, comparisonMeta) {
     const box = document.getElementById('insightBox');
-    const f = getFilters();
     if (!data.length) {
-        box.innerHTML = '<div class="text-muted">No data in selected year range.</div>';
+        box.innerHTML = '<div class="text-muted">No data in the selected year range.</div>';
         return;
     }
+
+    const filters = getFilters();
+    let locationLabel = filters.town || 'All towns';
+    if (filters.street_name) locationLabel += ' > ' + filters.street_name;
+    if (filters.block) locationLabel += ' > Blk ' + filters.block;
 
     const first = Number(data[0].avg_price || 0);
     const last = Number(data[data.length - 1].avg_price || 0);
     const trendPct = first ? ((last - first) / first) * 100 : 0;
+    let direction = 'sideways trend';
+    if (trendPct > 3) direction = 'uptrend';
+    if (trendPct < -3) direction = 'downtrend';
 
-    const topDistrict = districtData[0] || null;
-    const lowDistrict = districtData[districtData.length - 1] || null;
-
-    const direction = trendPct > 3 ? 'uptrend' : (trendPct < -3 ? 'downtrend' : 'sideways trend');
-
-    var locationLabel = f.town || 'All towns';
-    if (f.street_name) locationLabel += ' > ' + f.street_name;
-    if (f.block) locationLabel += ' Blk ' + f.block;
+    const rows = (comparisonMeta && comparisonMeta.rows) || [];
+    const labelField = (comparisonMeta && comparisonMeta.labelField) || 'town';
+    const high = rows[0] || null;
+    const low = rows[rows.length - 1] || null;
+    const highLabel = high ? high[labelField] : '-';
+    const lowLabel = low ? low[labelField] : '-';
 
     box.innerHTML =
-        '<p class="mb-2"><strong>' + locationLabel + '</strong></p>' +
-        '<p class="mb-2"><strong>Market movement:</strong> Shows a <strong>' + direction + '</strong> of <strong>' + trendPct.toFixed(1) + '%</strong> across the chosen years.</p>' +
-        '<p class="mb-2"><strong>Activity:</strong> ' + data.reduce(function(s, d) { return s + Number(d.txn_count || 0); }, 0).toLocaleString() + ' transactions in scope.</p>' +
-        '<p class="mb-0"><strong>Location spread:</strong> Highest avg is <strong>' + (topDistrict ? topDistrict.town : '-') + '</strong> (' + (topDistrict ? formatMoney(topDistrict.avg_price) : '-') + '), lowest is <strong>' + (lowDistrict ? lowDistrict.town : '-') + '</strong> (' + (lowDistrict ? formatMoney(lowDistrict.avg_price) : '-') + ').</p>';
-}
-
-function ensureYearSelectors(data) {
-    if (!data.length) return;
-    const years = [...new Set(data.map(d => Number(d.year)))].sort((a, b) => a - b);
-    const fromEl = document.getElementById('yearFrom');
-    const toEl = document.getElementById('yearTo');
-
-    if (fromEl.options.length) return;
-
-    years.forEach(y => {
-        fromEl.add(new Option(String(y), String(y)));
-        toEl.add(new Option(String(y), String(y)));
-    });
-
-    fromEl.value = String(years[0]);
-    toEl.value = String(years[years.length - 1]);
-}
-
-function setLoading(canvasId, loading) {
-    var el = document.getElementById(canvasId);
-    if (!el) return;
-    var card = el.closest('.card');
-    if (card) {
-        if (loading) card.classList.add('is-loading');
-        else card.classList.remove('is-loading');
-    }
-}
-
-function buildFilterParams() {
-    var f = getFilters();
-    var params = new URLSearchParams();
-    if (f.town) params.set('town', f.town);
-    if (f.flat_type) params.set('flat_type', f.flat_type);
-    if (f.street_name) params.set('street_name', f.street_name);
-    if (f.block) params.set('block', f.block);
-    return params;
+        '<p class="mb-2"><strong>' + escapeHtml(locationLabel) + '</strong></p>' +
+        '<p class="mb-2"><strong>Market movement:</strong> A <strong>' + direction + '</strong> of <strong>' +
+            trendPct.toFixed(1) + '%</strong> across the selected years.</p>' +
+        '<p class="mb-2"><strong>Activity:</strong> ' +
+            data.reduce(function(sum, item) { return sum + Number(item.txn_count || 0); }, 0).toLocaleString() +
+            ' transactions in scope.</p>' +
+        '<p class="mb-0"><strong>Benchmark spread:</strong> Highest visible average is <strong>' +
+            escapeHtml(highLabel || '-') + '</strong> (' + (high ? formatMoney(high.avg_price) : '-') +
+            '), lowest is <strong>' + escapeHtml(lowLabel || '-') + '</strong> (' +
+            (low ? formatMoney(low.avg_price) : '-') + ').</p>';
 }
 
 async function loadPriceTrend() {
-    var params = buildFilterParams();
-
     setLoading('priceTrendChart', true);
-    const raw = await fetchJSON('/api/price_trend_simple?' + params);
-    ensureYearSelectors(raw);
-    const data = clipByYear(raw);
-    latestTrendData = data;
-    setKpis(data);
+    try {
+        const raw = await fetchJSON('/api/price_trend_simple?' + buildFilterParams().toString());
+        syncYearSelectors(raw);
+        const data = clipByYear(raw);
+        latestTrendData = data;
+        setKpis(data);
+        updateFocusSummary(data);
 
-    const ctx = document.getElementById('priceTrendChart').getContext('2d');
-    const type = document.getElementById('trendStyle').value;
+        const ctx = document.getElementById('priceTrendChart').getContext('2d');
+        const type = document.getElementById('trendStyle').value;
+        if (priceTrendChart) priceTrendChart.destroy();
 
-    if (priceTrendChart) priceTrendChart.destroy();
-    priceTrendChart = new Chart(ctx, {
-        type,
-        data: {
-            labels: data.map(d => d.year),
-            datasets: [{
-                label: 'Average Price',
-                data: data.map(d => d.avg_price),
-                borderColor: '#2563eb',
-                backgroundColor: type === 'line' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.78)',
-                fill: type === 'line',
-                tension: 0.28,
-                borderRadius: 5,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                tooltip: { callbacks: { label: c => formatMoney(c.parsed.y) } },
-                legend: { display: false }
+        priceTrendChart = new Chart(ctx, {
+            type: type,
+            data: {
+                labels: data.map(function(item) { return item.year; }),
+                datasets: [{
+                    label: 'Average Price',
+                    data: data.map(function(item) { return item.avg_price; }),
+                    borderColor: '#2563eb',
+                    backgroundColor: type === 'line' ? 'rgba(37, 99, 235, 0.16)' : 'rgba(37, 99, 235, 0.78)',
+                    fill: type === 'line',
+                    tension: 0.28,
+                    borderRadius: 5,
+                }]
             },
-            scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
-        }
-    });
-
-    setLoading('priceTrendChart', false);
-    return data;
-}
-
-async function loadFlatType() {
-    const f = getFilters();
-    const params = new URLSearchParams();
-    if (f.town) params.set('town', f.town);
-    if (f.street_name) params.set('street_name', f.street_name);
-
-    setLoading('flatTypeChart', true);
-    const data = await fetchJSON('/api/flat_type_breakdown?' + params);
-    const ctx = document.getElementById('flatTypeChart').getContext('2d');
-
-    if (flatTypeChart) flatTypeChart.destroy();
-    flatTypeChart = new Chart(ctx, {
-        type: 'doughnut',
-        data: {
-            labels: data.map(d => d.flat_type),
-            datasets: [{ data: data.map(d => d.txn_count), backgroundColor: COLORS }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { position: 'bottom', labels: { boxWidth: 11, font: { size: 11 } } },
-                tooltip: {
-                    callbacks: {
-                        label: c => {
-                            const d = data[c.dataIndex];
-                            return ' ' + d.flat_type + ': ' + d.txn_count.toLocaleString() + ' txns (avg ' + formatMoney(d.avg_price) + ')';
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return formatMoney(context.parsed.y); }
+                        }
+                    },
+                    legend: { display: false }
+                },
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + (value / 1000).toFixed(0) + 'K';
+                            }
                         }
                     }
                 }
             }
-        }
-    });
-    setLoading('flatTypeChart', false);
+        });
+
+        return data;
+    } catch (error) {
+        latestTrendData = [];
+        setKpis([]);
+        updateFocusSummary([]);
+        return [];
+    } finally {
+        setLoading('priceTrendChart', false);
+    }
 }
 
-async function loadDistrict() {
-    setLoading('districtChart', true);
-    let data = await fetchJSON('/api/district_comparison');
-    const f = getFilters();
-    if (f.town) {
-        data = data.filter(d => d.town === f.town);
-    }
+async function loadFlatType() {
+    const params = buildFilterParams();
+    setLoading('flatTypeChart', true);
+    try {
+        const data = await fetchJSON('/api/flat_type_breakdown?' + params.toString());
+        const ctx = document.getElementById('flatTypeChart').getContext('2d');
+        if (flatTypeChart) flatTypeChart.destroy();
 
-    const ctx = document.getElementById('districtChart').getContext('2d');
-    if (districtChart) districtChart.destroy();
-
-    districtChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(d => d.town),
-            datasets: [{
-                label: 'Avg Price',
-                data: data.map(d => d.avg_price),
-                backgroundColor: data.map((_, i) => COLORS[i % COLORS.length]),
-                borderRadius: 6,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: {
-                legend: { display: false },
-                tooltip: { callbacks: { label: c => ' ' + formatMoney(c.parsed.x) } }
+        flatTypeChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: data.map(function(item) { return item.flat_type; }),
+                datasets: [{
+                    data: data.map(function(item) { return item.txn_count; }),
+                    backgroundColor: COLORS
+                }]
             },
-            scales: { x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } },
-            onClick: (_, activeEls) => {
-                if (!activeEls.length) return;
-                const idx = activeEls[0].index;
-                const town = data[idx].town;
-                document.getElementById('filterTown').value = town;
-                // Trigger street loading
-                document.getElementById('filterTown').dispatchEvent(new Event('change'));
-                refreshDashboard();
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 11, font: { size: 11 } }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const row = data[context.dataIndex];
+                                return ' ' + row.flat_type + ': ' + Number(row.txn_count || 0).toLocaleString() +
+                                    ' txns (avg ' + formatMoney(row.avg_price) + ')';
+                            }
+                        }
+                    }
+                }
             }
+        });
+    } catch (error) {
+        if (flatTypeChart) {
+            flatTypeChart.destroy();
+            flatTypeChart = null;
+        }
+    } finally {
+        setLoading('flatTypeChart', false);
+    }
+}
+
+function buildStreetSnapshots(rows) {
+    const latestByStreet = {};
+    rows.forEach(function(row) {
+        const street = row.street_name;
+        const year = Number(row.year || 0);
+        if (!street) return;
+        if (!latestByStreet[street] || year > Number(latestByStreet[street].year || 0)) {
+            latestByStreet[street] = row;
         }
     });
+    return Object.values(latestByStreet);
+}
 
-    setLoading('districtChart', false);
-    return data;
+async function loadLocationComparison() {
+    const filters = getFilters();
+    const titleEl = document.getElementById('locationComparisonTitle');
+    const subtitleEl = document.getElementById('locationComparisonSubtitle');
+    const ctx = document.getElementById('districtChart').getContext('2d');
+
+    setLoading('districtChart', true);
+    try {
+        let rows = [];
+        let chartRows = [];
+        let labelField = 'town';
+        let selectedLabel = filters.town || '';
+
+        if (filters.town && !filters.street_name && !filters.block) {
+            const params = new URLSearchParams();
+            params.set('town', filters.town);
+            if (filters.flat_type) params.set('flat_type', filters.flat_type);
+            rows = await fetchJSON('/api/street_price_trend?' + params.toString());
+            chartRows = buildStreetSnapshots(rows)
+                .sort(function(a, b) { return Number(b.avg_price || 0) - Number(a.avg_price || 0); })
+                .slice(0, 12);
+            labelField = 'street_name';
+            selectedLabel = '';
+            titleEl.innerHTML = '<i class="bi bi-signpost-split me-1 text-primary"></i>Street Comparison in ' + escapeHtml(filters.town);
+            subtitleEl.textContent = 'Latest available year by average resale price.';
+        } else {
+            rows = await fetchJSON('/api/district_comparison');
+            chartRows = rows.slice();
+            titleEl.innerHTML = '<i class="bi bi-buildings me-1 text-primary"></i>Town Benchmark (Latest Year)';
+            subtitleEl.textContent = filters.town && (filters.street_name || filters.block)
+                ? 'Selected location is highlighted against the wider town market.'
+                : 'Compare broader town performance side by side.';
+        }
+
+        if (districtChart) districtChart.destroy();
+
+        districtChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: chartRows.map(function(row) { return row[labelField]; }),
+                datasets: [{
+                    label: 'Average Price',
+                    data: chartRows.map(function(row) { return row.avg_price; }),
+                    backgroundColor: chartRows.map(function(row, index) {
+                        if (labelField === 'town' && selectedLabel && row[labelField] === selectedLabel) {
+                            return '#2563eb';
+                        }
+                        return labelField === 'street_name'
+                            ? COLORS[index % COLORS.length]
+                            : 'rgba(100, 116, 139, 0.72)';
+                    }),
+                    borderRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return ' ' + formatMoney(context.parsed.x); }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + (value / 1000).toFixed(0) + 'K';
+                            }
+                        }
+                    }
+                },
+                onClick: async function(_, activeEls) {
+                    if (!activeEls.length) return;
+                    const row = chartRows[activeEls[0].index];
+                    if (!row) return;
+
+                    if (labelField === 'street_name') {
+                        await loadStreetOptions(filters.town, row.street_name);
+                        await loadBlockOptions(filters.town, row.street_name, '');
+                        document.getElementById('filterStreet').value = row.street_name;
+                        refreshDashboard();
+                        return;
+                    }
+
+                    document.getElementById('filterTown').value = row.town;
+                    await loadStreetOptions(row.town, '');
+                    refreshDashboard();
+                }
+            }
+        });
+
+        return {
+            rows: chartRows,
+            labelField: labelField,
+        };
+    } catch (error) {
+        if (districtChart) {
+            districtChart.destroy();
+            districtChart = null;
+        }
+        return { rows: [], labelField: 'town' };
+    } finally {
+        setLoading('districtChart', false);
+    }
 }
 
 async function loadVolume() {
-    setLoading('volumeChart', true);
-    const data = latestTrendData;
     const ctx = document.getElementById('volumeChart').getContext('2d');
-
-    if (volumeChart) volumeChart.destroy();
-    volumeChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(d => d.year),
-            datasets: [{
-                label: 'Transactions',
-                data: data.map(d => d.txn_count),
-                backgroundColor: 'rgba(59, 130, 246, 0.76)',
-                borderRadius: 4,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { display: false } }
-        }
-    });
-    setLoading('volumeChart', false);
+    setLoading('volumeChart', true);
+    try {
+        if (volumeChart) volumeChart.destroy();
+        volumeChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: latestTrendData.map(function(item) { return item.year; }),
+                datasets: [{
+                    label: 'Transactions',
+                    data: latestTrendData.map(function(item) { return item.txn_count; }),
+                    backgroundColor: 'rgba(59, 130, 246, 0.78)',
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    } finally {
+        setLoading('volumeChart', false);
+    }
 }
 
 async function loadPSF() {
-    setLoading('psfChart', true);
-    let data = await fetchJSON('/api/district_comparison');
-    const f = getFilters();
-    if (f.town) data = data.filter(d => d.town === f.town);
-    data.sort((a, b) => b.psf - a.psf);
-
+    const filters = getFilters();
+    const titleEl = document.getElementById('psfTitle');
+    const subtitleEl = document.getElementById('psfSubtitle');
     const ctx = document.getElementById('psfChart').getContext('2d');
 
-    if (psfChart) psfChart.destroy();
-    psfChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-            labels: data.map(d => d.town),
-            datasets: [{
-                label: '$/sqm',
-                data: data.map(d => d.psf),
-                backgroundColor: '#1d4ed8',
-                borderRadius: 4,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            indexAxis: 'y',
-            plugins: { legend: { display: false } },
-            scales: { x: { ticks: { callback: v => '$' + v.toLocaleString() } } }
+    setLoading('psfChart', true);
+    try {
+        let rows = [];
+        let labelField = 'town';
+        let highlightTown = filters.town || '';
+
+        if (filters.town && !filters.street_name && !filters.block) {
+            const params = new URLSearchParams();
+            params.set('town', filters.town);
+            if (filters.flat_type) params.set('flat_type', filters.flat_type);
+            rows = buildStreetSnapshots(await fetchJSON('/api/street_price_trend?' + params.toString()))
+                .sort(function(a, b) { return Number(b.psf || 0) - Number(a.psf || 0); })
+                .slice(0, 12);
+            labelField = 'street_name';
+            titleEl.innerHTML = '<i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm by Street';
+            subtitleEl.textContent = 'Latest available year for streets within the selected town.';
+        } else {
+            rows = await fetchJSON('/api/district_comparison');
+            rows.sort(function(a, b) { return Number(b.psf || 0) - Number(a.psf || 0); });
+            titleEl.innerHTML = '<i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm by Town';
+            subtitleEl.textContent = 'Average price per square metre for the current benchmark set.';
         }
-    });
-    setLoading('psfChart', false);
+
+        if (psfChart) psfChart.destroy();
+        psfChart = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: rows.map(function(row) { return row[labelField]; }),
+                datasets: [{
+                    label: '$/sqm',
+                    data: rows.map(function(row) { return row.psf; }),
+                    backgroundColor: rows.map(function(row, index) {
+                        if (labelField === 'town' && highlightTown && row.town === highlightTown) {
+                            return '#2563eb';
+                        }
+                        return labelField === 'street_name'
+                            ? COLORS[index % COLORS.length]
+                            : 'rgba(37, 99, 235, 0.82)';
+                    }),
+                    borderRadius: 4,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                indexAxis: 'y',
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + Number(value || 0).toLocaleString();
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        if (psfChart) {
+            psfChart.destroy();
+            psfChart = null;
+        }
+    } finally {
+        setLoading('psfChart', false);
+    }
 }
 
-// ── Future Predictions ──
+function hideFuturePredictions() {
+    document.getElementById('futurePredSection').classList.add('d-none');
+    document.getElementById('forecastTableBody').innerHTML = '';
+    if (futurePredChart) {
+        futurePredChart.destroy();
+        futurePredChart = null;
+    }
+}
+
 async function loadFuturePredictions() {
-    var f = getFilters();
-    if (!f.town || !f.flat_type) {
-        document.getElementById('futurePredSection').classList.add('d-none');
+    const filters = getFilters();
+    if (!filters.town || !filters.flat_type) {
+        hideFuturePredictions();
         return;
     }
 
-    var params = buildFilterParams();
+    setLoading('futurePredChart', true);
     try {
-        var data = await fetchJSON('/api/future_prediction?' + params);
-        if (!data || !data.timeline || data.timeline.length < 2) {
-            document.getElementById('futurePredSection').classList.add('d-none');
+        const data = await fetchJSON('/api/future_prediction?' + buildFuturePredictionParams().toString());
+        const timeline = data.timeline || [];
+        if (timeline.length < 2) {
+            hideFuturePredictions();
             return;
         }
 
         document.getElementById('futurePredSection').classList.remove('d-none');
-        var timeline = data.timeline;
 
-        // Chart
-        var ctx = document.getElementById('futurePredChart').getContext('2d');
+        const resolved = data.resolved_inputs || {};
+        let locationLabel = filters.town;
+        if (filters.street_name) locationLabel += ' > ' + filters.street_name;
+        if (filters.block) locationLabel += ' > Blk ' + filters.block;
+        document.getElementById('futurePredCaption').textContent =
+            locationLabel + ' | ' +
+            (resolved.flat_model || 'Representative model') + ' | ' +
+            (resolved.storey_range || 'Representative storey') + ' | ' +
+            Number(resolved.floor_area || 0).toLocaleString() + ' sqm | lease ' +
+            (resolved.lease_commence || '-');
+
+        const ctx = document.getElementById('futurePredChart').getContext('2d');
         if (futurePredChart) futurePredChart.destroy();
 
         futurePredChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: timeline.map(function(t) { return t.year; }),
+                labels: timeline.map(function(item) { return item.year; }),
                 datasets: [
                     {
                         label: 'Predicted Price',
-                        data: timeline.map(function(t) { return t.predicted_price; }),
+                        data: timeline.map(function(item) { return item.predicted_price; }),
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.12)',
                         fill: true,
@@ -722,7 +1184,7 @@ async function loadFuturePredictions() {
                     },
                     {
                         label: 'Upper Range',
-                        data: timeline.map(function(t) { return t.price_high; }),
+                        data: timeline.map(function(item) { return item.price_high; }),
                         borderColor: 'rgba(37, 99, 235, 0.3)',
                         borderDash: [5, 5],
                         pointRadius: 0,
@@ -730,7 +1192,7 @@ async function loadFuturePredictions() {
                     },
                     {
                         label: 'Lower Range',
-                        data: timeline.map(function(t) { return t.price_low; }),
+                        data: timeline.map(function(item) { return item.price_low; }),
                         borderColor: 'rgba(37, 99, 235, 0.3)',
                         borderDash: [5, 5],
                         pointRadius: 0,
@@ -743,28 +1205,44 @@ async function loadFuturePredictions() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: function(c) { return c.dataset.label + ': ' + formatMoney(c.parsed.y); } } },
-                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.dataset.label + ': ' + formatMoney(context.parsed.y);
+                            }
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 14, font: { size: 11 } }
+                    }
                 },
-                scales: { y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } } }
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + (value / 1000).toFixed(0) + 'K';
+                            }
+                        }
+                    }
+                }
             }
         });
 
-        // Table
-        var tbody = document.getElementById('forecastTableBody');
-        tbody.innerHTML = timeline.map(function(t, i) {
-            var rowClass = i === 0 ? ' class="fw-bold"' : '';
-            var yearLabel = i === 0 ? t.year + ' (Now)' : t.year;
+        document.getElementById('forecastTableBody').innerHTML = timeline.map(function(item, index) {
+            const rowClass = index === 0 ? ' class="is-current"' : '';
+            const yearLabel = index === 0 ? item.year + ' (Now)' : item.year;
             return '<tr' + rowClass + '>' +
-                '<td>' + yearLabel + '</td>' +
-                '<td class="text-end">' + formatMoney(t.predicted_price) + '</td>' +
-                '<td class="text-end">' + formatMoney(t.price_low) + ' - ' + formatMoney(t.price_high) + '</td>' +
-                '<td class="text-end">' + (t.remaining_lease || '-') + ' yrs</td>' +
+                '<td>' + escapeHtml(yearLabel) + '</td>' +
+                '<td class="text-end">' + formatMoney(item.predicted_price) + '</td>' +
+                '<td class="text-end">' + formatMoney(item.price_low) + ' - ' + formatMoney(item.price_high) + '</td>' +
+                '<td class="text-end">' + escapeHtml(String(item.remaining_lease || '-')) + ' yrs</td>' +
                 '</tr>';
         }).join('');
-
-    } catch(e) {
-        document.getElementById('futurePredSection').classList.add('d-none');
+    } catch (error) {
+        hideFuturePredictions();
+    } finally {
+        setLoading('futurePredChart', false);
     }
 }
 
@@ -772,15 +1250,29 @@ async function refreshDashboard() {
     updateBreadcrumb();
     const trendData = await loadPriceTrend();
     await loadFlatType();
-    const districtData = await loadDistrict();
+    const comparisonMeta = await loadLocationComparison();
     await loadVolume();
     await loadPSF();
-    buildInsights(trendData, districtData);
+    buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
 }
 
-['filterTown', 'filterFlat', 'filterStreet', 'filterBlock', 'trendStyle', 'yearFrom', 'yearTo'].forEach(id => {
-    document.getElementById(id).addEventListener('change', () => {
+document.getElementById('refreshDashboardBtn').addEventListener('click', refreshDashboard);
+document.getElementById('clearLocationBtn').addEventListener('click', clearLocationFilters);
+
+document.getElementById('filterTown').addEventListener('change', async function() {
+    const town = this.value;
+    await loadStreetOptions(town, '');
+    await loadBlockOptions(town, '', '');
+});
+
+document.getElementById('filterStreet').addEventListener('change', async function() {
+    const town = document.getElementById('filterTown').value;
+    await loadBlockOptions(town, this.value, '');
+});
+
+['filterTown', 'filterFlat', 'filterStreet', 'filterBlock', 'trendStyle', 'yearFrom', 'yearTo'].forEach(function(id) {
+    document.getElementById(id).addEventListener('change', function() {
         const from = Number(document.getElementById('yearFrom').value || 0);
         const to = Number(document.getElementById('yearTo').value || 9999);
         if (from > to) {
@@ -790,82 +1282,61 @@ async function refreshDashboard() {
     });
 });
 
-// Pre-set filters from URL params (e.g. from prediction page or map page)
-(async function() {
-    var params = new URLSearchParams(window.location.search);
-    var town = params.get('town');
-    var street = params.get('street_name') || params.get('street');
-    var block = params.get('block');
-    var flatType = params.get('flat_type');
-
-    if (town) document.getElementById('filterTown').value = town;
-    if (flatType) document.getElementById('filterFlat').value = flatType;
-
-    // Load streets if town is set
-    if (town) {
-        try {
-            var resp = await fetch('/api/available_streets?town=' + encodeURIComponent(town));
-            if (resp.ok) {
-                var data = await resp.json();
-                var streetEl = document.getElementById('filterStreet');
-                streetEl.innerHTML = '<option value="">All Streets</option>' +
-                    (data.streets || []).map(function(s) {
-                        var sel = (s === street) ? ' selected' : '';
-                        return '<option value="' + s + '"' + sel + '>' + s + '</option>';
-                    }).join('');
-
-                // Load blocks if street is set
-                if (street) {
-                    var blockResp = await fetch('/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street));
-                    if (blockResp.ok) {
-                        var blockData = await blockResp.json();
-                        var blockEl = document.getElementById('filterBlock');
-                        blockEl.innerHTML = '<option value="">All Blocks</option>' +
-                            (blockData.blocks || []).map(function(b) {
-                                var sel = (b === block) ? ' selected' : '';
-                                return '<option value="' + b + '"' + sel + '>' + b + '</option>';
-                            }).join('');
-                    }
-                }
-            }
-        } catch(e) {}
+(async function bootstrapAnalytics() {
+    if (predictionSeed.town) {
+        document.getElementById('filterTown').value = predictionSeed.town;
+    }
+    if (predictionSeed.flat_type) {
+        document.getElementById('filterFlat').value = predictionSeed.flat_type;
     }
 
+    if (predictionSeed.town) {
+        await loadStreetOptions(predictionSeed.town, predictionSeed.street_name);
+        if (predictionSeed.street_name) {
+            await loadBlockOptions(predictionSeed.town, predictionSeed.street_name, predictionSeed.block);
+        }
+    }
+
+    updateBreadcrumb();
     refreshDashboard();
 })();
 
-// ── Prediction Insights (when arriving from prediction page) ──
-(function() {
-    var params = new URLSearchParams(window.location.search);
-    var predictedPrice = parseFloat(params.get('predicted_price'));
-    var town = params.get('town');
-    var flatType = params.get('flat_type');
+(function loadPredictionInsights() {
+    const predictedPrice = parseFloat(predictionSeed.predicted_price);
+    const town = predictionSeed.town;
+    const flatType = predictionSeed.flat_type;
+    const streetName = predictionSeed.street_name;
+    const block = predictionSeed.block;
 
     if (!predictedPrice || !town) return;
 
     document.getElementById('predictionInsights').classList.remove('d-none');
 
-    var trendVsPredChart, predVsActChart, leaseDecChart;
+    let trendVsPredChart;
+    let predVsActChart;
+    let leaseDecChart;
 
-    // 1. Price Trend with prediction annotation line
     async function loadTrendVsPrediction() {
-        var qp = new URLSearchParams();
-        qp.set('town', town);
-        if (flatType) qp.set('flat_type', flatType);
-        var data = await fetchJSON('/api/price_trend_simple?' + qp);
+        const params = new URLSearchParams();
+        params.set('town', town);
+        if (flatType) params.set('flat_type', flatType);
+        if (streetName) params.set('street_name', streetName);
+        if (block) params.set('block', block);
+
+        const data = await fetchJSON('/api/price_trend_simple?' + params.toString());
         if (!data.length) return;
 
-        var ctx = document.getElementById('trendVsPredictionChart').getContext('2d');
+        const ctx = document.getElementById('trendVsPredictionChart').getContext('2d');
         if (trendVsPredChart) trendVsPredChart.destroy();
 
         trendVsPredChart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: data.map(function(d) { return d.year; }),
+                labels: data.map(function(item) { return item.year; }),
                 datasets: [
                     {
                         label: 'Average Price',
-                        data: data.map(function(d) { return d.avg_price; }),
+                        data: data.map(function(item) { return item.avg_price; }),
                         borderColor: '#2563eb',
                         backgroundColor: 'rgba(37, 99, 235, 0.12)',
                         fill: true,
@@ -886,33 +1357,51 @@ async function refreshDashboard() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: function(c) { return formatMoney(c.parsed.y); } } },
-                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) { return formatMoney(context.parsed.y); }
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 14, font: { size: 11 } }
+                    }
                 },
-                scales: { y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } } }
+                scales: {
+                    y: {
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + (value / 1000).toFixed(0) + 'K';
+                            }
+                        }
+                    }
+                }
             }
         });
     }
 
-    // 2 & 3. Fetch prediction context data for actuals + lease decay
     async function loadPredictionContext() {
-        var qp = new URLSearchParams();
-        qp.set('town', town);
-        if (flatType) qp.set('flat_type', flatType);
-        qp.set('predicted_price', predictedPrice);
-        var ctx_data = await fetchJSON('/api/prediction_context?' + qp);
+        const params = new URLSearchParams();
+        params.set('town', town);
+        if (flatType) params.set('flat_type', flatType);
+        if (streetName) params.set('street_name', streetName);
+        if (block) params.set('block', block);
+        params.set('predicted_price', predictedPrice);
 
-        // Prediction vs Recent Actuals
-        var txns = (ctx_data.recent_transactions || []).slice(0, 15);
+        const contextData = await fetchJSON('/api/prediction_context?' + params.toString());
+
+        const txns = (contextData.recent_transactions || []).slice(0, 15);
         if (txns.length) {
-            var labels = txns.map(function(t) { return t.block + ' ' + t.street_name; });
-            var prices = txns.map(function(t) { return t.resale_price; });
-            var predLine = txns.map(function() { return predictedPrice; });
+            const labels = txns.map(function(item) {
+                return [item.block, item.street_name].filter(Boolean).join(' ');
+            });
+            const prices = txns.map(function(item) { return item.resale_price; });
+            const predictionLine = txns.map(function() { return predictedPrice; });
 
-            var cvs = document.getElementById('predVsActualsChart').getContext('2d');
+            const ctx = document.getElementById('predVsActualsChart').getContext('2d');
             if (predVsActChart) predVsActChart.destroy();
 
-            predVsActChart = new Chart(cvs, {
+            predVsActChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
                     labels: labels,
@@ -925,7 +1414,7 @@ async function refreshDashboard() {
                         },
                         {
                             label: 'Your Prediction',
-                            data: predLine,
+                            data: predictionLine,
                             type: 'line',
                             borderColor: '#dc2626',
                             borderDash: [8, 4],
@@ -939,35 +1428,51 @@ async function refreshDashboard() {
                     responsive: true,
                     maintainAspectRatio: false,
                     plugins: {
-                        tooltip: { callbacks: { label: function(c) { return formatMoney(c.parsed.y); } } },
-                        legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) { return formatMoney(context.parsed.y); }
+                            }
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: { boxWidth: 14, font: { size: 11 } }
+                        }
                     },
                     scales: {
-                        x: { ticks: { maxRotation: 45, font: { size: 9 } } },
-                        y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } }
+                        x: {
+                            ticks: { maxRotation: 45, font: { size: 9 } }
+                        },
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + (value / 1000).toFixed(0) + 'K';
+                                }
+                            }
+                        }
                     }
                 }
             });
         }
 
-        // Lease Decay Chart
-        var decay = ctx_data.lease_decay || [];
+        const decay = contextData.lease_decay || [];
         if (decay.length) {
-            var bucketLabels = decay.map(function(d) { return d.lease_bucket + '-' + (d.lease_bucket + 9) + ' yrs'; });
-            var bucketPrices = decay.map(function(d) { return d.avg_price; });
-            var bucketCounts = decay.map(function(d) { return d.txn_count; });
+            const labels = decay.map(function(item) {
+                return item.lease_bucket + '-' + (item.lease_bucket + 9) + ' yrs';
+            });
+            const prices = decay.map(function(item) { return item.avg_price; });
+            const counts = decay.map(function(item) { return item.txn_count; });
 
-            var cvs2 = document.getElementById('leaseDecayChart').getContext('2d');
+            const ctx = document.getElementById('leaseDecayChart').getContext('2d');
             if (leaseDecChart) leaseDecChart.destroy();
 
-            leaseDecChart = new Chart(cvs2, {
+            leaseDecChart = new Chart(ctx, {
                 type: 'bar',
                 data: {
-                    labels: bucketLabels,
+                    labels: labels,
                     datasets: [{
-                        label: 'Avg Price',
-                        data: bucketPrices,
-                        backgroundColor: decay.map(function(d, i) { return COLORS[i % COLORS.length]; }),
+                        label: 'Average Price',
+                        data: prices,
+                        backgroundColor: decay.map(function(_, index) { return COLORS[index % COLORS.length]; }),
                         borderRadius: 6,
                     }]
                 },
@@ -978,13 +1483,22 @@ async function refreshDashboard() {
                         legend: { display: false },
                         tooltip: {
                             callbacks: {
-                                label: function(c) {
-                                    return formatMoney(c.parsed.y) + ' (' + bucketCounts[c.dataIndex].toLocaleString() + ' txns)';
+                                label: function(context) {
+                                    return formatMoney(context.parsed.y) + ' (' +
+                                        Number(counts[context.dataIndex] || 0).toLocaleString() + ' txns)';
                                 }
                             }
                         }
                     },
-                    scales: { y: { ticks: { callback: function(v) { return '$' + (v / 1000).toFixed(0) + 'K'; } } } }
+                    scales: {
+                        y: {
+                            ticks: {
+                                callback: function(value) {
+                                    return '$' + (value / 1000).toFixed(0) + 'K';
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }

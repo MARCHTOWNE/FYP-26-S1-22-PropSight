@@ -475,6 +475,61 @@ h6,
     right: 280px;
 }
 
+.insight-question-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-top: 2.4rem;
+}
+
+.insight-card {
+    padding: 1.25rem 1.3rem;
+    min-height: 154px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.insight-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+}
+
+.insight-card h6 {
+    font-size: 1.05rem;
+    margin-bottom: 0.4rem;
+}
+
+.insight-card p {
+    margin-bottom: 0;
+    color: var(--text-soft);
+    line-height: 1.55;
+    max-width: 46ch;
+}
+
+.insight-question-card {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+.insight-question-card:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, 0.35);
+    outline-offset: 3px;
+}
+
+.insights-followup {
+    margin-top: 2rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem 1.5rem;
+}
+
+.insights-followup .section-subtitle {
+    flex: 1 1 520px;
+    margin-bottom: 0;
+}
+
 /* Insight card icons */
 .insight-card-icon {
     width: 44px;
@@ -812,7 +867,6 @@ footer {
         grid-template-columns: 1fr;
     }
 
-<<<<<<< Updated upstream
     .insights-layout {
         grid-template-columns: 1fr;
     }
@@ -829,10 +883,18 @@ footer {
         position: static;
         width: 200px;
         height: 200px;
-=======
+    }
+
+    .insight-question-row {
+        grid-template-columns: 1fr;
+    }
+
+    .insights-followup {
+        align-items: flex-start;
+    }
+
     .trust-grid {
         grid-template-columns: repeat(2, 1fr);
->>>>>>> Stashed changes
     }
 
     .comparison-summary-grid {

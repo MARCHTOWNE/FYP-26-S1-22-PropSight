@@ -254,6 +254,10 @@ def _ensure_sqlite_prediction_indexes():
                 ON resale_prices(town, lease_commence_date);
             CREATE INDEX IF NOT EXISTS idx_resale_town_year_flat_type
                 ON resale_prices(town, year, flat_type);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_street_block
+                ON resale_prices(town, street_name, block);
+            CREATE INDEX IF NOT EXISTS idx_resale_town_flat_type_street_block_year
+                ON resale_prices(town, flat_type, street_name, block, year);
         """)
         conn.commit()
         conn.close()
@@ -908,6 +912,8 @@ def _run_prediction_form(form_data):
         form_data["flat_type"],
         floor_area_raw,
         lease_commence_raw,
+        form_data.get("street_name", ""),
+        form_data.get("block", ""),
     )
 
     resolved_form = dict(form_data)
@@ -1103,9 +1109,11 @@ def _get_district_summary_data():
     return []
 
 
-@lru_cache(maxsize=64)
-def _get_flat_type_breakdown_data(town):
+@lru_cache(maxsize=256)
+def _get_flat_type_breakdown_data(town, street_name="", block=""):
     town = town or ""
+    street_name = street_name or ""
+    block = block or ""
 
     if _has_local_resale_db():
         try:
@@ -1122,6 +1130,12 @@ def _get_flat_type_breakdown_data(town):
             if town:
                 query += " AND town = ?"
                 params.append(town)
+            if street_name:
+                query += " AND street_name = ?"
+                params.append(street_name)
+            if block:
+                query += " AND block = ?"
+                params.append(block)
             query += " GROUP BY flat_type ORDER BY flat_type"
             rows = conn.execute(query, params).fetchall()
             conn.close()
@@ -1132,7 +1146,12 @@ def _get_flat_type_breakdown_data(town):
     if SUPABASE_ENABLED:
         try:
             return _supabase_rpc(
-                "rpc_api_flat_type_breakdown", {"p_town": town or None}
+                "rpc_api_flat_type_breakdown",
+                {
+                    "p_town": town or None,
+                    "p_street_name": street_name or None,
+                    "p_block": block or None,
+                },
             ) or []
         except SupabaseError:
             pass
@@ -1299,9 +1318,21 @@ def login_required(f):
     def decorated(*args, **kwargs):
         if "user_id" not in session:
             flash("Please log in to access this feature.", "warning")
-            return redirect(url_for("login"))
+            next_url = request.full_path.rstrip("?") if request.query_string else request.path
+            return redirect(url_for("login", next=next_url))
         return f(*args, **kwargs)
     return decorated
+
+
+def _safe_next_url(target):
+    if not target:
+        return ""
+    parsed = parse.urlsplit(target)
+    if parsed.scheme or parsed.netloc:
+        return ""
+    if not target.startswith("/"):
+        return ""
+    return target
 
 
 def api_login_required(f):
@@ -1490,12 +1521,22 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     }
 
 
-def _get_recent_similar_transactions(town, flat_type, limit=5):
-    """Return recent transactions for same town + flat_type."""
+def _get_recent_similar_transactions(
+    town,
+    flat_type,
+    limit=5,
+    street_name="",
+    block="",
+):
+    """Return recent transactions for same town + flat_type, optionally scoped."""
     if SUPABASE_ENABLED:
         try:
             rows = _supabase_rpc("rpc_recent_similar_transactions", {
-                "p_town": town, "p_flat_type": flat_type, "p_limit": limit,
+                "p_town": town,
+                "p_flat_type": flat_type,
+                "p_limit": limit,
+                "p_street_name": street_name or None,
+                "p_block": block or None,
             }) or []
             return rows
         except SupabaseError:
@@ -1505,15 +1546,22 @@ def _get_recent_similar_transactions(town, flat_type, limit=5):
         return []
     try:
         conn = _get_db()
-        rows = conn.execute(
-            """SELECT block, street_name, storey_range, floor_area_sqm,
-                      resale_price, month
-               FROM resale_prices
-               WHERE town = ? AND flat_type = ?
-               ORDER BY year DESC, month DESC
-               LIMIT ?""",
-            (town, flat_type, limit),
-        ).fetchall()
+        query = """
+            SELECT block, street_name, storey_range, floor_area_sqm,
+                   resale_price, month
+            FROM resale_prices
+            WHERE town = ? AND flat_type = ?
+        """
+        params = [town, flat_type]
+        if street_name:
+            query += " AND street_name = ?"
+            params.append(street_name)
+        if block:
+            query += " AND block = ?"
+            params.append(block)
+        query += " ORDER BY year DESC, month DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(query, params).fetchall()
         conn.close()
         return [dict(r) for r in rows]
     except sqlite3.Error:
@@ -1558,12 +1606,21 @@ def _get_block_distances(town, street_name, block):
     return None
 
 
-def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_raw):
+def _resolve_prediction_inputs(
+    town,
+    flat_type,
+    floor_area_raw,
+    lease_commence_raw,
+    street_name="",
+    block="",
+):
     """
     Resolve optional prediction inputs.
     If floor_area or lease_commence is missing, infer from historical averages.
     """
     assumptions = []
+    street_name = street_name or ""
+    block = block or ""
 
     floor_area = None
     if floor_area_raw:
@@ -1572,24 +1629,50 @@ def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_r
         resolved = False
         if SUPABASE_ENABLED:
             try:
-                v = _supabase_rpc("rpc_resolve_floor_area", {"p_town": town, "p_flat_type": flat_type})
+                v = _supabase_rpc(
+                    "rpc_resolve_floor_area",
+                    {
+                        "p_town": town,
+                        "p_flat_type": flat_type,
+                        "p_street_name": street_name or None,
+                        "p_block": block or None,
+                    },
+                )
                 floor_area = float(v) if v else 90.0
                 resolved = True
             except SupabaseError:
                 pass
         if not resolved:
             conn = _get_db()
-            row = conn.execute(
-                "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ? AND flat_type = ?",
-                (town, flat_type),
-            ).fetchone()
+            query = """
+                SELECT ROUND(AVG(floor_area_sqm), 1) AS v
+                FROM resale_prices
+                WHERE town = ? AND flat_type = ?
+            """
+            params = [town, flat_type]
+            if street_name:
+                query += " AND street_name = ?"
+                params.append(street_name)
+            if block:
+                query += " AND block = ?"
+                params.append(block)
+            row = conn.execute(query, params).fetchone()
             if row and row["v"]:
                 floor_area = float(row["v"])
             else:
                 row = conn.execute(
-                    "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ?",
-                    (town,),
+                    """
+                    SELECT ROUND(AVG(floor_area_sqm), 1) AS v
+                    FROM resale_prices
+                    WHERE town = ? AND flat_type = ?
+                    """,
+                    (town, flat_type),
                 ).fetchone()
+                if not row or not row["v"]:
+                    row = conn.execute(
+                        "SELECT ROUND(AVG(floor_area_sqm), 1) AS v FROM resale_prices WHERE town = ?",
+                        (town,),
+                    ).fetchone()
                 floor_area = float(row["v"]) if row and row["v"] else 90.0
             conn.close()
         assumptions.append(f"Used inferred floor area: {floor_area} sqm")
@@ -1601,24 +1684,50 @@ def _resolve_prediction_inputs(town, flat_type, floor_area_raw, lease_commence_r
         resolved = False
         if SUPABASE_ENABLED:
             try:
-                v = _supabase_rpc("rpc_resolve_lease_commence", {"p_town": town, "p_flat_type": flat_type})
+                v = _supabase_rpc(
+                    "rpc_resolve_lease_commence",
+                    {
+                        "p_town": town,
+                        "p_flat_type": flat_type,
+                        "p_street_name": street_name or None,
+                        "p_block": block or None,
+                    },
+                )
                 lease_commence = int(v) if v else 1990
                 resolved = True
             except SupabaseError:
                 pass
         if not resolved:
             conn = _get_db()
-            row = conn.execute(
-                "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ? AND flat_type = ?",
-                (town, flat_type),
-            ).fetchone()
+            query = """
+                SELECT ROUND(AVG(lease_commence_date), 0) AS v
+                FROM resale_prices
+                WHERE town = ? AND flat_type = ?
+            """
+            params = [town, flat_type]
+            if street_name:
+                query += " AND street_name = ?"
+                params.append(street_name)
+            if block:
+                query += " AND block = ?"
+                params.append(block)
+            row = conn.execute(query, params).fetchone()
             if row and row["v"]:
                 lease_commence = int(row["v"])
             else:
                 row = conn.execute(
-                    "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ?",
-                    (town,),
+                    """
+                    SELECT ROUND(AVG(lease_commence_date), 0) AS v
+                    FROM resale_prices
+                    WHERE town = ? AND flat_type = ?
+                    """,
+                    (town, flat_type),
                 ).fetchone()
+                if not row or not row["v"]:
+                    row = conn.execute(
+                        "SELECT ROUND(AVG(lease_commence_date), 0) AS v FROM resale_prices WHERE town = ?",
+                        (town,),
+                    ).fetchone()
                 lease_commence = int(row["v"]) if row and row["v"] else 1990
             conn.close()
         assumptions.append(f"Used inferred lease start year: {lease_commence}")
@@ -1695,6 +1804,10 @@ def register():
 
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    next_url = _safe_next_url(
+        request.form.get("next", "") if request.method == "POST" else request.args.get("next", "")
+    )
+
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         password = request.form["password"]
@@ -1707,7 +1820,7 @@ def login():
                 )
             except SupabaseError:
                 flash("Invalid email or password.", "danger")
-                return render_template("login.html")
+                return render_template("login.html", next_url=next_url)
 
             # Fetch public.users record for integer ID (used by saved_predictions FK)
             try:
@@ -1726,7 +1839,7 @@ def login():
             session["access_token"] = result.get("access_token", "")
             session["subscription_tier"] = db_user.get("subscription_tier", "general")
             flash(f"Welcome back, {session['username']}!", "success")
-            return redirect(url_for("home"))
+            return redirect(next_url or url_for("home"))
         else:
             user = _sqlite_get_user_by_email(email)
             if user and check_password_hash(user["password_hash"], password):
@@ -1735,10 +1848,10 @@ def login():
                 session["email"] = user["email"]
                 session["subscription_tier"] = user["subscription_tier"] if "subscription_tier" in user.keys() else "general"
                 flash(f"Welcome back, {user['username']}!", "success")
-                return redirect(url_for("home"))
+                return redirect(next_url or url_for("home"))
             flash("Invalid email or password.", "danger")
 
-    return render_template("login.html")
+    return render_template("login.html", next_url=next_url)
 
 
 @app.route("/forgot-password", methods=["GET", "POST"])
@@ -2068,6 +2181,8 @@ def predict():
             request.form["flat_type"],
             floor_area_raw,
             lease_commence_raw,
+            request.form.get("street_name", "").strip(),
+            request.form.get("block", "").strip(),
         )
 
         form_data = {
@@ -2129,7 +2244,10 @@ def predict():
                 break
 
         recent_transactions = _get_recent_similar_transactions(
-            form_data["town"], form_data["flat_type"]
+            form_data["town"],
+            form_data["flat_type"],
+            street_name=form_data.get("street_name", ""),
+            block=form_data.get("block", ""),
         )
 
     return render_template(
@@ -2391,7 +2509,10 @@ def api_price_trend_simple():
     if SUPABASE_ENABLED:
         try:
             return jsonify(_supabase_rpc("rpc_api_price_trend_simple", {
-                "p_town": town or None, "p_flat_type": flat_type or None
+                "p_town": town or None,
+                "p_flat_type": flat_type or None,
+                "p_street_name": street_name or None,
+                "p_block": block or None,
             }) or [])
         except SupabaseError:
             pass  # fall through to SQLite
@@ -2419,6 +2540,61 @@ def api_price_trend_simple():
         query += " AND block = ?"
         params.append(block)
     query += " GROUP BY year ORDER BY year"
+    rows = conn.execute(query, params).fetchall()
+    conn.close()
+    return jsonify([dict(r) for r in rows])
+
+
+@app.route("/api/street_price_trend")
+@api_login_required
+def api_street_price_trend():
+    """Return yearly price trends grouped by street within a town."""
+    town = request.args.get("town", "")
+    flat_type = request.args.get("flat_type", "")
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+
+    if not town:
+        return jsonify({"error": "town is required"}), 400
+
+    if SUPABASE_ENABLED:
+        try:
+            return jsonify(_supabase_rpc("rpc_api_street_price_trend", {
+                "p_town": town,
+                "p_flat_type": flat_type or None,
+                "p_street_name": street_name or None,
+                "p_block": block or None,
+            }) or [])
+        except SupabaseError:
+            pass
+
+    if not _has_local_resale_db():
+        return jsonify([])
+
+    conn = _get_db()
+    query = """
+        SELECT street_name,
+               year,
+               ROUND(AVG(resale_price)) as avg_price,
+               ROUND(MIN(resale_price)) as min_price,
+               ROUND(MAX(resale_price)) as max_price,
+               COUNT(*) as txn_count,
+               ROUND(AVG(floor_area_sqm)) as avg_area,
+               ROUND(AVG(resale_price / NULLIF(floor_area_sqm, 0))) as psf
+        FROM resale_prices
+        WHERE town = ?
+    """
+    params = [town]
+    if flat_type:
+        query += " AND flat_type = ?"
+        params.append(flat_type)
+    if street_name:
+        query += " AND street_name = ?"
+        params.append(street_name)
+    if block:
+        query += " AND block = ?"
+        params.append(block)
+    query += " GROUP BY street_name, year ORDER BY street_name, year"
     rows = conn.execute(query, params).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
@@ -2456,33 +2632,8 @@ def api_flat_type_breakdown():
     """Return flat type breakdown for a town."""
     town = request.args.get("town", "")
     street_name = request.args.get("street_name", "")
-
-    # If street_name provided, run a custom query instead of the helper
-    if street_name and _has_local_resale_db():
-        try:
-            conn = _get_db()
-            query = """
-                SELECT flat_type,
-                       ROUND(AVG(resale_price)) as avg_price,
-                       COUNT(*) as txn_count,
-                       ROUND(AVG(floor_area_sqm)) as avg_area
-                FROM resale_prices
-                WHERE year >= 2023
-            """
-            params = []
-            if town:
-                query += " AND town = ?"
-                params.append(town)
-            query += " AND street_name = ?"
-            params.append(street_name)
-            query += " GROUP BY flat_type ORDER BY flat_type"
-            rows = conn.execute(query, params).fetchall()
-            conn.close()
-            return jsonify([dict(r) for r in rows])
-        except sqlite3.Error:
-            pass
-
-    return jsonify(_get_flat_type_breakdown_data(town))
+    block = request.args.get("block", "")
+    return jsonify(_get_flat_type_breakdown_data(town, street_name, block))
 
 
 @app.route("/api/monthly_volume")
@@ -2680,7 +2831,10 @@ def api_prediction_context():
     if SUPABASE_ENABLED:
         try:
             lease_decay = _supabase_rpc("rpc_lease_decay", {
-                "p_town": town, "p_flat_type": flat_type or None,
+                "p_town": town,
+                "p_flat_type": flat_type or None,
+                "p_street_name": street_name or None,
+                "p_block": block or None,
             }) or []
         except SupabaseError:
             pass
@@ -2712,13 +2866,13 @@ def api_prediction_context():
             pass
 
     # Recent transactions
-    recent = _get_recent_similar_transactions(town, flat_type, limit=20)
-
-    # Post-filter recent transactions by street_name / block if provided
-    if street_name:
-        recent = [r for r in recent if r.get("street_name") == street_name]
-    if block:
-        recent = [r for r in recent if r.get("block") == block]
+    recent = _get_recent_similar_transactions(
+        town,
+        flat_type,
+        limit=20,
+        street_name=street_name,
+        block=block,
+    )
 
     return jsonify({
         "lease_decay": lease_decay,
@@ -2738,14 +2892,38 @@ def api_future_prediction():
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
     flat_model = request.args.get("flat_model", "")
-    floor_area = request.args.get("floor_area", type=float, default=90)
+    floor_area_raw = request.args.get("floor_area", "").strip()
     storey_range = request.args.get("storey_range", "")
-    lease_commence = request.args.get("lease_commence", type=int, default=1990)
+    lease_commence_raw = request.args.get("lease_commence", "").strip()
     street_name = request.args.get("street_name", "")
     block = request.args.get("block", "")
 
     if not town or not flat_type:
         return jsonify({"error": "town and flat_type are required"}), 400
+
+    floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
+        town,
+        flat_type,
+        floor_area_raw,
+        lease_commence_raw,
+        street_name=street_name,
+        block=block,
+    )
+
+    available_models = _get_available_models_data(town, flat_type)
+    if flat_model and available_models and flat_model not in available_models:
+        flat_model = ""
+    if not flat_model:
+        flat_model = available_models[0] if available_models else "Model A"
+
+    available_storey_ranges = _get_available_storey_ranges_data(town, flat_type)
+    if storey_range and available_storey_ranges and storey_range not in available_storey_ranges:
+        storey_range = ""
+    if not storey_range:
+        if available_storey_ranges:
+            storey_range = available_storey_ranges[len(available_storey_ranges) // 2]
+        else:
+            storey_range = "07 TO 09"
 
     # Resolve block distances if street_name and block provided
     block_distances = None
@@ -2778,7 +2956,16 @@ def api_future_prediction():
         fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
         timeline.append(fp)
 
-    return jsonify({"timeline": timeline})
+    return jsonify({
+        "timeline": timeline,
+        "resolved_inputs": {
+            "flat_model": flat_model,
+            "floor_area": floor_area,
+            "storey_range": storey_range,
+            "lease_commence": lease_commence,
+            "assumptions": assumptions,
+        },
+    })
 
 
 # ---------------------------------------------------------------------------

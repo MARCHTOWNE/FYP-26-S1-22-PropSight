@@ -10,6 +10,9 @@
                     <i class="bi bi-box-arrow-in-right me-2 text-primary"></i>Login
                 </h4>
                 <form method="POST" action="{{ url_for('login') }}">
+                    {% if next_url %}
+                    <input type="hidden" name="next" value="{{ next_url }}">
+                    {% endif %}
                     <div class="mb-3">
                         <label class="form-label">Email</label>
                         <input type="email" name="email" class="form-control" required autofocus>

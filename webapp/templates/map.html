@@ -243,6 +243,24 @@
         font-size: 0.78rem;
         line-height: 1.45;
     }
+    .map-period-note {
+        margin-top: 6px;
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(15, 23, 42, 0.54);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        color: #cbd5e1;
+        font-size: 0.74rem;
+        line-height: 1.4;
+    }
+    .map-period-note .period-label {
+        color: #64748b;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 0.64rem;
+        font-weight: 700;
+        margin-right: 6px;
+    }
 
     /* ── Breadcrumb ── */
     .breadcrumb-bar {
@@ -401,31 +419,34 @@
 
     /* ── Leaflet amenity custom icons ── */
     .leaflet-amenity-icon {
+        background: transparent;
+        border: 0;
+    }
+    .leaflet-amenity-badge {
         display: flex;
         align-items: center;
         justify-content: center;
+        width: 16px;
+        height: 16px;
         font-weight: 900;
         font-size: 9px;
         color: #fff;
         border: 1.5px solid rgba(255,255,255,0.85);
         box-shadow: 0 1px 4px rgba(0,0,0,0.5);
     }
-    .leaflet-amenity-mrt {
+    .leaflet-amenity-mrt .leaflet-amenity-badge {
         background: #0ea5e9;
         border-radius: 3px;
         transform: rotate(45deg);
-        width: 16px; height: 16px;
     }
-    .leaflet-amenity-mrt span { transform: rotate(-45deg); display: block; }
-    .leaflet-amenity-school {
+    .leaflet-amenity-mrt .leaflet-amenity-glyph { transform: rotate(-45deg); display: block; }
+    .leaflet-amenity-school .leaflet-amenity-badge {
         background: #a855f7;
         border-radius: 50%;
-        width: 16px; height: 16px;
     }
-    .leaflet-amenity-mall {
+    .leaflet-amenity-mall .leaflet-amenity-badge {
         background: #f59e0b;
         border-radius: 3px;
-        width: 16px; height: 16px;
     }
 
     /* ── Responsive ── */
@@ -455,7 +476,7 @@
             <div class="map-sidebar">
                 <div class="map-kicker">Spatial Market Explorer</div>
                 <h2>HDB Resale Price Map</h2>
-                <p class="sidebar-desc">Heatmap uses AI predictions. Click any town to drill into transactions.</p>
+                <p class="sidebar-desc">Prediction view estimates typical prices by town. Click any town to drill into transactions.</p>
 
                 <div class="map-stat-grid">
                     <div class="map-stat">
@@ -486,7 +507,7 @@
                             <i class="bi bi-pin-map me-1"></i> Transactions
                         </button>
                         <button class="btn btn-primary active" id="btnHeatmap" onclick="showHeatmap()">
-                            <i class="bi bi-map me-1"></i> AI Heatmap
+                            <i class="bi bi-map me-1"></i> Prediction
                         </button>
                     </div>
 
@@ -570,7 +591,11 @@
                     </div>
 
                     <div class="map-insight" id="mapInsight">
-                        AI Heatmap predicts a typical flat price for each town. Click any region to explore individual transactions.
+                        Prediction view estimates a typical flat price for each town. Click any region to explore individual transactions.
+                    </div>
+                    <div class="map-period-note" id="mapPeriodNote">
+                        <span class="period-label">Pin Period</span>
+                        <span id="mapPeriodText">Switch to Transactions to view the loaded transaction period.</span>
                     </div>
                 </div>
             </div>
@@ -589,7 +614,7 @@
             </div>
 
             <div class="map-legend-panel" id="legendPanel">
-                <div class="map-legend-title" id="legendTitle">AI Predicted Price</div>
+                <div class="map-legend-title" id="legendTitle">Predicted Price</div>
                 <div class="legend-scale legend-scale-price" id="legendScale"></div>
                 <div class="legend-labels" id="legendLabels">
                     <span id="legendLow">Low</span>
@@ -619,105 +644,25 @@ let heatmapLayer = L.layerGroup().addTo(map);
 let currentMode = 'heatmap';
 let drilledTown = null;
 let activeAmenities = new Set();
-
-// Auto-zoom to town from URL params (e.g. from predict page or saved predictions)
-(function() {
-    var urlParams = new URLSearchParams(window.location.search);
-    var targetTown = urlParams.get('town');
-    var targetStreet = urlParams.get('street');
-    var targetBlock = urlParams.get('block');
-    if (!targetTown) return;
-
-    // Set the town filter dropdown and switch to pin mode
-    var townFilter = document.getElementById('townFilter');
-    if (townFilter) {
-        // Match case-insensitively
-        Array.from(townFilter.options).forEach(function(opt) {
-            if (opt.value && opt.value.toUpperCase() === targetTown.toUpperCase()) {
-                townFilter.value = opt.value;
-            }
-        });
-    }
-
-    fetch('/api/district_summary')
-        .then(function(r) { return r.json(); })
-        .then(function(data) {
-            var match = data.find(function(d) {
-                return d.town && d.town.toUpperCase() === targetTown.toUpperCase();
-            });
-            if (match && match.lat && match.lng) {
-                map.setView([match.lat, match.lng], 16);
-            }
-            // Load pins for the town, then highlight matching street/block
-            var params = new URLSearchParams();
-            params.set('town', targetTown);
-            params.set('limit', 1800);
-            return fetch('/api/transactions?' + params);
-        })
-        .then(function(r) { return r.json(); })
-        .then(function(txns) {
-            markers.clearLayers();
-            var prices = txns.map(function(d) { return Number(d.resale_price); }).filter(Number.isFinite);
-            var thresholds = buildThresholds(prices, PIN_COLORS.length);
-            var matchedLatLngs = [];
-
-            txns.forEach(function(txn) {
-                if (!txn.latitude || !txn.longitude) return;
-                var price = Number(txn.resale_price);
-                var color = scaleColor(price, thresholds, PIN_COLORS);
-                var isMatch = false;
-
-                // Check if this txn matches the street/block filter
-                if (targetStreet && txn.street_name && txn.street_name.toUpperCase() === targetStreet.toUpperCase()) {
-                    if (!targetBlock || (txn.block && txn.block === targetBlock)) {
-                        isMatch = true;
-                        matchedLatLngs.push([txn.latitude, txn.longitude]);
-                    }
-                }
-
-                var radius = isMatch ? 9 : Math.max(4, Math.min(10, Number(txn.floor_area_sqm || 70) / 14));
-                var marker = L.circleMarker([txn.latitude, txn.longitude], {
-                    radius: radius,
-                    fillColor: isMatch ? '#f59e0b' : color,
-                    color: isMatch ? '#fff' : 'rgba(255,255,255,0.6)',
-                    weight: isMatch ? 2 : 0.7,
-                    fillOpacity: isMatch ? 1 : 0.85,
-                });
-
-                var predictUrl = '/predict?town=' + encodeURIComponent(txn.town) + '&flat_type=' + encodeURIComponent(txn.flat_type) + '&street_name=' + encodeURIComponent(txn.street_name || '') + '&block=' + encodeURIComponent(txn.block || '') + '&floor_area=' + (txn.floor_area_sqm || '') + '&storey_range=' + encodeURIComponent(txn.storey_range || '');
-                var analysisUrl = '/analytics?town=' + encodeURIComponent(txn.town) + '&flat_type=' + encodeURIComponent(txn.flat_type);
-
-                marker.bindPopup(
-                    '<strong>' + txn.block + ' ' + txn.street_name + '</strong><br>' +
-                    '<b style="font-size:1.05em;">$' + Number(txn.resale_price).toLocaleString() + '</b><br>' +
-                    txn.flat_type + ' · ' + txn.storey_range + '<br>' +
-                    txn.floor_area_sqm + ' sqm · ' + txn.month + '<br>' +
-                    '<span style="color:#93c5fd">' + txn.town + '</span>' +
-                    '<div style="margin-top:8px; display:flex; gap:6px;">' +
-                        '<a href="' + predictUrl + '" style="flex:1; text-align:center; padding:4px 8px; background:#2563eb; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">' +
-                            '<i class="bi bi-calculator" style="margin-right:3px;"></i>Predict</a>' +
-                        '<a href="' + analysisUrl + '" style="flex:1; text-align:center; padding:4px 8px; background:#7c3aed; color:#fff; border-radius:6px; text-decoration:none; font-size:0.75rem; font-weight:600;">' +
-                            '<i class="bi bi-bar-chart-line" style="margin-right:3px;"></i>Analysis</a>' +
-                    '</div>'
-                );
-
-                markers.addLayer(marker);
-            });
-
-            map.addLayer(markers);
-
-            // Zoom to matched pins if any
-            if (matchedLatLngs.length > 0) {
-                map.fitBounds(matchedLatLngs, { padding: [60, 60], maxZoom: 17 });
-            }
-        })
-        .catch(function() {});
-})();
+const initialUrlParams = new URLSearchParams(window.location.search);
+const initialModeParam = (initialUrlParams.get('mode') || '').toLowerCase();
+const initialTown = initialUrlParams.get('town') || '';
+let focusedTown = initialTown;
+let focusedStreet = initialUrlParams.get('street') || '';
+let focusedBlock = initialUrlParams.get('block') || '';
+const shouldStartInPins = (
+    initialModeParam === 'transactions' ||
+    initialModeParam === 'pins' ||
+    (!initialModeParam && Boolean(initialTown || focusedStreet || focusedBlock))
+);
 
 // Amenity layers
 let mrtLayer = L.layerGroup();
 let schoolLayer = L.layerGroup();
 let mallLayer = L.layerGroup();
+map.createPane('amenityPane');
+map.getPane('amenityPane').style.zIndex = 650;
+map.getPane('amenityPane').style.pointerEvents = 'auto';
 
 const PIN_COLORS = ['#22c55e','#84cc16','#facc15','#fb923c','#f97316','#ef4444','#be123c'];
 
@@ -762,6 +707,9 @@ function updateStats(data, mode) {
 }
 
 function setInsight(text) { document.getElementById('mapInsight').textContent = text; }
+function setPeriodText(text) {
+    document.getElementById('mapPeriodText').textContent = text;
+}
 
 function showLoading(text) {
     document.getElementById('loadingText').textContent = text || 'Loading...';
@@ -789,13 +737,52 @@ function handleAuthFailure(resp) {
     return false;
 }
 
+function equalsIgnoreCase(left, right) {
+    return String(left || '').trim().toUpperCase() === String(right || '').trim().toUpperCase();
+}
+
+function formatPeriodLabel(startMonth, endMonth) {
+    const formatter = new Intl.DateTimeFormat('en-SG', { month: 'short', year: 'numeric' });
+    const start = new Date(startMonth + '-01T00:00:00');
+    const end = new Date(endMonth + '-01T00:00:00');
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+        const startYear = startMonth.slice(0, 4);
+        const endYear = endMonth.slice(0, 4);
+        return startYear === endYear ? startYear : `${startYear} to ${endYear}`;
+    }
+    const startLabel = formatter.format(start);
+    const endLabel = formatter.format(end);
+    return startLabel === endLabel ? startLabel : `${startLabel} to ${endLabel}`;
+}
+
+function getTransactionPeriodLabel(data) {
+    const months = data
+        .map(function(item) { return String(item.month || '').trim(); })
+        .filter(function(month) { return /^\d{4}-\d{2}$/.test(month); })
+        .sort();
+
+    if (months.length) {
+        return formatPeriodLabel(months[0], months[months.length - 1]);
+    }
+
+    const years = data
+        .map(function(item) { return Number(item.year); })
+        .filter(Number.isFinite)
+        .sort(function(a, b) { return a - b; });
+
+    if (!years.length) return 'Period unavailable';
+    return years[0] === years[years.length - 1]
+        ? String(years[0])
+        : `${years[0]} to ${years[years.length - 1]}`;
+}
+
 function updateLegend(mode, minVal, maxVal) {
     const title = document.getElementById('legendTitle');
     const scale = document.getElementById('legendScale');
     const labels = document.getElementById('legendLabels');
 
     if (mode === 'heatmap') {
-        title.textContent = 'AI Predicted Price';
+        title.textContent = 'Predicted Price';
         scale.className = 'legend-scale legend-scale-price';
         const lo = Number.isFinite(minVal) ? '$' + Math.round(minVal).toLocaleString() : 'Low';
         const hi = Number.isFinite(maxVal) ? '$' + Math.round(maxVal).toLocaleString() : 'High';
@@ -836,9 +823,10 @@ function toggleAmenityPanel() {
     chevron.classList.toggle('open');
 }
 
-// ─── Heatmap (AI Prediction) Mode ────────────────────────────────
+// ─── Prediction Mode ─────────────────────────────────────────────
 async function loadHeatmap() {
-    showLoading('Running AI predictions for each town...');
+    showLoading('Running predictions for each town...');
+    setPeriodText('Switch to Transactions to view the loaded transaction period.');
 
     const flatType = document.getElementById('heatFlatType').value;
     const storey = document.getElementById('heatStorey').value;
@@ -900,7 +888,7 @@ async function loadHeatmap() {
 
         updateLegend('heatmap', minP, maxP);
         updateStats(data, 'heatmap');
-        setInsight(`Showing AI-predicted prices for a typical ${flatType} (storey ${storey.replace(' TO ', '-')}) in each town. Blue = lower, Red = higher. Click to drill down.`);
+        setInsight(`Showing predicted prices for a typical ${flatType} (storey ${storey.replace(' TO ', '-')}) in each town. Blue = lower, Red = higher. Click to drill down.`);
     } catch (e) {
         setInsight('Failed to load predictions. Please try again.');
     } finally {
@@ -911,6 +899,9 @@ async function loadHeatmap() {
 // ─── Drill Down ──────────────────────────────────────────────────
 function drillDown(town) {
     drilledTown = town;
+    focusedTown = town;
+    focusedStreet = '';
+    focusedBlock = '';
     document.getElementById('townFilter').value = town;
     showBreadcrumb(town);
     currentMode = 'pins';
@@ -925,6 +916,9 @@ function drillDown(town) {
 
 function backToAllTowns() {
     drilledTown = null;
+    focusedTown = '';
+    focusedStreet = '';
+    focusedBlock = '';
     document.getElementById('townFilter').value = '';
     hideBreadcrumb();
     showHeatmap();
@@ -942,27 +936,43 @@ async function loadPins() {
         const resp = await fetch('/api/transactions?' + params);
         if (handleAuthFailure(resp)) return;
         const data = await resp.json();
+        const periodLabel = getTransactionPeriodLabel(data);
+        setPeriodText(periodLabel);
 
         markers.clearLayers();
         const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
         const thresholds = buildThresholds(prices, PIN_COLORS.length);
+        const matchedLatLngs = [];
+        const highlightSelection = Boolean(
+            town &&
+            focusedTown &&
+            focusedStreet &&
+            equalsIgnoreCase(town, focusedTown)
+        );
 
         data.forEach(txn => {
             if (!txn.latitude || !txn.longitude) return;
             const price = Number(txn.resale_price);
             const color = scaleColor(price, thresholds, PIN_COLORS);
-            const radius = Math.max(4, Math.min(10, Number(txn.floor_area_sqm || 70) / 14));
+            const isMatch = (
+                highlightSelection &&
+                equalsIgnoreCase(txn.street_name, focusedStreet) &&
+                (!focusedBlock || String(txn.block || '').trim() === String(focusedBlock).trim())
+            );
+            if (isMatch) matchedLatLngs.push([txn.latitude, txn.longitude]);
+
+            const radius = isMatch ? 9 : Math.max(4, Math.min(10, Number(txn.floor_area_sqm || 70) / 14));
 
             const marker = L.circleMarker([txn.latitude, txn.longitude], {
                 radius,
-                fillColor: color,
-                color: 'rgba(255,255,255,0.6)',
-                weight: 0.7,
-                fillOpacity: 0.85,
+                fillColor: isMatch ? '#f59e0b' : color,
+                color: isMatch ? '#fff' : 'rgba(255,255,255,0.6)',
+                weight: isMatch ? 2 : 0.7,
+                fillOpacity: isMatch ? 1 : 0.85,
             });
 
             const predictUrl = `/predict?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
-            const analysisUrl = `/analytics?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}`;
+            const analysisUrl = `/analytics?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
 
             marker.bindPopup(`
                 <strong>${txn.block} ${txn.street_name}</strong><br>
@@ -983,7 +993,9 @@ async function loadPins() {
             markers.addLayer(marker);
         });
 
-        if (town && data.length > 0) {
+        if (matchedLatLngs.length > 0) {
+            map.fitBounds(matchedLatLngs, { padding: [60, 60], maxZoom: 17 });
+        } else if (town && data.length > 0) {
             const lats = data.filter(d => d.latitude).map(d => d.latitude);
             const lngs = data.filter(d => d.longitude).map(d => d.longitude);
             if (lats.length) {
@@ -994,11 +1006,14 @@ async function loadPins() {
         updateLegend('pins');
         updateStats(data, 'pins');
         setInsight(
-            town
-                ? `${data.length.toLocaleString()} transactions in ${town}. Each dot = one resale, coloured by price.`
-                : 'Showing individual resale transactions across Singapore. Warm colours = higher prices.'
+            matchedLatLngs.length > 0
+                ? `Highlighted ${matchedLatLngs.length.toLocaleString()} matching transaction${matchedLatLngs.length === 1 ? '' : 's'} in ${town}. Each dot = one resale, coloured by price. Period: ${periodLabel}.`
+                : town
+                ? `${data.length.toLocaleString()} transactions in ${town}. Each dot = one resale, coloured by price. Period: ${periodLabel}.`
+                : `Showing individual resale transactions across Singapore. Warm colours = higher prices. Period: ${periodLabel}.`
         );
     } catch (e) {
+        setPeriodText('Period unavailable');
         setInsight('Failed to load transactions.');
     } finally {
         hideLoading();
@@ -1022,7 +1037,8 @@ function setModeButtons(mode) {
     }
 }
 
-function showPins() {
+function showPins(options = {}) {
+    const preserveView = Boolean(options.preserveView);
     currentMode = 'pins';
     drilledTown = null;
     hideBreadcrumb();
@@ -1032,11 +1048,14 @@ function showPins() {
     document.getElementById('floatNote').style.display = 'none';
     map.removeLayer(heatmapLayer);
     markers.addTo(map);
-    map.setView([1.3521, 103.8198], 12);
+    if (!preserveView) {
+        map.setView([1.3521, 103.8198], 12);
+    }
     loadPins();
 }
 
-function showHeatmap() {
+function showHeatmap(options = {}) {
+    const preserveView = Boolean(options.preserveView);
     currentMode = 'heatmap';
     drilledTown = null;
     hideBreadcrumb();
@@ -1046,12 +1065,16 @@ function showHeatmap() {
     document.getElementById('floatNote').style.display = '';
     map.removeLayer(markers);
     heatmapLayer.addTo(map);
-    map.setView([1.3521, 103.8198], 12);
+    if (!preserveView) {
+        map.setView([1.3521, 103.8198], 12);
+    }
     loadHeatmap();
 }
 
 // Event listeners for heatmap params
 document.getElementById('townFilter').addEventListener('change', () => {
+    focusedStreet = '';
+    focusedBlock = '';
     if (currentMode === 'pins') loadPins();
 });
 document.getElementById('heatFlatType').addEventListener('change', () => {
@@ -1266,24 +1289,24 @@ const SHOPPING_MALLS = [
 function makeAmenityIcon(cls) {
     return L.divIcon({
         className: 'leaflet-amenity-icon ' + cls,
-        html: cls.includes('mrt') ? '<span>M</span>' : cls.includes('school') ? 'S' : 'M',
+        html: `<span class="leaflet-amenity-badge"><span class="leaflet-amenity-glyph">${cls.includes('mrt') ? 'M' : cls.includes('school') ? 'S' : 'M'}</span></span>`,
         iconSize: [16, 16],
         iconAnchor: [8, 8],
     });
 }
 
 MRT_STATIONS.forEach(s => {
-    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mrt') });
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mrt'), pane: 'amenityPane' });
     m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
     mrtLayer.addLayer(m);
 });
 PRIMARY_SCHOOLS.forEach(s => {
-    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-school') });
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-school'), pane: 'amenityPane' });
     m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
     schoolLayer.addLayer(m);
 });
 SHOPPING_MALLS.forEach(s => {
-    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mall') });
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mall'), pane: 'amenityPane' });
     m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
     mallLayer.addLayer(m);
 });
@@ -1305,6 +1328,20 @@ document.getElementById('toggleMalls').addEventListener('change', function() {
 });
 
 // ─── Init ────────────────────────────────────────────────────────
-showHeatmap();
+if (initialTown) {
+    const townFilter = document.getElementById('townFilter');
+    Array.from(townFilter.options).forEach(function(opt) {
+        if (opt.value && equalsIgnoreCase(opt.value, initialTown)) {
+            townFilter.value = opt.value;
+            focusedTown = opt.value;
+        }
+    });
+}
+
+if (shouldStartInPins) {
+    showPins({ preserveView: true });
+} else {
+    showHeatmap({ preserveView: true });
+}
 </script>
 {% endblock %}

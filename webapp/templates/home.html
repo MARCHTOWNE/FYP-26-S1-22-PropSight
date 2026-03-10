@@ -211,7 +211,6 @@
 
 <section id="insights-section" class="story-section bg-soft accent-insights" data-reveal>
     <div class="container">
-<<<<<<< Updated upstream
         <div class="insights-layout">
             <div class="insights-text">
                 <p class="section-eyebrow">Market Intelligence</p>
@@ -221,7 +220,7 @@
                     {% if g.user %}
                     <a href="{{ url_for('analytics') }}" class="btn btn-primary">Open Analytics Dashboard</a>
                     {% else %}
-                    <a href="{{ url_for('login') }}" class="btn btn-primary">Login to View Full Dashboard</a>
+                    <a href="{{ url_for('login', next=url_for('analytics')) }}" class="btn btn-primary">Login to View Full Dashboard</a>
                     {% endif %}
                 </div>
             </div>
@@ -242,42 +241,51 @@
                     <p>Track yearly activity concentration to identify high-demand and cooling markets.</p>
                 </div>
             </div>
-=======
-        <p class="section-eyebrow">Understand Your Market</p>
-        <h2 class="section-title">See what's happening in your neighbourhood</h2>
-        <p class="section-subtitle mb-4">Simple tools to help you make smarter decisions about your home.</p>
+        </div>
 
-        <div class="insight-grid">
-            <div class="panel-card insight-card-lg">
+        <div class="insight-question-row">
+            <a
+                class="panel-card insight-card insight-question-card js-analytics-prefill"
+                href="{% if g.user %}{{ url_for('analytics', focus='trend') }}{% else %}{{ url_for('login', next=url_for('analytics', focus='trend')) }}{% endif %}"
+                data-focus="trend">
                 <div class="insight-card-icon">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
                 </div>
                 <h6>Is My Area Going Up?</h6>
                 <p>See how prices in your town have changed over the years.</p>
-            </div>
-            <div class="panel-card">
+            </a>
+            <a
+                class="panel-card insight-card insight-question-card js-analytics-prefill"
+                href="{% if g.user %}{{ url_for('analytics', focus='compare') }}{% else %}{{ url_for('login', next=url_for('analytics', focus='compare')) }}{% endif %}"
+                data-focus="compare">
                 <div class="insight-card-icon accent-2">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="5" width="4" height="16" rx="1"/><rect x="17" y="9" width="4" height="12" rx="1"/></svg>
                 </div>
                 <h6>How Does My Town Compare?</h6>
                 <p>Compare average prices across different HDB towns at a glance.</p>
-            </div>
-            <div class="panel-card">
+            </a>
+            <a
+                class="panel-card insight-card insight-question-card js-analytics-prefill"
+                href="{% if g.user %}{{ url_for('analytics', focus='demand') }}{% else %}{{ url_for('login', next=url_for('analytics', focus='demand')) }}{% endif %}"
+                data-focus="demand">
                 <div class="insight-card-icon accent-3">
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
                 </div>
                 <h6>Are People Buying?</h6>
-                <p>Check how active the market is in your area — more sales means more demand.</p>
-            </div>
+                <p>Check how active the market is in your area. More sales usually means stronger demand.</p>
+            </a>
         </div>
 
-        <div class="mt-4">
-            {% if g.user %}
-            <a href="{{ url_for('analytics') }}" class="btn btn-primary">Explore Market Insights</a>
-            {% else %}
-            <a href="{{ url_for('register') }}" class="btn btn-primary">Sign Up to See Your Area</a>
-            {% endif %}
->>>>>>> Stashed changes
+        <div class="insights-followup">
+            <p class="section-eyebrow">Understand Your Market</p>
+            <p class="section-subtitle">Pick a question to jump straight into the matching analytics view. If you already selected a town above, that context follows you into the dashboard.</p>
+            <div>
+                {% if g.user %}
+                <a href="{{ url_for('analytics') }}" class="btn btn-primary">Explore Market Insights</a>
+                {% else %}
+                <a href="{{ url_for('register') }}" class="btn btn-primary">Sign Up to See Your Area</a>
+                {% endif %}
+            </div>
         </div>
     </div>
 </section>
@@ -468,6 +476,8 @@ const originalHomeStoreyOptions = homeStoreyRangeSelect.innerHTML;
 const homeForm = document.getElementById('homeForm');
 const homeSubmitBtn = document.getElementById('homeSubmitBtn');
 const defaultHomeSubmitHtml = homeSubmitBtn ? homeSubmitBtn.innerHTML : '';
+const analyticsBaseUrl = "{{ url_for('analytics') }}";
+const loginBaseUrl = "{{ url_for('login') }}";
 
 // Cascading dropdowns + dynamic sliders
 const homeTownSelect = document.getElementById('homeTown');
@@ -505,8 +515,34 @@ function endHomeOptionLoad() {
     }
 }
 
+function syncInsightQuestionLinks() {
+    document.querySelectorAll('.js-analytics-prefill').forEach(link => {
+        const analyticsUrl = new URL(analyticsBaseUrl, window.location.origin);
+        analyticsUrl.searchParams.set('focus', link.dataset.focus || 'trend');
+
+        if (homeTownSelect.value) {
+            analyticsUrl.searchParams.set('town', homeTownSelect.value);
+            if (homeFlatTypeSelect.value) {
+                analyticsUrl.searchParams.set('flat_type', homeFlatTypeSelect.value);
+            }
+        }
+
+        if (IS_GUEST) {
+            const loginUrl = new URL(loginBaseUrl, window.location.origin);
+            loginUrl.searchParams.set('next', analyticsUrl.pathname + analyticsUrl.search);
+            link.href = loginUrl.pathname + loginUrl.search;
+            return;
+        }
+
+        link.href = analyticsUrl.pathname + analyticsUrl.search;
+    });
+}
+
+syncInsightQuestionLinks();
+
 homeTownSelect.addEventListener('change', async function() {
     const town = this.value;
+    syncInsightQuestionLinks();
     if (!town) return;
     const requestToken = ++homeTownRequestToken;
 
@@ -554,6 +590,7 @@ homeTownSelect.addEventListener('change', async function() {
 homeFlatTypeSelect.addEventListener('change', async function() {
     const town = homeTownSelect.value;
     const flatType = this.value;
+    syncInsightQuestionLinks();
     if (!town || !flatType) return;
     const requestToken = ++homeFlatTypeRequestToken;
 

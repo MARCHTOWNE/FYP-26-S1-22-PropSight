@@ -69,11 +69,19 @@ CREATE INDEX IF NOT EXISTS idx_txn_year_block ON transactions(year, block_id);
 -- ── 4. User Tables ────────────────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS users (
-    id            SERIAL PRIMARY KEY,
-    username      TEXT UNIQUE NOT NULL,
-    email         TEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
-    created_at    TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    id                SERIAL PRIMARY KEY,
+    username          TEXT UNIQUE NOT NULL,
+    email             TEXT UNIQUE NOT NULL,
+    password_hash     TEXT NOT NULL,
+    subscription_tier TEXT NOT NULL DEFAULT 'general' CHECK (subscription_tier IN ('general', 'premium')),
+    created_at        TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS feature_view_log (
+    id         SERIAL PRIMARY KEY,
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    feature    TEXT NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS saved_predictions (

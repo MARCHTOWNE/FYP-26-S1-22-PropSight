@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Pricing – HDB Resale Analytics{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="text-center mb-5">
+        <h1 class="fw-bold">Choose Your Plan</h1>
+        <p class="text-muted fs-5">Unlock the full power of HDB Resale Analytics</p>
+    </div>
+
+    <div class="row justify-content-center g-4">
+        <!-- General (Free) Plan -->
+        <div class="col-md-5 col-lg-4">
+            <div class="card h-100 shadow-sm border{% if g.user and g.user.get('subscription_tier', 'general') == 'general' %}-primary{% endif %}">
+                {% if g.user and g.user.get('subscription_tier', 'general') == 'general' %}
+                <div class="card-header bg-primary text-white text-center fw-semibold">
+                    <i class="bi bi-check-circle me-1"></i> Current Plan
+                </div>
+                {% endif %}
+                <div class="card-body d-flex flex-column p-4">
+                    <h3 class="card-title fw-bold text-center">General</h3>
+                    <div class="text-center mb-4">
+                        <span class="display-4 fw-bold">Free</span>
+                    </div>
+                    <ul class="list-unstyled mb-4 flex-grow-1">
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Price predictions</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Save up to 3 predictions</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Interactive map <span class="text-muted">(3 views/week)</span></li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Analytics dashboard <span class="text-muted">(3 views/week)</span></li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Comparison tool <span class="text-muted">(3 views/week)</span></li>
+                    </ul>
+                    {% if not g.user %}
+                    <a href="{{ url_for('register') }}" class="btn btn-outline-primary w-100">Get Started</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Premium Plan -->
+        <div class="col-md-5 col-lg-4">
+            <div class="card h-100 shadow border{% if g.user and g.user.get('subscription_tier') == 'premium' %}-success{% else %}-warning{% endif %}">
+                {% if g.user and g.user.get('subscription_tier') == 'premium' %}
+                <div class="card-header bg-success text-white text-center fw-semibold">
+                    <i class="bi bi-check-circle me-1"></i> Current Plan
+                </div>
+                {% else %}
+                <div class="card-header bg-warning text-dark text-center fw-semibold">
+                    <i class="bi bi-star-fill me-1"></i> Recommended
+                </div>
+                {% endif %}
+                <div class="card-body d-flex flex-column p-4">
+                    <h3 class="card-title fw-bold text-center">Premium</h3>
+                    <div class="text-center mb-4">
+                        <span class="display-4 fw-bold">$4.90</span>
+                        <span class="text-muted">/month</span>
+                    </div>
+                    <ul class="list-unstyled mb-4 flex-grow-1">
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i>Price predictions</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i><strong>Unlimited</strong> saved predictions</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i><strong>Unlimited</strong> map access</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i><strong>Unlimited</strong> analytics access</li>
+                        <li class="mb-2"><i class="bi bi-check-lg text-success me-2"></i><strong>Unlimited</strong> comparison access</li>
+                    </ul>
+                    {% if g.user and g.user.get('subscription_tier') == 'premium' %}
+                    <button class="btn btn-success w-100" disabled>
+                        <i class="bi bi-check-circle me-1"></i> You're on Premium
+                    </button>
+                    {% elif g.user %}
+                    <form method="POST" action="{{ url_for('upgrade') }}">
+                        <button type="submit" class="btn btn-warning w-100 fw-semibold">
+                            <i class="bi bi-arrow-up-circle me-1"></i> Upgrade Now
+                        </button>
+                    </form>
+                    {% else %}
+                    <a href="{{ url_for('register') }}" class="btn btn-warning w-100 fw-semibold">
+                        Sign Up & Upgrade
+                    </a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -83,7 +83,7 @@ def _first_existing_sqlite_path(paths, required_table):
 DB_PATH = _first_existing_sqlite_path([
     os.environ.get("DB_PATH", ""),
     os.path.join(PROJECT_DIR, "hdb_resale.db"),
-    os.path.join(PROJECT_DIR, "Database ", "hdb_resale.db"),
+    os.path.join(PROJECT_DIR, "Database", "hdb_resale.db"),
 ], required_table="resale_prices")
 
 USER_DB_PATH = _first_existing_path([
@@ -297,7 +297,20 @@ def _init_user_db():
             expires_at TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS feature_view_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            feature TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        );
     """)
+    # Migrate existing DBs: add subscription_tier column if missing
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN subscription_tier TEXT NOT NULL DEFAULT 'general' CHECK(subscription_tier IN ('general', 'premium'))")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists
     conn.commit()
     conn.close()
 
@@ -1048,6 +1061,64 @@ def api_login_required(f):
     return decorated
 
 
+def premium_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            flash("Please log in to access this feature.", "warning")
+            return redirect(url_for("login"))
+        if session.get("subscription_tier", "general") != "premium":
+            flash("This feature requires a Premium subscription.", "info")
+            return redirect(url_for("pricing"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def api_premium_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if "user_id" not in session:
+            return jsonify({"error": "Authentication required"}), 401
+        if session.get("subscription_tier", "general") != "premium":
+            return jsonify({"error": "Premium subscription required"}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+
+# Weekly view limits for general users per feature
+GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
+
+
+def _get_weekly_view_count(user_id, feature):
+    """Count views of a feature by user in the current week."""
+    conn = _get_user_db()
+    row = conn.execute(
+        "SELECT COUNT(*) as cnt FROM feature_view_log WHERE user_id = ? AND feature = ? AND created_at >= datetime('now', '-7 days')",
+        (user_id, feature),
+    ).fetchone()
+    conn.close()
+    return row["cnt"] if row else 0
+
+
+def _log_feature_view(user_id, feature):
+    """Record a feature view."""
+    conn = _get_user_db()
+    conn.execute("INSERT INTO feature_view_log (user_id, feature) VALUES (?, ?)", (user_id, feature))
+    conn.commit()
+    conn.close()
+
+
+def _check_feature_limit(feature):
+    """Check if general user has exceeded weekly view limit for a feature.
+    Returns (allowed, views_used, views_limit)."""
+    tier = session.get("subscription_tier", "general")
+    if tier == "premium":
+        return True, 0, 0
+    limit = GENERAL_WEEKLY_VIEW_LIMITS.get(feature, 3)
+    count = _get_weekly_view_count(session["user_id"], feature)
+    return count < limit, count, limit
+
+
 @app.before_request
 def load_user():
     g.user = None
@@ -1058,6 +1129,7 @@ def load_user():
                 "id": session["user_id"],
                 "username": session.get("username", ""),
                 "email": session.get("email", ""),
+                "subscription_tier": session.get("subscription_tier", "general"),
             }
         else:
             g.user = _sqlite_get_user_by_id(session["user_id"])
@@ -1352,6 +1424,7 @@ def register():
                 session["username"] = username
                 session["email"] = email
                 session["access_token"] = result["access_token"]
+                session["subscription_tier"] = "general"
                 flash("Account created! Welcome.", "success")
                 return redirect(url_for("home"))
             else:
@@ -1399,6 +1472,7 @@ def login():
             session["username"] = db_user.get("username") or auth_user.get("user_metadata", {}).get("username", email.split("@")[0])
             session["email"] = email
             session["access_token"] = result.get("access_token", "")
+            session["subscription_tier"] = db_user.get("subscription_tier", "general")
             flash(f"Welcome back, {session['username']}!", "success")
             return redirect(url_for("home"))
         else:
@@ -1407,6 +1481,7 @@ def login():
                 session["user_id"] = user["id"]
                 session["username"] = user["username"]
                 session["email"] = user["email"]
+                session["subscription_tier"] = user["subscription_tier"] if "subscription_tier" in user.keys() else "general"
                 flash(f"Welcome back, {user['username']}!", "success")
                 return redirect(url_for("home"))
             flash("Invalid email or password.", "danger")
@@ -1444,6 +1519,40 @@ def logout():
     session.clear()
     flash("You have been logged out.", "info")
     return redirect(url_for("home"))
+
+
+# ---------------------------------------------------------------------------
+# Routes: Subscription
+# ---------------------------------------------------------------------------
+
+@app.route("/pricing")
+def pricing():
+    return render_template("pricing.html")
+
+
+@app.route("/upgrade", methods=["POST"])
+@login_required
+def upgrade():
+    user_id = session["user_id"]
+    if SUPABASE_ENABLED:
+        try:
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                method="PATCH",
+                filters={"id": f"eq.{user_id}"},
+                payload={"subscription_tier": "premium"},
+            )
+        except SupabaseError:
+            flash("Could not upgrade via Supabase.", "danger")
+            return redirect(url_for("pricing"))
+    else:
+        conn = _get_user_db()
+        conn.execute("UPDATE users SET subscription_tier = 'premium' WHERE id = ?", (user_id,))
+        conn.commit()
+        conn.close()
+    session["subscription_tier"] = "premium"
+    flash("You've been upgraded to Premium! Enjoy unlimited access.", "success")
+    return redirect(url_for("pricing"))
 
 
 # ---------------------------------------------------------------------------
@@ -1487,7 +1596,13 @@ def home():
 
 
 @app.route("/comparison", methods=["GET", "POST"])
+@login_required
 def comparison():
+    allowed, _, limit = _check_feature_limit("comparison")
+    if not allowed:
+        flash(f"You've used all {limit} free Comparison views this week. Upgrade to Premium for unlimited access.", "warning")
+        return redirect(url_for("pricing"))
+    _log_feature_view(session["user_id"], "comparison")
     saved_predictions = []
     if g.user:
         try:
@@ -1664,6 +1779,14 @@ def predict():
 @app.route("/save_prediction", methods=["POST"])
 @login_required
 def save_prediction():
+    # Enforce save limit for general users
+    tier = session.get("subscription_tier", "general")
+    if tier != "premium":
+        existing = _get_saved_predictions(session["user_id"])
+        if len(existing) >= 3:
+            flash("Free users can save up to 3 predictions. Upgrade to Premium for unlimited saves.", "warning")
+            return redirect(url_for("my_predictions"))
+
     prediction = {
         "town": request.form["town"],
         "flat_type": request.form["flat_type"],
@@ -1708,12 +1831,22 @@ def delete_prediction(pred_id):
 @app.route("/map")
 @login_required
 def map_view():
+    allowed, _, limit = _check_feature_limit("map")
+    if not allowed:
+        flash(f"You've used all {limit} free Map views this week. Upgrade to Premium for unlimited access.", "warning")
+        return redirect(url_for("pricing"))
+    _log_feature_view(session["user_id"], "map")
     return render_template("map.html", towns=TOWNS)
 
 
 @app.route("/analytics")
 @login_required
 def analytics():
+    allowed, _, limit = _check_feature_limit("analytics")
+    if not allowed:
+        flash(f"You've used all {limit} free Analytics views this week. Upgrade to Premium for unlimited access.", "warning")
+        return redirect(url_for("pricing"))
+    _log_feature_view(session["user_id"], "analytics")
     return render_template("analytics.html", towns=TOWNS)
 
 

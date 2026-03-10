@@ -44,13 +44,13 @@
                         </a>
                         {% endif %}
                     </li>
+                    {% if g.user %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'comparison' %}active{% endif %}"
                            href="{{ url_for('comparison') }}">
                             <i class="bi bi-columns-gap me-1"></i>Compare
                         </a>
                     </li>
-                    {% if g.user %}
                     <li class="nav-item">
                         <a class="nav-link {% if request.endpoint == 'map_view' %}active{% endif %}"
                            href="{{ url_for('map_view') }}">
@@ -64,6 +64,12 @@
                         </a>
                     </li>
                     {% endif %}
+                    <li class="nav-item">
+                        <a class="nav-link {% if request.endpoint == 'pricing' %}active{% endif %}"
+                           href="{{ url_for('pricing') }}">
+                            <i class="bi bi-gem me-1"></i>Pricing
+                        </a>
+                    </li>
                 </ul>
                 <ul class="navbar-nav">
                     {% if g.user %}
@@ -71,6 +77,9 @@
                         <a class="nav-link dropdown-toggle" href="#" role="button"
                            data-bs-toggle="dropdown">
                             <i class="bi bi-person-circle me-1"></i>{{ g.user['username'] }}
+                            {% if g.user.get('subscription_tier') == 'premium' %}
+                            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65em;">Premium</span>
+                            {% endif %}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li>

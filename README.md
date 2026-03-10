@@ -49,7 +49,7 @@ hdb_resale/
 │   ├── model_training.py        # Train XGBoost, LightGBM, RF, ensemble
 │   └── model_assets/            # Checked-in model runs and artefacts
 │
-├── Database /                   # Repository folder name includes a trailing space
+├── Database/                    # Supabase schema, migration script, SQLite copy
 │   ├── supabase_schema.sql      # Checked-in Supabase PostgreSQL schema
 │   ├── migrate_to_supabase.py   # SQLite → Supabase migration script
 │   └── hdb_resale.db            # SQLite copy used by migration work
@@ -80,6 +80,25 @@ Most ETL and ML scripts use relative paths such as `raw/`, `reference_data/`, `h
 
 ---
 
+## Subscription Tiers
+
+The platform uses a freemium model with two subscription tiers:
+
+| Feature | General (Free) | Premium ($4.90/month) |
+| ------- | -------------- | --------------------- |
+| Price predictions | Unlimited | Unlimited |
+| Save predictions | Up to 3 | Unlimited |
+| Interactive map | 3 views/week | Unlimited |
+| Analytics dashboard | 3 views/week | Unlimited |
+| Comparison tool | 3 views/week | Unlimited |
+
+- New users default to the **General** tier.
+- The `subscription_tier` column on the `users` table is constrained to `'general'` or `'premium'`.
+- Weekly view limits for Map, Analytics, and Comparison are tracked via the `feature_view_log` table.
+- The `/pricing` page shows the plan comparison; logged-in general users can upgrade via the Upgrade button.
+
+---
+
 ## Web Application
 
 The Flask app in `webapp/app.py` serves the UI, loads the checked-in XGBoost artefacts at startup, reads from local SQLite when available, and falls back to Supabase REST/RPC calls when configured.
@@ -90,14 +109,16 @@ The Flask app in `webapp/app.py` serves the UI, loads the checked-in XGBoost art
 | ----- | ------ | ------- |
 | `/` | Public | Landing page with transaction count, model summary, and guest teaser data |
 | `/register`, `/login`, `/forgot-password` | Public | Account creation, sign-in, and password recovery |
-| `/comparison` | Public | Side-by-side prediction comparison; saved-prediction autofill is available when logged in |
+| `/pricing` | Public | Subscription plan comparison and upgrade |
 | `/predict` | Login required | Main prediction form and forward price timeline |
 | `/my_predictions` | Login required | Saved predictions list |
-| `/comparison/select/<int:pred_id>` | Login required | Push a saved prediction into comparison state |
-| `/save_prediction` | Login required (`POST`) | Persist a prediction record |
+| `/save_prediction` | Login required (`POST`) | Persist a prediction record (3 max for General users) |
 | `/delete_prediction/<int:pred_id>` | Login required (`POST`) | Delete a saved prediction |
-| `/map` | Login required | Interactive transaction map |
-| `/analytics` | Login required | Dashboard charts |
+| `/comparison` | Login required | Side-by-side prediction comparison (3 views/week for General) |
+| `/comparison/select/<int:pred_id>` | Login required | Push a saved prediction into comparison state |
+| `/map` | Login required | Interactive transaction map (3 views/week for General) |
+| `/analytics` | Login required | Dashboard charts (3 views/week for General) |
+| `/upgrade` | Login required (`POST`) | Upgrade user to Premium tier |
 | `/logout` | Session route | Clear the current login session |
 
 ### JSON Endpoints
@@ -136,7 +157,7 @@ python webapp/app.py
 
 ## Supabase Backend (PostgreSQL)
 
-The checked-in PostgreSQL schema lives in `Database /supabase_schema.sql`. `Database /migrate_to_supabase.py` migrates rows from the local SQLite `resale_prices` table into the normalized Supabase tables.
+The checked-in PostgreSQL schema lives in `Database/supabase_schema.sql`. `Database/migrate_to_supabase.py` migrates rows from the local SQLite `resale_prices` table into the normalized Supabase tables.
 
 At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY` are set. When a required RPC is missing or Supabase is unavailable, the app falls back to local SQLite queries where a fallback exists.
 
@@ -149,8 +170,9 @@ At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and e
 | `flat_models` | Dimension table — HDB flat model types |
 | `blocks` | Address table — block + street + town with pre-computed distances |
 | `transactions` | Fact table — resale transactions with foreign keys to dimension tables |
-| `users` | Public app-user table used for `saved_predictions.user_id` foreign keys |
+| `users` | Public app-user table with `subscription_tier` column (`'general'` or `'premium'`) |
 | `saved_predictions` | Saved prediction rows written by `/save_prediction` |
+| `feature_view_log` | Tracks per-user weekly views of Map, Analytics, and Comparison features |
 | `model_versions` | Model metadata table; not currently read by `webapp/app.py` |
 
 ### RPC Functions
@@ -193,7 +215,7 @@ SUPABASE_PREDICTIONS_TABLE=saved_predictions
 
 ## Database Schema (PostgreSQL / Supabase)
 
-The production database uses a normalised PostgreSQL schema hosted on Supabase. The full schema is defined in `Database /supabase_schema.sql`.
+The production database uses a normalised PostgreSQL schema hosted on Supabase. The full schema is defined in `Database/supabase_schema.sql`.
 
 ### Dimension Tables
 
@@ -269,11 +291,12 @@ One row per resale transaction, with foreign keys to dimension tables.
 
 | Column          | Type                     | Description             |
 | --------------- | ------------------------ | ----------------------- |
-| `id`            | SERIAL                   | Primary key             |
-| `username`      | TEXT                     | Unique username         |
-| `email`         | TEXT                     | Unique email address    |
-| `password_hash` | TEXT                     | Hashed password         |
-| `created_at`    | TIMESTAMP WITH TIME ZONE | Account creation time   |
+| `id`                | SERIAL                   | Primary key             |
+| `username`          | TEXT                     | Unique username         |
+| `email`             | TEXT                     | Unique email address    |
+| `password_hash`     | TEXT                     | Hashed password         |
+| `subscription_tier` | TEXT                     | `'general'` or `'premium'` (default `'general'`) |
+| `created_at`        | TIMESTAMP WITH TIME ZONE | Account creation time   |
 
 #### `saved_predictions`
 
@@ -291,6 +314,15 @@ One row per resale transaction, with foreign keys to dimension tables.
 | `price_low`       | DOUBLE PRECISION         | Lower bound (80% confidence)       |
 | `price_high`      | DOUBLE PRECISION         | Upper bound (80% confidence)       |
 | `created_at`      | TIMESTAMP WITH TIME ZONE | Prediction save time               |
+
+#### `feature_view_log`
+
+| Column       | Type                     | Description                                |
+| ------------ | ------------------------ | ------------------------------------------ |
+| `id`         | SERIAL                   | Primary key                                |
+| `user_id`    | INTEGER                  | FK → `users(id)` (cascade delete)          |
+| `feature`    | TEXT                     | Feature name (`'map'`, `'analytics'`, `'comparison'`) |
+| `created_at` | TIMESTAMP WITH TIME ZONE | View timestamp                             |
 
 #### `model_versions`
 
@@ -334,9 +366,10 @@ The current codebase still depends on SQLite for ETL, training, and several runt
 
 | Table | Purpose |
 | ----- | ------- |
-| `users` | Local auth fallback when Supabase is disabled |
+| `users` | Local auth fallback with `subscription_tier` column |
 | `saved_predictions` | Local saved predictions when Supabase is disabled |
 | `pending_registrations` | Pending local registration table initialised by `webapp/app.py` |
+| `feature_view_log` | Tracks weekly feature views for subscription limits |
 
 ---
 

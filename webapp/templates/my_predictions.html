@@ -90,7 +90,15 @@
 
                     if (checked.length > 2) {
                         cb.checked = false;
-                        alert('You can only select up to 2 predictions to compare.')
+                        const old = document.getElementById('compare-warning');
+                        if (old) old.remove();
+                        const warning = document.createElement('div');
+                        warning.id = 'compare-warning';
+                        warning.className = 'alert alert-warning alert-dismissible fade show';
+                        warning.setAttribute('role', 'alert');
+                        warning.innerHTML = 'You can only select up to 2 predictions to compare.' +
+                            '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+                        document.querySelector('.container.mt-3').appendChild(warning);
                         return;
                     }
 

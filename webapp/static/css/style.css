@@ -47,7 +47,7 @@ h6,
     background: #0f2a52 !important;
     border-bottom: none;
     backdrop-filter: blur(7px);
-    box-shadow: 0 2px 0 0 #0f2a52;
+    box-shadow: none;
 }
 
 .navbar .navbar-brand,

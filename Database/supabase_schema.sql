@@ -84,9 +84,22 @@ CREATE TABLE IF NOT EXISTS feature_view_log (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+CREATE SEQUENCE IF NOT EXISTS feature_view_log_id_seq;
+
+ALTER TABLE feature_view_log
+    ALTER COLUMN id SET DEFAULT nextval('feature_view_log_id_seq');
+
+ALTER SEQUENCE feature_view_log_id_seq OWNED BY feature_view_log.id;
+
+SELECT setval(
+    'feature_view_log_id_seq',
+    COALESCE((SELECT MAX(id) FROM feature_view_log), 0) + 1,
+    false
+);
+
 CREATE TABLE IF NOT EXISTS saved_predictions (
     id              SERIAL PRIMARY KEY,
-    user_id         INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     town            TEXT             NOT NULL,
     flat_type       TEXT             NOT NULL,
     flat_model      TEXT             NOT NULL,
@@ -488,4 +501,143 @@ RETURNS TABLE(
       AND (p_block IS NULL OR b.block = p_block)
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT p_limit;
+$$;
+
+-- Total transaction count for homepage stats
+CREATE OR REPLACE FUNCTION rpc_count_transactions()
+RETURNS BIGINT
+LANGUAGE SQL STABLE AS $$
+    SELECT COUNT(*) FROM transactions;
+$$;
+
+-- Available flat models for a town + flat type
+CREATE OR REPLACE FUNCTION rpc_api_available_models(
+    p_town TEXT,
+    p_flat_type TEXT
+)
+RETURNS TABLE(flat_model TEXT)
+LANGUAGE SQL STABLE AS $$
+    SELECT DISTINCT fm.name
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    JOIN flat_models fm ON tx.flat_model_id = fm.id
+    WHERE t.name = p_town
+      AND ft.name = p_flat_type
+    ORDER BY fm.name;
+$$;
+
+-- Available storey ranges for a town + flat type
+CREATE OR REPLACE FUNCTION rpc_api_available_storey_ranges(
+    p_town TEXT DEFAULT NULL,
+    p_flat_type TEXT DEFAULT NULL
+)
+RETURNS TABLE(storey_range TEXT)
+LANGUAGE SQL STABLE AS $$
+    SELECT DISTINCT tx.storey_range
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    WHERE (p_town IS NULL OR t.name = p_town)
+      AND (p_flat_type IS NULL OR ft.name = p_flat_type)
+    ORDER BY tx.storey_range;
+$$;
+
+-- Floor area bounds for UI sliders
+CREATE OR REPLACE FUNCTION rpc_api_floor_area_stats(
+    p_town TEXT DEFAULT NULL,
+    p_flat_type TEXT DEFAULT NULL
+)
+RETURNS TABLE(
+    min_area INTEGER,
+    max_area INTEGER,
+    avg_area INTEGER
+)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        ROUND(MIN(tx.floor_area_sqm))::INTEGER,
+        ROUND(MAX(tx.floor_area_sqm))::INTEGER,
+        ROUND(AVG(tx.floor_area_sqm))::INTEGER
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    WHERE (p_town IS NULL OR t.name = p_town)
+      AND (p_flat_type IS NULL OR ft.name = p_flat_type);
+$$;
+
+-- Lease commence year bounds for UI sliders
+CREATE OR REPLACE FUNCTION rpc_api_lease_year_range(p_town TEXT DEFAULT NULL)
+RETURNS TABLE(
+    min_year INTEGER,
+    max_year INTEGER,
+    avg_year INTEGER
+)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        MIN(tx.lease_commence_date)::INTEGER,
+        MAX(tx.lease_commence_date)::INTEGER,
+        ROUND(AVG(tx.lease_commence_date))::INTEGER
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    WHERE (p_town IS NULL OR t.name = p_town);
+$$;
+
+-- Guest teaser map without exposing actual prices
+CREATE OR REPLACE FUNCTION rpc_api_public_location_summary()
+RETURNS TABLE(
+    town TEXT,
+    lat DOUBLE PRECISION,
+    lng DOUBLE PRECISION,
+    total_txns BIGINT,
+    price_bucket INTEGER
+)
+LANGUAGE SQL STABLE AS $$
+    WITH town_stats AS (
+        SELECT
+            t.name AS town,
+            AVG(b.latitude) AS lat,
+            AVG(b.longitude) AS lng,
+            COUNT(*) AS total_txns,
+            AVG(tx.resale_price) AS avg_price
+        FROM transactions tx
+        JOIN blocks b ON tx.block_id = b.id
+        JOIN towns t ON b.town_id = t.id
+        WHERE b.latitude IS NOT NULL
+          AND b.longitude IS NOT NULL
+        GROUP BY t.name
+    )
+    SELECT
+        town,
+        lat,
+        lng,
+        total_txns,
+        NTILE(5) OVER (ORDER BY avg_price)::INTEGER AS price_bucket
+    FROM town_stats
+    ORDER BY town;
+$$;
+
+-- Public homepage ticker
+CREATE OR REPLACE FUNCTION rpc_api_public_recent_ticker()
+RETURNS TABLE(
+    town TEXT,
+    flat_type TEXT,
+    resale_price DOUBLE PRECISION,
+    year INTEGER
+)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        t.name,
+        ft.name,
+        tx.resale_price,
+        tx.year
+    FROM transactions tx
+    JOIN blocks b ON tx.block_id = b.id
+    JOIN towns t ON b.town_id = t.id
+    JOIN flat_types ft ON tx.flat_type_id = ft.id
+    ORDER BY tx.year DESC, tx.month_num DESC
+    LIMIT 20;
 $$;

@@ -16,7 +16,7 @@ import math
 import os
 import pickle
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import lru_cache, wraps
 from socket import timeout as SocketTimeout
 from urllib import error, parse, request as urllib_request
@@ -105,6 +105,7 @@ SUPABASE_KEY = (
     or os.environ.get("SUPABASE_KEY", "")
 ).strip()
 SUPABASE_ENABLED = bool(SUPABASE_URL and SUPABASE_KEY)
+SQLITE_FALLBACK_ENABLED = not SUPABASE_ENABLED
 SUPABASE_USERS_TABLE = os.environ.get("SUPABASE_USERS_TABLE", "users")
 SUPABASE_PREDICTIONS_TABLE = os.environ.get(
     "SUPABASE_PREDICTIONS_TABLE", "saved_predictions"
@@ -233,7 +234,11 @@ def _get_user_db():
 
 
 def _has_local_resale_db():
-    return os.path.exists(DB_PATH) and not os.path.isdir(DB_PATH)
+    return (
+        SQLITE_FALLBACK_ENABLED
+        and os.path.exists(DB_PATH)
+        and not os.path.isdir(DB_PATH)
+    )
 
 
 def _ensure_sqlite_prediction_indexes():
@@ -326,17 +331,18 @@ def _init_user_db():
     conn.close()
 
 
-# Always init local DB — needed for pending_registrations even when Supabase is the main store
-_init_user_db()
-_ensure_sqlite_prediction_indexes()
+if SQLITE_FALLBACK_ENABLED:
+    _init_user_db()
+    _ensure_sqlite_prediction_indexes()
 
 
 class SupabaseError(RuntimeError):
     """Raised when the Supabase REST API returns an error."""
 
 
-# Circuit breaker: after first timeout, skip Supabase for rest of process
-_supabase_circuit_open = False
+# Track the most recent RPC timeout for diagnostics, but do not permanently
+# disable Supabase for the lifetime of the process.
+_supabase_last_rpc_error = None
 
 
 def _supabase_headers(prefer=None):
@@ -376,10 +382,35 @@ def _supabase_request(table, method="GET", filters=None, payload=None, prefer=No
         raise SupabaseError(details or f"Supabase request failed with {exc.code}") from exc
 
 
+def _supabase_count(table, filters=None):
+    if not SUPABASE_ENABLED:
+        raise SupabaseError("Supabase is not configured.")
+
+    query_filters = dict(filters or {})
+    query_filters.setdefault("select", "id")
+    query_filters.setdefault("limit", "1")
+    url = f"{SUPABASE_URL}/rest/v1/{table}?{parse.urlencode(query_filters)}"
+    req = urllib_request.Request(
+        url,
+        headers={**_supabase_headers(prefer="count=exact"), "Range": "0-0"},
+        method="GET",
+    )
+    try:
+        with urllib_request.urlopen(req) as resp:
+            content_range = resp.headers.get("Content-Range", "")
+            if "/" not in content_range:
+                return 0
+            total = content_range.rsplit("/", 1)[-1]
+            return int(total) if total.isdigit() else 0
+    except error.HTTPError as exc:
+        details = exc.read().decode("utf-8")
+        raise SupabaseError(details or f"Supabase count failed with {exc.code}") from exc
+
+
 def _supabase_rpc(function_name, params=None):
     """Call a Supabase PostgreSQL RPC function."""
-    global _supabase_circuit_open
-    if not SUPABASE_ENABLED or _supabase_circuit_open:
+    global _supabase_last_rpc_error
+    if not SUPABASE_ENABLED:
         raise SupabaseError("Supabase is not configured.")
 
     url = f"{SUPABASE_URL}/rest/v1/rpc/{function_name}"
@@ -399,7 +430,7 @@ def _supabase_rpc(function_name, params=None):
         details = exc.read().decode("utf-8")
         raise SupabaseError(details or f"Supabase RPC failed with {exc.code}") from exc
     except (error.URLError, SocketTimeout, OSError) as exc:
-        _supabase_circuit_open = True
+        _supabase_last_rpc_error = str(exc)
         raise SupabaseError(f"Supabase RPC timed out: {exc}") from exc
 
 
@@ -422,6 +453,34 @@ def _supabase_auth(path, method="POST", payload=None, access_token=None):
     except error.HTTPError as exc:
         details = exc.read().decode()
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+
+
+def _session_user_id():
+    try:
+        user_id = int(session.get("user_id"))
+    except (TypeError, ValueError):
+        return None
+    return user_id if user_id > 0 else None
+
+
+def _get_supabase_user_by_email(email):
+    rows = _supabase_request(
+        SUPABASE_USERS_TABLE,
+        filters={"email": f"eq.{email}", "limit": "1"},
+    ) or []
+    return rows[0] if rows else None
+
+
+def _get_supabase_feature_view_rows(user_id, feature):
+    cutoff = (datetime.utcnow() - timedelta(days=7)).replace(microsecond=0).isoformat() + "Z"
+    return _supabase_request(
+        "feature_view_log",
+        filters={
+            "user_id": f"eq.{user_id}",
+            "feature": f"eq.{feature}",
+            "created_at": f"gte.{cutoff}",
+        },
+    ) or []
 
 
 # SQLite-only user helpers (used when SUPABASE_ENABLED is False)
@@ -1193,6 +1252,16 @@ def _get_available_storey_ranges_data(town, flat_type):
     town = town or ""
     flat_type = flat_type or ""
 
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_api_available_storey_ranges", {
+                "p_town": town or None,
+                "p_flat_type": flat_type or None,
+            }) or []
+            return [r["storey_range"] for r in rows]
+        except SupabaseError:
+            return []
+
     if not _has_local_resale_db():
         return []
 
@@ -1316,7 +1385,8 @@ TOWN_DISTANCES = _get_town_avg_distances()
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "user_id" not in session:
+        if _session_user_id() is None:
+            session.clear()
             flash("Please log in to access this feature.", "warning")
             next_url = request.full_path.rstrip("?") if request.query_string else request.path
             return redirect(url_for("login", next=next_url))
@@ -1338,7 +1408,8 @@ def _safe_next_url(target):
 def api_login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "user_id" not in session:
+        if _session_user_id() is None:
+            session.clear()
             return jsonify({"error": "Authentication required"}), 401
         return f(*args, **kwargs)
     return decorated
@@ -1347,7 +1418,8 @@ def api_login_required(f):
 def premium_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "user_id" not in session:
+        if _session_user_id() is None:
+            session.clear()
             flash("Please log in to access this feature.", "warning")
             return redirect(url_for("login"))
         if session.get("subscription_tier", "general") != "premium":
@@ -1360,7 +1432,8 @@ def premium_required(f):
 def api_premium_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if "user_id" not in session:
+        if _session_user_id() is None:
+            session.clear()
             return jsonify({"error": "Authentication required"}), 401
         if session.get("subscription_tier", "general") != "premium":
             return jsonify({"error": "Premium subscription required"}), 403
@@ -1374,6 +1447,9 @@ GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
 
 def _get_weekly_view_count(user_id, feature):
     """Count views of a feature by user in the current week."""
+    if SUPABASE_ENABLED:
+        return len(_get_supabase_feature_view_rows(user_id, feature))
+
     conn = _get_user_db()
     row = conn.execute(
         "SELECT COUNT(*) as cnt FROM feature_view_log WHERE user_id = ? AND feature = ? AND created_at >= datetime('now', '-7 days')",
@@ -1385,6 +1461,14 @@ def _get_weekly_view_count(user_id, feature):
 
 def _log_feature_view(user_id, feature):
     """Record a feature view."""
+    if SUPABASE_ENABLED:
+        _supabase_request(
+            "feature_view_log",
+            method="POST",
+            payload={"user_id": user_id, "feature": feature},
+        )
+        return
+
     conn = _get_user_db()
     conn.execute("INSERT INTO feature_view_log (user_id, feature) VALUES (?, ?)", (user_id, feature))
     conn.commit()
@@ -1398,24 +1482,27 @@ def _check_feature_limit(feature):
     if tier == "premium":
         return True, 0, 0
     limit = GENERAL_WEEKLY_VIEW_LIMITS.get(feature, 3)
-    count = _get_weekly_view_count(session["user_id"], feature)
+    count = _get_weekly_view_count(_session_user_id(), feature)
     return count < limit, count, limit
 
 
 @app.before_request
 def load_user():
     g.user = None
-    if "user_id" in session:
+    user_id = _session_user_id()
+    if user_id is not None:
         if SUPABASE_ENABLED:
             # Reconstruct from session — no extra DB round-trip needed
             g.user = {
-                "id": session["user_id"],
+                "id": user_id,
                 "username": session.get("username", ""),
                 "email": session.get("email", ""),
                 "subscription_tier": session.get("subscription_tier", "general"),
             }
         else:
-            g.user = _sqlite_get_user_by_id(session["user_id"])
+            g.user = _sqlite_get_user_by_id(user_id)
+    elif "user_id" in session:
+        session.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -1540,7 +1627,7 @@ def _get_recent_similar_transactions(
             }) or []
             return rows
         except SupabaseError:
-            pass
+            return []
 
     if not _has_local_resale_db():
         return []
@@ -1584,7 +1671,7 @@ def _get_block_distances(town, street_name, block):
                     "dist_mall": r.get("dist_mall"),
                 }
         except SupabaseError:
-            pass
+            return None
 
     if _has_local_resale_db():
         try:
@@ -1642,7 +1729,7 @@ def _resolve_prediction_inputs(
                 resolved = True
             except SupabaseError:
                 pass
-        if not resolved:
+        if not resolved and _has_local_resale_db():
             conn = _get_db()
             query = """
                 SELECT ROUND(AVG(floor_area_sqm), 1) AS v
@@ -1675,6 +1762,8 @@ def _resolve_prediction_inputs(
                     ).fetchone()
                 floor_area = float(row["v"]) if row and row["v"] else 90.0
             conn.close()
+        elif not resolved:
+            floor_area = 90.0
         assumptions.append(f"Used inferred floor area: {floor_area} sqm")
 
     lease_commence = None
@@ -1697,7 +1786,7 @@ def _resolve_prediction_inputs(
                 resolved = True
             except SupabaseError:
                 pass
-        if not resolved:
+        if not resolved and _has_local_resale_db():
             conn = _get_db()
             query = """
                 SELECT ROUND(AVG(lease_commence_date), 0) AS v
@@ -1730,6 +1819,8 @@ def _resolve_prediction_inputs(
                     ).fetchone()
                 lease_commence = int(row["v"]) if row and row["v"] else 1990
             conn.close()
+        elif not resolved:
+            lease_commence = 1990
         assumptions.append(f"Used inferred lease start year: {lease_commence}")
 
     return floor_area, lease_commence, assumptions
@@ -1778,9 +1869,12 @@ def register():
                 )
                 db_user = rows[0] if rows else {}
             except SupabaseError:
-                db_user = {}
+                db_user = _get_supabase_user_by_email(email) or {}
 
             if result.get("access_token"):
+                if not db_user.get("id"):
+                    flash("Account created, but the app profile could not be provisioned in Supabase. Please contact support before logging in.", "danger")
+                    return redirect(url_for("login"))
                 session["user_id"] = db_user.get("id")
                 session["username"] = username
                 session["email"] = email
@@ -1824,15 +1918,15 @@ def login():
 
             # Fetch public.users record for integer ID (used by saved_predictions FK)
             try:
-                rows = _supabase_request(
-                    SUPABASE_USERS_TABLE,
-                    filters={"email": f"eq.{email}", "limit": "1"},
-                )
-                db_user = rows[0] if rows else {}
+                db_user = _get_supabase_user_by_email(email) or {}
             except SupabaseError:
                 db_user = {}
 
             auth_user = result.get("user") or {}
+            if not db_user.get("id"):
+                session.clear()
+                flash("Your account authenticated with Supabase, but the app user profile is missing. Please contact support.", "danger")
+                return render_template("login.html", next_url=next_url)
             session["user_id"] = db_user.get("id")
             session["username"] = db_user.get("username") or auth_user.get("user_metadata", {}).get("username", email.split("@")[0])
             session["email"] = email
@@ -1898,7 +1992,7 @@ def pricing():
 @app.route("/upgrade", methods=["POST"])
 @login_required
 def upgrade():
-    user_id = session["user_id"]
+    user_id = _session_user_id()
     if SUPABASE_ENABLED:
         try:
             _supabase_request(
@@ -1927,6 +2021,39 @@ def upgrade():
 def _get_popular_predictions(limit=3):
     """Return the most common town+flat_type prediction combos across all users.
     Falls back to top towns by recent transaction volume from resale data."""
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_request(
+                SUPABASE_PREDICTIONS_TABLE,
+                filters={"select": "town,flat_type,predicted_price"},
+            ) or []
+            aggregates = {}
+            for row in rows:
+                key = (row.get("town"), row.get("flat_type"))
+                if not all(key):
+                    continue
+                bucket = aggregates.setdefault(key, {"sum": 0.0, "count": 0})
+                bucket["sum"] += float(row.get("predicted_price") or 0)
+                bucket["count"] += 1
+
+            ranked = sorted(
+                (
+                    {
+                        "town": town,
+                        "flat_type": flat_type,
+                        "avg_price": round(data["sum"] / data["count"]),
+                        "count": data["count"],
+                    }
+                    for (town, flat_type), data in aggregates.items()
+                    if data["count"] > 0
+                ),
+                key=lambda item: item["count"],
+                reverse=True,
+            )
+            return ranked[:limit]
+        except SupabaseError:
+            return []
+
     # Try saved predictions first
     try:
         conn = _get_user_db()
@@ -1972,13 +2099,7 @@ def home():
     # Total transaction count
     try:
         if SUPABASE_ENABLED:
-            try:
-                result = _supabase_rpc("rpc_count_transactions")
-                total_txns = int(result) if result else 0
-            except SupabaseError:
-                conn = _get_db()
-                total_txns = conn.execute("SELECT COUNT(*) as c FROM resale_prices").fetchone()["c"]
-                conn.close()
+            total_txns = _supabase_count("transactions")
         else:
             conn = _get_db()
             total_txns = conn.execute("SELECT COUNT(*) as c FROM resale_prices").fetchone()["c"]
@@ -2376,7 +2497,7 @@ def api_transactions():
             }) or []
             return jsonify(rows)
         except SupabaseError:
-            pass
+            return jsonify([])
 
     conn = _get_db()
     query = """
@@ -2475,11 +2596,27 @@ def api_price_trend():
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
 
+    if SUPABASE_ENABLED:
+        try:
+            rows = _supabase_rpc("rpc_api_price_trend_simple", {
+                "p_town": town or None,
+                "p_flat_type": flat_type or None,
+            }) or []
+            normalized = []
+            for row in rows:
+                item = dict(row)
+                item["q1"] = item.get("min_price")
+                item["q3"] = item.get("max_price")
+                normalized.append(item)
+            return jsonify(normalized)
+        except SupabaseError:
+            return jsonify([])
+
     conn = _get_db()
     query = """
         SELECT year, ROUND(AVG(resale_price)) as avg_price,
-               ROUND(PERCENTILE(resale_price, 25)) as q1,
-               ROUND(PERCENTILE(resale_price, 75)) as q3,
+               ROUND(MIN(resale_price)) as q1,
+               ROUND(MAX(resale_price)) as q3,
                COUNT(*) as txn_count
         FROM resale_prices WHERE 1=1
     """
@@ -2515,7 +2652,7 @@ def api_price_trend_simple():
                 "p_block": block or None,
             }) or [])
         except SupabaseError:
-            pass  # fall through to SQLite
+            return jsonify([])
 
     conn = _get_db()
     query = """
@@ -2566,7 +2703,7 @@ def api_street_price_trend():
                 "p_block": block or None,
             }) or [])
         except SupabaseError:
-            pass
+            return jsonify([])
 
     if not _has_local_resale_db():
         return jsonify([])
@@ -2608,7 +2745,7 @@ def api_district_comparison():
         try:
             return jsonify(_supabase_rpc("rpc_api_district_comparison") or [])
         except SupabaseError:
-            pass
+            return jsonify([])
 
     conn = _get_db()
     rows = conn.execute("""
@@ -2646,7 +2783,7 @@ def api_monthly_volume():
         try:
             return jsonify(_supabase_rpc("rpc_api_monthly_volume", {"p_town": town or None}) or [])
         except SupabaseError:
-            pass
+            return jsonify([])
 
     conn = _get_db()
     query = """
@@ -2672,10 +2809,18 @@ def api_monthly_volume():
 def api_public_location_summary():
     """Per-town centroids with blurred price bucket (1-5) for guest teaser map."""
     if SUPABASE_ENABLED:
-        try:
-            return jsonify(_supabase_rpc("rpc_api_public_location_summary") or [])
-        except SupabaseError:
-            pass  # fall through to SQLite
+        town_list = [dict(r) for r in _get_district_summary_data()]
+        town_list = [t for t in town_list if t.get("lat") and t.get("lng")]
+        town_list.sort(key=lambda x: x.get("avg_price") or 0)
+        n = len(town_list)
+        for i, t in enumerate(town_list):
+            t["price_bucket"] = min(5, int(i / max(n, 1) * 5) + 1)
+            t["total_txns"] = t.get("total_txns", 0)
+            del t["avg_price"]
+            t.pop("recent_avg", None)
+            t.pop("recent_txns", None)
+        town_list.sort(key=lambda x: x["town"])
+        return jsonify(town_list)
 
     conn = _get_db()
     rows = conn.execute("""
@@ -2707,9 +2852,18 @@ def api_public_recent_ticker():
     """20 most recent transactions for homepage ticker. No auth required."""
     if SUPABASE_ENABLED:
         try:
-            return jsonify(_supabase_rpc("rpc_api_public_recent_ticker") or [])
+            rows = _supabase_rpc("rpc_api_transactions", {"p_limit": 20}) or []
+            return jsonify([
+                {
+                    "town": row.get("town"),
+                    "flat_type": row.get("flat_type"),
+                    "resale_price": row.get("resale_price"),
+                    "year": row.get("year"),
+                }
+                for row in rows
+            ])
         except SupabaseError:
-            pass
+            return jsonify([])
 
     conn = _get_db()
     rows = conn.execute("""
@@ -2774,7 +2928,7 @@ def api_available_streets():
             rows = _supabase_rpc("rpc_available_streets", {"p_town": town}) or []
             return jsonify({"streets": [r["street_name"] for r in rows]})
         except SupabaseError:
-            pass
+            return jsonify({"streets": []})
 
     if _has_local_resale_db():
         conn = _get_db()
@@ -2802,7 +2956,7 @@ def api_available_blocks():
             rows = _supabase_rpc("rpc_available_blocks", {"p_town": town, "p_street": street}) or []
             return jsonify({"blocks": [r["block"] for r in rows]})
         except SupabaseError:
-            pass
+            return jsonify({"blocks": []})
 
     if _has_local_resale_db():
         conn = _get_db()

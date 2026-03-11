@@ -3,7 +3,7 @@
 
 A full-stack data pipeline and web application for Singapore HDB resale property valuation and market analytics.
 
-This project fetches HDB resale transaction data from public sources, cleans and enriches it with geocoding and proximity features, trains machine learning models to predict resale prices, and serves an interactive web platform for market analysis, price predictions, and transaction visualisation. The current codebase uses local SQLite heavily and can also connect to **Supabase** (PostgreSQL) for the normalized cloud backend.
+This project fetches HDB resale transaction data from public sources, cleans and enriches it with geocoding and proximity features, trains machine learning models to predict resale prices, and serves an interactive web platform for market analysis, price predictions, and transaction visualisation. The current runtime uses **Supabase** (PostgreSQL) as the primary application database when configured, while local SQLite remains part of the ETL and migration workflow.
 
 ---
 
@@ -101,7 +101,7 @@ The platform uses a freemium model with two subscription tiers:
 
 ## Web Application
 
-The Flask app in `webapp/app.py` serves the UI, loads the checked-in XGBoost artefacts at startup, reads from local SQLite when available, and falls back to Supabase REST/RPC calls when configured.
+The Flask app in `webapp/app.py` serves the UI, loads the checked-in XGBoost artefacts at startup, and uses Supabase REST/RPC calls as the primary runtime data source whenever Supabase is configured. Local SQLite remains available only for offline mode when Supabase is not configured.
 
 ### Page Routes
 
@@ -128,8 +128,8 @@ Authenticated endpoints:
 - `GET /api/transactions` — recent transactions (optional town filter)
 - `GET /api/district_summary` — town-level heatmap data
 - `GET /api/predicted_heatmap` — model-driven per-town heatmap
-- `GET /api/price_trend` — yearly price trends from local SQLite
-- `GET /api/price_trend_simple` — yearly price trends with SQLite / Supabase-compatible aggregates
+- `GET /api/price_trend` — yearly price trends
+- `GET /api/price_trend_simple` — yearly price trends with Supabase / SQLite-compatible aggregates
 - `GET /api/district_comparison` — latest year town comparison
 - `GET /api/flat_type_breakdown` — flat type breakdown by town
 - `GET /api/monthly_volume` — monthly transaction volume
@@ -159,7 +159,7 @@ python webapp/app.py
 
 The checked-in PostgreSQL schema lives in `Database/supabase_schema.sql`. `Database/migrate_to_supabase.py` migrates rows from the local SQLite `resale_prices` table into the normalized Supabase tables.
 
-At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY` are set. When a required RPC is missing or Supabase is unavailable, the app falls back to local SQLite queries where a fallback exists.
+At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY` are set. In that mode, Supabase is treated as the authoritative application database; local SQLite is only used when Supabase is not configured.
 
 ### Normalised Schema
 
@@ -177,22 +177,12 @@ At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and e
 
 ### RPC Functions
 
-The current SQL file defines **18 RPC functions**:
+The current SQL file defines the RPC functions used by `webapp/app.py`, including:
 
 - Lookup RPCs: `rpc_get_towns`, `rpc_get_flat_models`, `rpc_get_town_avg_distances`, `rpc_available_streets`, `rpc_available_blocks`, `rpc_block_distances`
 - Analytics RPCs: `rpc_api_transactions`, `rpc_api_district_summary`, `rpc_api_price_trend_simple`, `rpc_api_district_comparison`, `rpc_api_flat_type_breakdown`, `rpc_api_monthly_volume`, `rpc_lease_decay`, `rpc_recent_similar_transactions`
 - Prediction RPCs: `rpc_predict_trend`, `rpc_predict_benchmarks`, `rpc_resolve_floor_area`, `rpc_resolve_lease_commence`
-
-`webapp/app.py` also attempts these RPC names, but they are **not** present in the current `supabase_schema.sql` file:
-
-- `rpc_count_transactions`
-- `rpc_api_available_models`
-- `rpc_api_floor_area_stats`
-- `rpc_api_lease_year_range`
-- `rpc_api_public_location_summary`
-- `rpc_api_public_recent_ticker`
-
-For those missing functions, the Flask app falls back to local SQLite logic when the equivalent local query exists. Conversely, `rpc_predict_trend` and `rpc_predict_benchmarks` exist in the SQL file but are not currently called by `webapp/app.py`.
+- UI support RPCs: `rpc_count_transactions`, `rpc_api_available_models`, `rpc_api_available_storey_ranges`, `rpc_api_floor_area_stats`, `rpc_api_lease_year_range`, `rpc_api_public_location_summary`, `rpc_api_public_recent_ticker`
 
 ### Environment Variables
 

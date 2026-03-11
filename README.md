@@ -57,9 +57,9 @@ hdb_resale/
 ├── webapp/
 │   ├── app.py                   # Flask app, auth, APIs, predictions
 │   ├── templates/               # Jinja2 templates
-│   └── users.db                 # Local auth / saved-predictions fallback DB
+│   └── users.db                 # Legacy local user DB from earlier offline mode
 │
-├── hdb_resale.db                # Main local SQLite analytics DB
+├── hdb_resale.db                # Local SQLite analytics DB for ETL / training
 └── README.md
 ```
 
@@ -76,7 +76,7 @@ Most ETL and ML scripts use relative paths such as `raw/`, `reference_data/`, `h
 | ML | XGBoost, LightGBM, scikit-learn, Optuna |
 | Data | Pandas, NumPy, SciPy |
 | APIs | data.gov.sg, OneMap Singapore, Supabase REST & Auth |
-| Auth | Supabase Auth when configured, otherwise local SQLite + Werkzeug password hashing |
+| Auth | Supabase Auth + Werkzeug password hashing |
 
 ---
 
@@ -101,7 +101,7 @@ The platform uses a freemium model with two subscription tiers:
 
 ## Web Application
 
-The Flask app in `webapp/app.py` serves the UI, loads the checked-in XGBoost artefacts at startup, and uses Supabase REST/RPC calls as the primary runtime data source whenever Supabase is configured. Local SQLite remains available only for offline mode when Supabase is not configured.
+The Flask app in `webapp/app.py` serves the UI, loads the trained model artefacts at startup, and uses Supabase REST/RPC calls as the runtime data source. Supabase is required to start the current app.
 
 ### Page Routes
 
@@ -146,12 +146,74 @@ Public endpoints:
 - `GET /api/public/location_summary` — guest teaser map with blurred price buckets
 - `GET /api/public/recent_ticker` — recent transaction ticker for the homepage
 
-### Running the Web App
+### Start the Website (No ETL / No Model Training)
+
+Use this path if you only want to run the Flask website. The current app reads its runtime data from Supabase, so you do not need a local website database.
+
+You do not need to run:
+
+- `Data Preprocessing/api_fetcher.py`
+- `Data Preprocessing/data_pipeline.py`
+- `Data Preprocessing/geocoding.py`
+- `Data Preprocessing/fetch_reference_data.py`
+- `Data Preprocessing/proximity_features.py`
+- `ML/feature_engineering.py`
+- `ML/model_training.py`
+
+Minimum requirements:
+
+- trained model artefacts under `ML/model_assets/`
+- a `.env` file with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (or `SUPABASE_KEY`), and `SECRET_KEY`
+
+From the project root:
 
 ```bash
-pip install flask python-dotenv werkzeug xgboost lightgbm pandas numpy scikit-learn scipy
+python -m venv .venv
+source .venv/bin/activate
+pip install flask python-dotenv werkzeug xgboost lightgbm pandas numpy scikit-learn scipy pyarrow "numexpr>=2.10.2" "bottleneck>=1.4.2"
+```
+
+Download or copy the trained model artefacts so this structure exists:
+
+```text
+ML/model_assets/
+├── latest.txt
+└── <run_dir>/
+    ├── xgboost_model.pkl
+    ├── scaler.pkl
+    ├── target_encoders.pkl
+    ├── price_index.pkl
+    └── metrics.json
+```
+
+Set the required variables in `.env`:
+
+```bash
+SECRET_KEY=<flask-session-secret>
+SUPABASE_URL=https://<project>.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
+```
+
+Then start the app:
+
+```bash
 python webapp/app.py
 ```
+
+Then open:
+
+```text
+http://127.0.0.1:5001
+```
+
+Notes:
+
+- `webapp/app.py` automatically loads `.env` from the project root.
+- The app will fail at startup if `SUPABASE_URL` and a Supabase key are not set.
+- The app loads the active run from `ML/model_assets/latest.txt`, so retraining is not required just to run the website.
+- `hdb_resale.db` is still used by ETL, migration, and model-training scripts, but it is not required for the website runtime.
+- On macOS, `xgboost` may require OpenMP. If import fails with `libomp.dylib` not found, run `brew install libomp`.
+- The default dev server port is `5001`. Override it with `FLASK_PORT=<port> python webapp/app.py` if `5001` is already in use.
 
 ---
 
@@ -159,7 +221,7 @@ python webapp/app.py
 
 The checked-in PostgreSQL schema lives in `Database/supabase_schema.sql`. `Database/migrate_to_supabase.py` migrates rows from the local SQLite `resale_prices` table into the normalized Supabase tables.
 
-At runtime, `webapp/app.py` enables Supabase only when both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY` are set. In that mode, Supabase is treated as the authoritative application database; local SQLite is only used when Supabase is not configured.
+At runtime, `webapp/app.py` requires both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY`. Supabase is the authoritative application database for the current website.
 
 ### Normalised Schema
 
@@ -194,8 +256,6 @@ SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
 SUPABASE_KEY=<optional alternate key name accepted by webapp/app.py>
 SUPABASE_DB_URL=postgresql://...
 SECRET_KEY=<flask-session-secret>
-DB_PATH=<optional local resale SQLite override>
-USER_DB_PATH=<optional local user SQLite override>
 MODEL_ASSETS_DIR=<optional model artefacts override>
 SUPABASE_USERS_TABLE=users
 SUPABASE_PREDICTIONS_TABLE=saved_predictions
@@ -340,13 +400,13 @@ One row per resale transaction, with foreign keys to dimension tables.
 
 ## Local SQLite Databases
 
-The current codebase still depends on SQLite for ETL, training, and several runtime fallbacks.
+The current codebase still depends on SQLite for ETL, migration, and model-training workflows. The website runtime uses Supabase instead.
 
 ### Main Analytics DB (`hdb_resale.db`)
 
 | Table | Purpose |
 | ----- | ------- |
-| `resale_prices` | Authoritative transaction table used by ETL, training, and SQLite fallback queries |
+| `resale_prices` | Transaction table used by ETL, migration, and training workflows |
 | `district_summary` | Rebuilt aggregate summary table for town / flat_type / year analytics |
 | `geocode_cache` | Cached OneMap geocoding results |
 | `pipeline_meta` | Key-value metadata written by the ETL pipeline |
@@ -356,14 +416,24 @@ The current codebase still depends on SQLite for ETL, training, and several runt
 
 | Table | Purpose |
 | ----- | ------- |
-| `users` | Local auth fallback with `subscription_tier` column |
-| `saved_predictions` | Local saved predictions when Supabase is disabled |
-| `pending_registrations` | Pending local registration table initialised by `webapp/app.py` |
-| `feature_view_log` | Tracks weekly feature views for subscription limits |
+| `users` | Legacy local auth table from earlier offline mode |
+| `saved_predictions` | Legacy local saved-prediction table from earlier offline mode |
+| `pending_registrations` | Legacy local registration table |
+| `feature_view_log` | Legacy local feature-view tracking table |
 
 ---
 
 ## Execution Order
+
+### Website only
+
+If you only want to run the website, skip the full pipeline and start the Flask app directly:
+
+```bash
+python webapp/app.py
+```
+
+This requires Supabase credentials in `.env` and model artefacts in `ML/model_assets/`.
 
 ### Full data pipeline run
 
@@ -635,19 +705,7 @@ model_assets/
 Install the required packages:
 
 ```bash
-pip install pandas numpy scikit-learn matplotlib seaborn scipy requests pyarrow xgboost lightgbm optuna flask python-dotenv werkzeug psycopg2-binary
-```
-
----
-
-## Viewing the Database
-
-You can open `hdb_resale.db` in VS Code using the **SQLite Viewer** extension.
-
-You can also inspect it using SQLite in the terminal:
-
-```bash
-sqlite3 hdb_resale.db
+pip install pandas numpy scikit-learn matplotlib seaborn scipy requests pyarrow xgboost lightgbm optuna flask python-dotenv werkzeug psycopg2-binary "numexpr>=2.10.2" "bottleneck>=1.4.2"
 ```
 
 

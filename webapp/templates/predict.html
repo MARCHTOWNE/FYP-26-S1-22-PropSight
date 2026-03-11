@@ -12,7 +12,7 @@
                         <h4 class="card-title mb-0">
                             <i class="bi bi-calculator me-2 text-primary"></i>Property Valuation
                         </h4>
-                        <a href="{{ url_for('comparison') }}" class="btn btn-outline-primary btn-sm">
+                        <a href="{% if form_data.get('town') %}{{ url_for('comparison', panel_count=2, p0_town=form_data.get('town', ''), p0_flat_type=form_data.get('flat_type', ''), p0_flat_model=form_data.get('flat_model', ''), p0_floor_area=form_data.get('floor_area', ''), p0_storey_range=form_data.get('storey_range', ''), p0_lease_commence=form_data.get('lease_commence', ''), p0_street_name=form_data.get('street_name', ''), p0_block=form_data.get('block', '')) }}{% else %}{{ url_for('comparison') }}{% endif %}" class="btn btn-outline-primary btn-sm">
                             <i class="bi bi-columns-gap me-1"></i>Compare
                         </a>
                     </div>

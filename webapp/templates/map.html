@@ -838,7 +838,15 @@ async function loadHeatmap() {
     try {
         const resp = await fetch('/api/predicted_heatmap?' + params);
         if (handleAuthFailure(resp)) return;
+        if (!resp.ok) {
+            const errorData = await resp.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Prediction map request failed.');
+        }
         const data = await resp.json();
+
+        if (!Array.isArray(data) || data.length === 0) {
+            throw new Error('No prediction map data returned.');
+        }
 
         const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
         const minP = Math.min(...prices);
@@ -890,7 +898,7 @@ async function loadHeatmap() {
         updateStats(data, 'heatmap');
         setInsight(`Showing predicted prices for a typical ${flatType} (storey ${storey.replace(' TO ', '-')}) in each town. Blue = lower, Red = higher. Click to drill down.`);
     } catch (e) {
-        setInsight('Failed to load predictions. Please try again.');
+        setInsight(e && e.message ? e.message : 'Failed to load predictions. Please try again.');
     } finally {
         hideLoading();
     }

@@ -101,50 +101,79 @@ The platform uses a freemium model with two subscription tiers:
 
 ## Web Application
 
-The Flask app in `webapp/app.py` serves the UI, loads the trained model artefacts at startup, and uses Supabase REST/RPC calls as the runtime data source. Supabase is required to start the current app.
+The Flask app in `webapp/app.py` loads `.env` from the project root, reads trained model artefacts at startup, and uses Supabase REST/RPC plus Supabase Auth for the live website. The current runtime will raise a startup error if `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY` are missing.
+
+At startup, the app resolves model artefacts from:
+
+- `MODEL_ASSETS_DIR` if set
+- `./model_assets`
+- `./ML/model_assets`
+
+The active run is chosen from `latest.txt` when present, otherwise the newest run directory under the artefact root.
+
+User sessions store:
+
+- `user_id`
+- `username`
+- `email`
+- `access_token`
+- `subscription_tier`
+
+Feature limits are enforced on page routes for General users:
+
+- Map: 3 views per week
+- Analytics: 3 views per week
+- Comparison: 3 views per week
+
+Premium users get unlimited feature views, unlimited saved predictions, and up to 5 comparison panels. General users are limited to 3 saved predictions and 2 comparison panels.
 
 ### Page Routes
 
 | Route | Access | Purpose |
 | ----- | ------ | ------- |
-| `/` | Public | Landing page with transaction count, model summary, and guest teaser data |
-| `/register`, `/login`, `/forgot-password` | Public | Account creation, sign-in, and password recovery |
-| `/pricing` | Public | Subscription plan comparison and upgrade |
-| `/predict` | Login required | Main prediction form and forward price timeline |
-| `/my_predictions` | Login required | Saved predictions list |
-| `/save_prediction` | Login required (`POST`) | Persist a prediction record (3 max for General users) |
-| `/delete_prediction/<int:pred_id>` | Login required (`POST`) | Delete a saved prediction |
-| `/comparison` | Login required | Side-by-side prediction comparison (3 views/week for General) |
-| `/comparison/select/<int:pred_id>` | Login required | Push a saved prediction into comparison state |
-| `/map` | Login required | Interactive transaction map (3 views/week for General) |
-| `/analytics` | Login required | Dashboard charts (3 views/week for General) |
-| `/upgrade` | Login required (`POST`) | Upgrade user to Premium tier |
-| `/logout` | Session route | Clear the current login session |
+| `/` | Public | Landing page with total transaction count, model MAPE, public teaser data, and popular or personalized prediction cards |
+| `/register` | Public (`GET`, `POST`) | Create a Supabase Auth account and provision a matching row in `public.users` |
+| `/login` | Public (`GET`, `POST`) | Sign in with Supabase password auth and hydrate the Flask session |
+| `/forgot-password` | Public (`GET`, `POST`) | Trigger Supabase password recovery email |
+| `/logout` | Session route | Clear the current login session and attempt Supabase logout |
+| `/pricing` | Public | Pricing and subscription comparison page |
+| `/upgrade` | Login required (`POST`) | Patch the current user to `premium` in `public.users` |
+| `/predict` | Login required (`GET`, `POST`) | Prediction form with optional query-param prefill, recent similar transactions, and 5-year forecast |
+| `/save_prediction` | Login required (`POST`) | Save the current prediction to `saved_predictions` |
+| `/my_predictions` | Login required | List saved predictions |
+| `/delete_prediction/<int:pred_id>` | Login required (`POST`) | Delete one saved prediction |
+| `/my_predictions/bulk_delete` | Login required (`POST`) | Delete multiple saved predictions |
+| `/comparison` | Login required (`GET`, `POST`) | Compare 2 properties for General users or up to 5 for Premium users |
+| `/comparison/select/<int:pred_id>` | Login required | Push a saved prediction into the comparison-session state |
+| `/map` | Login required | Interactive map with transaction pins and predicted heatmap modes |
+| `/analytics` | Login required | Analytics dashboard with trend charts, context cards, and prediction-linked deep links |
 
 ### JSON Endpoints
 
 Authenticated endpoints:
 
-- `GET /api/transactions` — recent transactions (optional town filter)
-- `GET /api/district_summary` — town-level heatmap data
-- `GET /api/predicted_heatmap` — model-driven per-town heatmap
-- `GET /api/price_trend` — yearly price trends
-- `GET /api/price_trend_simple` — yearly price trends with Supabase / SQLite-compatible aggregates
-- `GET /api/district_comparison` — latest year town comparison
-- `GET /api/flat_type_breakdown` — flat type breakdown by town
-- `GET /api/monthly_volume` — monthly transaction volume
-- `GET /api/available_models` — town + flat type model options
-- `GET /api/available_storey_ranges` — town + flat type storey options
-- `GET /api/floor_area_stats` — min / max / avg floor area
-- `GET /api/lease_year_range` — min / max / avg lease commence year
-- `GET /api/available_streets` — street lookup by town
-- `GET /api/available_blocks` — block lookup by town + street
-- `GET /api/prediction_context` — lease-decay data and recent comparable transactions
+- `GET /api/transactions` — transaction rows for the map pin layer
+- `GET /api/district_summary` — town-level summary rows with coordinates for heatmap-style views
+- `GET /api/predicted_heatmap` — per-town model predictions for the map heatmap mode
+- `GET /api/price_trend` — yearly trend data normalized to `avg_price`, `q1`, `q3`, and `txn_count`
+- `GET /api/price_trend_simple` — yearly average/min/max trend data with optional town, flat type, street, and block filters
+- `GET /api/street_price_trend` — yearly street-level trend data inside a town
+- `GET /api/district_comparison` — latest per-town comparison data
+- `GET /api/flat_type_breakdown` — average price, transaction count, and average floor area by flat type
+- `GET /api/monthly_volume` — monthly transaction counts and average price
+- `GET /api/available_models` — valid flat models for a town + flat type pair
+- `GET /api/available_storey_ranges` — valid storey ranges for a town + flat type pair
+- `GET /api/floor_area_stats` — min / max / average floor area for a town + flat type pair
+- `GET /api/lease_year_range` — min / max / average lease commence year for a town
+- `GET /api/available_streets` — street list for a town
+- `GET /api/available_blocks` — block list for a town + street pair
+- `GET /api/prediction_context` — lease-decay data plus recent comparable transactions for analytics
+- `GET /api/future_prediction` — 5-year forward prediction timeline as JSON
 
 Public endpoints:
 
-- `GET /api/public/location_summary` — guest teaser map with blurred price buckets
-- `GET /api/public/recent_ticker` — recent transaction ticker for the homepage
+- `GET /api/public/location_summary` — guest teaser map with blurred town-level price buckets
+- `GET /api/public/recent_ticker` — 20 most recent transactions for the homepage ticker
 
 ### Start the Website (No ETL / No Model Training)
 
@@ -211,6 +240,7 @@ Notes:
 - `webapp/app.py` automatically loads `.env` from the project root.
 - The app will fail at startup if `SUPABASE_URL` and a Supabase key are not set.
 - The app loads the active run from `ML/model_assets/latest.txt`, so retraining is not required just to run the website.
+- The app expects these artefact files at minimum: `xgboost_model.pkl`, `scaler.pkl`, `target_encoders.pkl`, `price_index.pkl`, and `metrics.json`.
 - `hdb_resale.db` is still used by ETL, migration, and model-training scripts, but it is not required for the website runtime.
 - On macOS, `xgboost` may require OpenMP. If import fails with `libomp.dylib` not found, run `brew install libomp`.
 - The default dev server port is `5001`. Override it with `FLASK_PORT=<port> python webapp/app.py` if `5001` is already in use.

@@ -296,22 +296,41 @@
         <h2 class="section-title">Backed by real HDB data</h2>
         <p class="section-subtitle mb-4">Our predictions are built on official government transaction records — not guesswork.</p>
 
-        <div class="trust-grid">
-            <div class="trust-stat">
-                <div class="trust-stat-value">&plusmn;{{ artefact_mape }}%</div>
-                <div class="trust-stat-label">Prediction Accuracy (MAPE)</div>
-            </div>
-            <div class="trust-stat">
-                <div class="trust-stat-value">{{ "{:,}".format(total_txns) }}+</div>
-                <div class="trust-stat-label">Transactions Analysed</div>
-            </div>
-            <div class="trust-stat">
-                <div class="trust-stat-value">HDB.gov.sg</div>
-                <div class="trust-stat-label">Official Data Source</div>
-            </div>
-            <div class="trust-stat">
-                <div class="trust-stat-value">2000–2024</div>
-                <div class="trust-stat-label">Years of Market Data</div>
+        <div class="trust-carousel-wrapper">
+            <div class="trust-carousel">
+                <div class="trust-stat">
+                    <div class="trust-stat-value">&plusmn;{{ artefact_mape }}%</div>
+                    <div class="trust-stat-label">Prediction Accuracy (MAPE)</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">{{ "{:,}".format(total_txns) }}+</div>
+                    <div class="trust-stat-label">Transactions Analysed</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">HDB.gov.sg</div>
+                    <div class="trust-stat-label">Official Data Source</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">2000–2024</div>
+                    <div class="trust-stat-label">Years of Market Data</div>
+                </div>
+                <!-- Duplicated for seamless loop -->
+                <div class="trust-stat">
+                    <div class="trust-stat-value">&plusmn;{{ artefact_mape }}%</div>
+                    <div class="trust-stat-label">Prediction Accuracy (MAPE)</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">{{ "{:,}".format(total_txns) }}+</div>
+                    <div class="trust-stat-label">Transactions Analysed</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">HDB.gov.sg</div>
+                    <div class="trust-stat-label">Official Data Source</div>
+                </div>
+                <div class="trust-stat">
+                    <div class="trust-stat-value">2000–2024</div>
+                    <div class="trust-stat-label">Years of Market Data</div>
+                </div>
             </div>
         </div>
     </div>
@@ -768,6 +787,85 @@ document.querySelectorAll('.card-map').forEach(function(el) {
     }).addTo(miniMap);
     L.circleMarker([lat, lng], {radius: 6, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.7, weight: 2}).addTo(miniMap);
 });
+</script>
+<script>
+(function() {
+    const wrapper = document.querySelector('.trust-carousel-wrapper');
+    const carousel = document.querySelector('.trust-carousel');
+    if (!wrapper || !carousel) return;
+
+    const TOTAL_ITEMS = 4;
+    const GAP = 20;
+    let offset = 0;
+    let isInView = false;
+    let animId = null;
+    let targetOffset = 0;
+
+    function getBoxWidth() {
+        return (wrapper.offsetWidth - GAP * 2) / 3;
+    }
+
+    function getMaxOffset() {
+        return (getBoxWidth() + GAP) * TOTAL_ITEMS;
+    }
+
+    function applyTransform() {
+        carousel.style.transform = 'translateX(' + (-offset) + 'px)';
+    }
+
+    // Smooth animation loop
+    function animate() {
+        const diff = targetOffset - offset;
+        if (Math.abs(diff) < 0.5) {
+            offset = targetOffset;
+            applyTransform();
+            animId = null;
+            return;
+        }
+        offset += diff * 0.15;
+        applyTransform();
+        animId = requestAnimationFrame(animate);
+    }
+
+    function startAnimate() {
+        if (!animId) animId = requestAnimationFrame(animate);
+    }
+
+    // Observe section visibility
+    const observer = new IntersectionObserver(function(entries) {
+        isInView = entries[0].isIntersecting;
+    }, { threshold: 0.2 });
+    observer.observe(wrapper);
+
+    // Listen for wheel events
+    window.addEventListener('wheel', function(e) {
+        if (!isInView) return;
+
+        const speed = 0.8;
+        const delta = (Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX) * speed;
+        const maxOffset = getMaxOffset();
+
+        targetOffset += delta;
+
+        // Seamless looping
+        if (targetOffset >= maxOffset) {
+            targetOffset -= maxOffset;
+            offset -= maxOffset;
+        } else if (targetOffset < 0) {
+            targetOffset += maxOffset;
+            offset += maxOffset;
+        }
+
+        startAnimate();
+    }, { passive: true });
+
+    // Handle resize
+    window.addEventListener('resize', function() {
+        applyTransform();
+    });
+
+    applyTransform();
+})();
 </script>
 {% if not g.user %}
 <div class="nudge-bar" id="nudgeBar">

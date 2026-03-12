@@ -561,6 +561,22 @@ h6,
     text-align: center;
 }
 
+/* Trust scroll row — slides horizontally on page scroll */
+.trust-scroll-wrapper {
+    overflow: hidden;
+}
+
+.trust-scroll-row {
+    display: flex;
+    gap: 20px;
+    will-change: transform;
+}
+
+.trust-scroll-row .trust-stat {
+    flex: 0 0 calc((100% - 40px) / 3);
+    text-align: center;
+}
+
 .trust-stat {
     background: linear-gradient(165deg, #ffffff, #f8fbff);
     border: 1px solid var(--line);

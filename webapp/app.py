@@ -1300,6 +1300,24 @@ def _resolve_prediction_inputs(
     return floor_area, lease_commence, assumptions
 
 
+def _resolve_forecast_flat_type(town, flat_type, street_name="", block=""):
+    """Choose a flat type for analytics forecasts when the filter is broad."""
+    flat_type = (flat_type or "").strip()
+    if flat_type:
+        return flat_type, []
+
+    breakdown = _get_flat_type_breakdown_data(town, street_name, block)
+    ranked = sorted(
+        (row for row in breakdown if row.get("flat_type")),
+        key=lambda row: (-int(row.get("txn_count") or 0), row.get("flat_type")),
+    )
+    if ranked:
+        resolved_flat_type = ranked[0]["flat_type"]
+        return resolved_flat_type, [f"Used representative flat type: {resolved_flat_type}"]
+
+    return "4 Room", ["Used representative flat type: 4 Room"]
+
+
 # ---------------------------------------------------------------------------
 # Routes: Auth
 # ---------------------------------------------------------------------------
@@ -2233,8 +2251,15 @@ def api_future_prediction():
     street_name = request.args.get("street_name", "")
     block = request.args.get("block", "")
 
-    if not town or not flat_type:
-        return jsonify({"error": "town and flat_type are required"}), 400
+    if not town:
+        return jsonify({"error": "town is required"}), 400
+
+    flat_type, forecast_assumptions = _resolve_forecast_flat_type(
+        town,
+        flat_type,
+        street_name=street_name,
+        block=block,
+    )
 
     floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
         town,
@@ -2294,11 +2319,12 @@ def api_future_prediction():
     return jsonify({
         "timeline": timeline,
         "resolved_inputs": {
+            "flat_type": flat_type,
             "flat_model": flat_model,
             "floor_area": floor_area,
             "storey_range": storey_range,
             "lease_commence": lease_commence,
-            "assumptions": assumptions,
+            "assumptions": forecast_assumptions + assumptions,
         },
     })
 

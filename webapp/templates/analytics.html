@@ -257,16 +257,55 @@
 
     <div class="row g-4 mb-4">
         <div class="col-xl-8">
-            <div class="card panel-card h-100">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
-                        <div>
-                            <div class="section-kicker">Primary View</div>
-                            <h6 class="card-title mb-1"><i class="bi bi-graph-up-arrow me-1 text-primary"></i>Price Trend</h6>
+            <div class="d-grid gap-4">
+                <div class="card panel-card">
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                            <div>
+                                <div class="section-kicker">Primary View</div>
+                                <h6 class="card-title mb-1"><i class="bi bi-graph-up-arrow me-1 text-primary"></i>Price Trend</h6>
+                            </div>
+                            <span class="hint-text">Historical resale performance across the selected scope and year window.</span>
                         </div>
-                        <span class="hint-text">Historical resale performance across the selected scope and year window.</span>
+                        <div class="chart-container"><canvas id="priceTrendChart"></canvas></div>
                     </div>
-                    <div class="chart-container"><canvas id="priceTrendChart"></canvas></div>
+                </div>
+
+                <div id="futurePredSection" class="d-none">
+                    <div class="row g-4">
+                        <div class="col-lg-7">
+                            <div class="card panel-card h-100">
+                                <div class="card-body">
+                                    <div class="section-kicker">Forward View</div>
+                                    <h6 class="card-title mb-1"><i class="bi bi-rocket-takeoff me-1 text-primary"></i>Future 5-Year Prediction</h6>
+                                    <p id="futurePredCaption" class="chart-note">AI-estimated prices for the selected scope over the next five years.</p>
+                                    <div class="chart-container"><canvas id="futurePredChart"></canvas></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-lg-5">
+                            <div class="card panel-card h-100">
+                                <div class="card-body">
+                                    <div class="section-kicker">Forecast Detail</div>
+                                    <h6 class="card-title mb-1"><i class="bi bi-table me-1 text-primary"></i>Projection Table</h6>
+                                    <p class="chart-note mb-2">Current estimate, confidence band, and remaining lease for each forecast year.</p>
+                                    <div class="table-responsive">
+                                        <table class="table table-sm table-hover forecast-table mb-0 small">
+                                            <thead>
+                                                <tr>
+                                                    <th>Year</th>
+                                                    <th class="text-end">Predicted</th>
+                                                    <th class="text-end">Range</th>
+                                                    <th class="text-end">Remaining Lease</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="forecastTableBody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -309,43 +348,6 @@
                         <h6 class="card-title mb-2"><i class="bi bi-lightbulb me-1 text-primary"></i>Dynamic Insights</h6>
                         <div id="insightBox" class="insight-box">
                             <div class="text-muted">Apply filters to generate insights from historical transactions and broader benchmarks.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="futurePredSection" class="d-none">
-        <div class="row g-4 mb-4">
-            <div class="col-lg-7">
-                <div class="card panel-card h-100">
-                    <div class="card-body">
-                        <div class="section-kicker">Forward View</div>
-                        <h6 class="card-title mb-1"><i class="bi bi-rocket-takeoff me-1 text-primary"></i>Future Predictions</h6>
-                        <p id="futurePredCaption" class="chart-note">AI-estimated prices for the selected scope over the next five years.</p>
-                        <div class="chart-container"><canvas id="futurePredChart"></canvas></div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-lg-5">
-                <div class="card panel-card h-100">
-                    <div class="card-body">
-                        <div class="section-kicker">Forecast Detail</div>
-                        <h6 class="card-title mb-1"><i class="bi bi-table me-1 text-primary"></i>Projection Table</h6>
-                        <p class="chart-note mb-2">Current estimate, confidence band, and remaining lease for each forecast year.</p>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-hover forecast-table mb-0 small">
-                                <thead>
-                                    <tr>
-                                        <th>Year</th>
-                                        <th class="text-end">Predicted</th>
-                                        <th class="text-end">Range</th>
-                                        <th class="text-end">Remaining Lease</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="forecastTableBody"></tbody>
-                            </table>
                         </div>
                     </div>
                 </div>
@@ -596,7 +598,11 @@ function updateFocusSummary(data) {
     }
 
     const years = getYearRange();
-    const canForecast = Boolean(filters.town && filters.flat_type);
+    const forecastLabel = !filters.town
+        ? 'Forecast needs town'
+        : filters.flat_type
+            ? 'Forecast ready'
+            : 'Forecast uses representative flat type';
     summaryEl.innerHTML =
         '<h6>' + escapeHtml(locationLabel) + '</h6>' +
         '<p class="mb-0 text-muted">Tracking <strong>' + escapeHtml(flatTypeLabel) + '</strong> transactions from ' +
@@ -604,7 +610,7 @@ function updateFocusSummary(data) {
             '. Use the benchmark cards below to compare against the wider market.</p>' +
         '<div class="summary-meta">' +
             '<span class="summary-pill">' + data.length + ' yearly points</span>' +
-            '<span class="summary-pill">' + (canForecast ? 'Forecast ready' : 'Forecast needs town + flat type') + '</span>' +
+            '<span class="summary-pill">' + forecastLabel + '</span>' +
         '</div>';
 }
 
@@ -1137,7 +1143,7 @@ function hideFuturePredictions() {
 
 async function loadFuturePredictions() {
     const filters = getFilters();
-    if (!filters.town || !filters.flat_type) {
+    if (!filters.town) {
         hideFuturePredictions();
         return;
     }
@@ -1159,6 +1165,7 @@ async function loadFuturePredictions() {
         if (filters.block) locationLabel += ' > Blk ' + filters.block;
         document.getElementById('futurePredCaption').textContent =
             locationLabel + ' | ' +
+            (resolved.flat_type || filters.flat_type || 'Representative flat type') + ' | ' +
             (resolved.flat_model || 'Representative model') + ' | ' +
             (resolved.storey_range || 'Representative storey') + ' | ' +
             Number(resolved.floor_area || 0).toLocaleString() + ' sqm | lease ' +

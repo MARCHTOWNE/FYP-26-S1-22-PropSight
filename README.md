@@ -1,5 +1,5 @@
 
-# HDB Resale Price Analytics Platform
+# PropSight
 
 A full-stack data pipeline and web application for Singapore HDB resale property valuation and market analytics.
 

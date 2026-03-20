@@ -105,6 +105,7 @@
                         <button type="submit" id="predictSubmitBtn" class="btn btn-primary w-100 py-2 fw-bold">
                             <i class="bi bi-lightning-charge me-1"></i> Get Estimate
                         </button>
+                        <div id="predictFlatTypeStatus" class="mt-2 small text-warning d-none" role="status"></div>
                     </form>
                 </div>
             </div>
@@ -326,6 +327,7 @@ document.getElementById('predictLeaseRange').oninput = function() {
 var predictFlatTypeSelect = document.getElementById('predictFlatType');
 var predictFlatModelSelect = document.getElementById('predictFlatModel');
 var predictStoreyRangeSelect = document.getElementById('predictStoreyRange');
+var predictFlatTypeStatus = document.getElementById('predictFlatTypeStatus');
 var originalPredictFlatTypeOptions = predictFlatTypeSelect.innerHTML;
 var originalPredictFlatModelOptions = predictFlatModelSelect.innerHTML;
 var originalPredictStoreyOptions = predictStoreyRangeSelect.innerHTML;
@@ -369,6 +371,31 @@ function endOptionLoad() {
     pendingOptionRequests = Math.max(0, pendingOptionRequests - 1);
     if (pendingOptionRequests === 0) {
         setSubmitButtonState('idle');
+    }
+}
+
+function canEstimateForSelectedFlatType() {
+    if (!predictFlatTypeSelect) return false;
+    var idx = predictFlatTypeSelect.selectedIndex;
+    if (idx < 0) return false;
+    var opt = predictFlatTypeSelect.options[idx];
+    if (!opt) return false;
+    if (!opt.value) return false;
+    // If JS previously disabled the option for this town, it won't be submitted reliably.
+    return !opt.disabled;
+}
+
+function showFlatTypeCannotEstimate() {
+    if (predictFlatTypeStatus) {
+        predictFlatTypeStatus.textContent = 'Cannot get estimate for this flat type in the selected town.';
+        predictFlatTypeStatus.classList.remove('d-none');
+    }
+}
+
+function hideFlatTypeCannotEstimate() {
+    if (predictFlatTypeStatus) {
+        predictFlatTypeStatus.textContent = '';
+        predictFlatTypeStatus.classList.add('d-none');
     }
 }
 
@@ -577,10 +604,17 @@ predictFlatTypeSelect.addEventListener('change', async function() {
             setSubmitButtonState('loading-options');
             return;
         }
+        if (!canEstimateForSelectedFlatType()) {
+            e.preventDefault();
+            showFlatTypeCannotEstimate();
+            setSubmitButtonState('idle');
+            return;
+        }
         if (!predictForm.checkValidity()) {
             setSubmitButtonState('idle');
             return;
         }
+        hideFlatTypeCannotEstimate();
         setSubmitButtonState('submitting');
     });
 
@@ -588,13 +622,17 @@ predictFlatTypeSelect.addEventListener('change', async function() {
         setSubmitButtonState('idle');
     });
 })();
-
-// Timeline chart
+</script>
 {% if timeline %}
+<script id="predict-timeline-data" type="application/json">{{ timeline | tojson }}</script>
+<script>
+// Timeline chart (kept out of the main JS block so template syntax doesn't break JS linting)
 (function() {
     var ctx = document.getElementById('timelineChart');
     if (!ctx) return;
-    var timeline = {{ timeline | tojson }};
+    var el = document.getElementById('predict-timeline-data');
+    if (!el) return;
+    var timeline = JSON.parse(el.textContent || '[]');
     new Chart(ctx, {
         type: 'line',
         data: {
@@ -650,6 +688,6 @@ predictFlatTypeSelect.addEventListener('change', async function() {
         }
     });
 })();
-{% endif %}
 </script>
+{% endif %}
 {% endblock %}

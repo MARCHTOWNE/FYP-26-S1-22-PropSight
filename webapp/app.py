@@ -1713,26 +1713,88 @@ def predict():
     recent_transactions = None
 
     if request.method == "POST":
+        town = request.form.get("town", "").strip()
+        flat_type = request.form.get("flat_type", "").strip()
+        flat_model = request.form.get("flat_model", "").strip()
+        storey_range = request.form.get("storey_range", "").strip()
         floor_area_raw = request.form.get("floor_area", "").strip()
         lease_commence_raw = request.form.get("lease_commence", "").strip()
+        street_name = request.form.get("street_name", "").strip()
+        block = request.form.get("block", "").strip()
+
+        # Prevent crashes when the frontend disables options (disabled controls are not submitted).
+        if not town or not flat_type or not flat_model or not storey_range:
+            flash("Cannot get estimate. Please select a valid flat type/model.", "warning")
+            form_data = {
+                "town": town,
+                "flat_type": flat_type,
+                "flat_model": flat_model,
+                "floor_area": floor_area_raw,
+                "storey_range": storey_range,
+                "lease_commence": lease_commence_raw,
+                "street_name": street_name,
+                "block": block,
+            }
+            return render_template(
+                "predict.html",
+                result=None,
+                form_data=form_data,
+                towns=TOWNS,
+                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+                flat_models=FLAT_MODELS,
+                storey_ranges=STOREY_RANGES,
+                timeline=None,
+                flat_age=None,
+                remaining_lease=None,
+                town_avg_price=None,
+                recent_transactions=None,
+            )
+
+        if flat_type not in FLAT_TYPE_ORDINAL:
+            flash("Cannot get estimate for this flat type.", "warning")
+            form_data = {
+                "town": town,
+                "flat_type": flat_type,
+                "flat_model": flat_model,
+                "floor_area": floor_area_raw,
+                "storey_range": storey_range,
+                "lease_commence": lease_commence_raw,
+                "street_name": street_name,
+                "block": block,
+            }
+            return render_template(
+                "predict.html",
+                result=None,
+                form_data=form_data,
+                towns=TOWNS,
+                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+                flat_models=FLAT_MODELS,
+                storey_ranges=STOREY_RANGES,
+                timeline=None,
+                flat_age=None,
+                remaining_lease=None,
+                town_avg_price=None,
+                recent_transactions=None,
+            )
+
         floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
-            request.form["town"],
-            request.form["flat_type"],
+            town,
+            flat_type,
             floor_area_raw,
             lease_commence_raw,
-            request.form.get("street_name", "").strip(),
-            request.form.get("block", "").strip(),
+            street_name,
+            block,
         )
 
         form_data = {
-            "town": request.form["town"],
-            "flat_type": request.form["flat_type"],
-            "flat_model": request.form["flat_model"],
+            "town": town,
+            "flat_type": flat_type,
+            "flat_model": flat_model,
             "floor_area": floor_area,
-            "storey_range": request.form["storey_range"],
+            "storey_range": storey_range,
             "lease_commence": lease_commence,
-            "street_name": request.form.get("street_name", "").strip(),
-            "block": request.form.get("block", "").strip(),
+            "street_name": street_name,
+            "block": block,
         }
 
         # Look up block-level distances if block is specified

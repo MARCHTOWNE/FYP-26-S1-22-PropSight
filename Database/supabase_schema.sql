@@ -170,7 +170,11 @@ RETURNS TABLE(
 $$;
 
 -- Recent transactions for map
-CREATE OR REPLACE FUNCTION rpc_api_transactions(p_town TEXT DEFAULT NULL, p_limit INTEGER DEFAULT 500)
+CREATE OR REPLACE FUNCTION rpc_api_transactions(
+    p_town TEXT DEFAULT NULL,
+    p_limit INTEGER DEFAULT 500,
+    p_min_year INTEGER DEFAULT NULL
+)
 RETURNS TABLE(
     town TEXT, flat_type TEXT, block TEXT, street_name TEXT,
     storey_range TEXT, floor_area_sqm DOUBLE PRECISION,
@@ -188,6 +192,7 @@ RETURNS TABLE(
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     WHERE b.latitude IS NOT NULL AND b.longitude IS NOT NULL
       AND (p_town IS NULL OR t.name = p_town)
+      AND (p_min_year IS NULL OR tx.year >= p_min_year)
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT p_limit;
 $$;
@@ -302,7 +307,9 @@ RETURNS TABLE(
     ORDER BY AVG(tx.resale_price) DESC;
 $$;
 
--- Flat type breakdown for a town
+-- Flat type breakdown for a town or specific address scope.
+-- Town-only requests stay recent-focused, while street/block requests use
+-- full available history so address-specific option lists stay complete.
 CREATE OR REPLACE FUNCTION rpc_api_flat_type_breakdown(
     p_town TEXT DEFAULT NULL,
     p_street_name TEXT DEFAULT NULL,
@@ -321,10 +328,14 @@ RETURNS TABLE(
     JOIN blocks     b  ON tx.block_id     = b.id
     JOIN towns      t  ON b.town_id       = t.id
     JOIN flat_types ft ON tx.flat_type_id = ft.id
-    WHERE tx.year >= 2023
-      AND (p_town IS NULL OR t.name = p_town)
+    WHERE (p_town IS NULL OR t.name = p_town)
       AND (p_street_name IS NULL OR b.street_name = p_street_name)
       AND (p_block IS NULL OR b.block = p_block)
+      AND (
+          p_street_name IS NOT NULL
+          OR p_block IS NOT NULL
+          OR tx.year >= 2023
+      )
     GROUP BY ft.name
     ORDER BY ft.name;
 $$;

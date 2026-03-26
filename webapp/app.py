@@ -119,6 +119,8 @@ STOREY_RANGES = [str(i) for i in range(1, 52)]
 HDB_FIRST_YEAR = 1960
 HDB_DATASET_START_YEAR = 1990
 DEFAULT_FLOOR_AREA = 90
+MAP_TRANSACTION_START_YEAR = 2024
+MAP_TRANSACTION_LIMIT = 10000
 
 
 def _storey_midpoint(storey_range):
@@ -154,6 +156,34 @@ def _safe_metric(value):
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _coerce_int(value, default=None):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _coerce_float(value, default=None):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _rpc_param_not_available(exc, function_name, param_name):
+    details = str(exc)
+    return (
+        function_name in details
+        and param_name in details
+        and (
+            "Could not find the function" in details
+            or "no matches were found" in details
+            or "does not exist" in details
+            or "schema cache" in details
+        )
+    )
 
 
 def _year_window_label(start_year, end_year):
@@ -971,21 +1001,11 @@ def _extract_prediction_form_data(source, prefix, seed=None):
     return form_data
 
 
-def _run_prediction_form(form_data):
-    floor_area_raw = str(form_data.get("floor_area", "")).strip()
-    lease_commence_raw = str(form_data.get("lease_commence", "")).strip()
-    floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
-        form_data["town"],
-        form_data["flat_type"],
-        floor_area_raw,
-        lease_commence_raw,
-        form_data.get("street_name", ""),
-        form_data.get("block", ""),
+def _run_prediction_form(form_data, infer_flat_type=False):
+    resolved_form, assumptions = _complete_prediction_form_data(
+        form_data,
+        infer_flat_type=infer_flat_type,
     )
-
-    resolved_form = dict(form_data)
-    resolved_form["floor_area"] = floor_area
-    resolved_form["lease_commence"] = lease_commence
 
     # Block-level distances if available
     block_distances = None
@@ -1086,6 +1106,14 @@ def _get_town_avg_distances():
 def _get_district_summary_data():
     try:
         return _supabase_rpc("rpc_api_district_summary") or []
+    except SupabaseError:
+        return []
+
+
+@lru_cache(maxsize=1)
+def _get_district_comparison_data():
+    try:
+        return _supabase_rpc("rpc_api_district_comparison") or []
     except SupabaseError:
         return []
 
@@ -1551,6 +1579,160 @@ def _resolve_prediction_inputs(
     return floor_area, lease_commence, assumptions
 
 
+def _resolve_prediction_flat_model(town, flat_type, flat_model=""):
+    requested_model = str(flat_model or "").strip()
+    available_models = (
+        _get_available_models_data(town, flat_type)
+        or _get_available_models_data(town, "")
+    )
+
+    if requested_model:
+        matched_model = next(
+            (
+                model for model in available_models
+                if str(model).strip().upper() == requested_model.upper()
+            ),
+            None,
+        )
+        if matched_model:
+            return matched_model, []
+        if not available_models:
+            return requested_model, []
+
+    if available_models:
+        resolved_model = available_models[0]
+        if requested_model:
+            return resolved_model, [
+                f"Adjusted flat model to {resolved_model} for the selected town and flat type."
+            ]
+        return resolved_model, [f"Used representative flat model: {resolved_model}"]
+
+    fallback_model = requested_model or (FLAT_MODELS[0] if FLAT_MODELS else "Model A")
+    if requested_model:
+        return fallback_model, []
+    return fallback_model, [f"Used fallback flat model: {fallback_model}"]
+
+
+def _resolve_prediction_storey(town, flat_type, storey_range=""):
+    requested_storey = str(storey_range or "").strip()
+    available_storeys = (
+        _get_available_storey_ranges_data(town, flat_type)
+        or _get_available_storey_ranges_data(town, "")
+    )
+
+    if requested_storey and requested_storey in available_storeys:
+        return requested_storey, []
+
+    requested_floor = None
+    if requested_storey:
+        try:
+            requested_floor = int(round(_storey_midpoint(requested_storey)))
+        except (TypeError, ValueError):
+            requested_floor = _coerce_int(requested_storey)
+
+    if available_storeys:
+        available_floors = [
+            int(value) for value in available_storeys if str(value).isdigit()
+        ]
+        if available_floors:
+            if requested_floor is not None:
+                resolved_floor = min(
+                    available_floors,
+                    key=lambda floor: (abs(floor - requested_floor), floor),
+                )
+                if requested_storey and str(resolved_floor) == requested_storey:
+                    return str(resolved_floor), []
+                return str(resolved_floor), [
+                    f"Used nearest available floor: {resolved_floor}"
+                ]
+
+            resolved_floor = available_floors[len(available_floors) // 2]
+            return str(resolved_floor), [f"Used representative floor: {resolved_floor}"]
+
+        resolved_storey = available_storeys[len(available_storeys) // 2]
+        if requested_storey and requested_storey == resolved_storey:
+            return resolved_storey, []
+        note = (
+            f"Used nearest available floor: {resolved_storey}"
+            if requested_storey
+            else f"Used representative floor: {resolved_storey}"
+        )
+        return resolved_storey, [note]
+
+    if requested_floor is not None:
+        if requested_storey and str(requested_floor) == requested_storey:
+            return str(requested_floor), []
+        return str(requested_floor), [
+            f"Converted storey range to representative floor: {requested_floor}"
+        ]
+
+    fallback_storey = STOREY_RANGES[len(STOREY_RANGES) // 2] if STOREY_RANGES else "8"
+    return fallback_storey, [f"Used representative floor: {fallback_storey}"]
+
+
+def _complete_prediction_form_data(form_data, infer_flat_type=False):
+    raw_form = form_data or {}
+    resolved_form = {
+        "town": str(raw_form.get("town", "") or "").strip(),
+        "flat_type": str(raw_form.get("flat_type", "") or "").strip(),
+        "flat_model": str(raw_form.get("flat_model", "") or "").strip(),
+        "floor_area": raw_form.get("floor_area", ""),
+        "storey_range": str(raw_form.get("storey_range", "") or "").strip(),
+        "lease_commence": raw_form.get("lease_commence", ""),
+        "street_name": str(raw_form.get("street_name", "") or "").strip(),
+        "block": str(raw_form.get("block", "") or "").strip(),
+    }
+    assumptions = []
+
+    town = resolved_form["town"]
+    if not town:
+        return resolved_form, assumptions
+
+    flat_type = resolved_form["flat_type"]
+    if infer_flat_type or not flat_type:
+        flat_type, flat_type_assumptions = _resolve_forecast_flat_type(
+            town,
+            flat_type,
+            street_name=resolved_form["street_name"],
+            block=resolved_form["block"],
+        )
+        resolved_form["flat_type"] = flat_type
+        assumptions.extend(flat_type_assumptions)
+
+    if not resolved_form["flat_type"]:
+        return resolved_form, assumptions
+
+    floor_area, lease_commence, input_assumptions = _resolve_prediction_inputs(
+        town,
+        resolved_form["flat_type"],
+        str(resolved_form.get("floor_area", "")).strip(),
+        str(resolved_form.get("lease_commence", "")).strip(),
+        resolved_form["street_name"],
+        resolved_form["block"],
+    )
+    resolved_form["floor_area"] = floor_area
+    resolved_form["lease_commence"] = lease_commence
+    assumptions.extend(input_assumptions)
+
+    flat_model, model_assumptions = _resolve_prediction_flat_model(
+        town,
+        resolved_form["flat_type"],
+        resolved_form.get("flat_model", ""),
+    )
+    resolved_form["flat_model"] = flat_model
+    assumptions.extend(model_assumptions)
+
+    storey_range, storey_assumptions = _resolve_prediction_storey(
+        town,
+        resolved_form["flat_type"],
+        resolved_form.get("storey_range", ""),
+    )
+    resolved_form["storey_range"] = storey_range
+    assumptions.extend(storey_assumptions)
+
+    return resolved_form, assumptions
+
+
 def _resolve_forecast_flat_type(town, flat_type, street_name="", block=""):
     """Choose a flat type for analytics forecasts when the filter is broad."""
     flat_type = (flat_type or "").strip()
@@ -1567,6 +1749,35 @@ def _resolve_forecast_flat_type(town, flat_type, street_name="", block=""):
         return resolved_flat_type, [f"Used representative flat type: {resolved_flat_type}"]
 
     return "4 Room", ["Used representative flat type: 4 Room"]
+
+
+def _pick_representative_storey(storey_ranges):
+    floors = sorted(
+        int(value) for value in (storey_ranges or [])
+        if str(value).isdigit()
+    )
+    if not floors:
+        return ""
+    return str(floors[len(floors) // 2])
+
+
+@lru_cache(maxsize=64)
+def _infer_map_prediction_profile(town):
+    """Infer a representative model input profile from a town's own data."""
+    resolved_form, _ = _complete_prediction_form_data(
+        {"town": town},
+        infer_flat_type=True,
+    )
+    return {
+        "flat_type": resolved_form["flat_type"],
+        "flat_model": resolved_form["flat_model"],
+        "floor_area": _coerce_float(resolved_form["floor_area"], float(DEFAULT_FLOOR_AREA)),
+        "storey_range": resolved_form["storey_range"],
+        "lease_commence": _coerce_int(
+            resolved_form["lease_commence"],
+            _default_lease_year_range()["avg_year"],
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -1948,6 +2159,11 @@ def comparison_select_saved(pred_id):
 @login_required
 def predict():
     result = None
+    prefill_source = request.args.get("source", "").strip()
+    should_auto_predict = (
+        request.method == "GET"
+        and request.args.get("auto_predict", "").strip() == "1"
+    )
     form_data = {
         "town": request.args.get("town", ""),
         "flat_type": request.args.get("flat_type", ""),
@@ -1963,115 +2179,80 @@ def predict():
     remaining_lease = None
     town_avg_price = None
     recent_transactions = None
+    prediction_input = None
 
     if request.method == "POST":
-        town = request.form.get("town", "").strip()
-        flat_type = request.form.get("flat_type", "").strip()
-        flat_model = request.form.get("flat_model", "").strip()
-        storey_range = request.form.get("storey_range", "").strip()
-        floor_area_raw = request.form.get("floor_area", "").strip()
-        lease_commence_raw = request.form.get("lease_commence", "").strip()
-        street_name = request.form.get("street_name", "").strip()
-        block = request.form.get("block", "").strip()
-
-        # Prevent crashes when the frontend disables options (disabled controls are not submitted).
-        if not town or not flat_type or not flat_model or not storey_range:
-            flash("Cannot get estimate. Please select a valid flat type/model.", "warning")
-            form_data = {
-                "town": town,
-                "flat_type": flat_type,
-                "flat_model": flat_model,
-                "floor_area": floor_area_raw,
-                "storey_range": storey_range,
-                "lease_commence": lease_commence_raw,
-                "street_name": street_name,
-                "block": block,
-            }
-            return render_template(
-                "predict.html",
-                result=None,
-                form_data=form_data,
-                towns=TOWNS,
-                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
-                flat_models=FLAT_MODELS,
-                storey_ranges=STOREY_RANGES,
-                timeline=None,
-                flat_age=None,
-                remaining_lease=None,
-                town_avg_price=None,
-                recent_transactions=None,
-            )
-
-        if flat_type not in FLAT_TYPE_ORDINAL:
-            flash("Cannot get estimate for this flat type.", "warning")
-            form_data = {
-                "town": town,
-                "flat_type": flat_type,
-                "flat_model": flat_model,
-                "floor_area": floor_area_raw,
-                "storey_range": storey_range,
-                "lease_commence": lease_commence_raw,
-                "street_name": street_name,
-                "block": block,
-            }
-            return render_template(
-                "predict.html",
-                result=None,
-                form_data=form_data,
-                towns=TOWNS,
-                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
-                flat_models=FLAT_MODELS,
-                storey_ranges=STOREY_RANGES,
-                timeline=None,
-                flat_age=None,
-                remaining_lease=None,
-                town_avg_price=None,
-                recent_transactions=None,
-            )
-
-        floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
-            town,
-            flat_type,
-            floor_area_raw,
-            lease_commence_raw,
-            street_name,
-            block,
-        )
-
         form_data = {
-            "town": town,
-            "flat_type": flat_type,
-            "flat_model": flat_model,
-            "floor_area": floor_area,
-            "storey_range": storey_range,
-            "lease_commence": lease_commence,
-            "street_name": street_name,
-            "block": block,
+            "town": request.form.get("town", "").strip(),
+            "flat_type": request.form.get("flat_type", "").strip(),
+            "flat_model": request.form.get("flat_model", "").strip(),
+            "floor_area": request.form.get("floor_area", "").strip(),
+            "storey_range": request.form.get("storey_range", "").strip(),
+            "lease_commence": request.form.get("lease_commence", "").strip(),
+            "street_name": request.form.get("street_name", "").strip(),
+            "block": request.form.get("block", "").strip(),
         }
 
-        # Look up block-level distances if block is specified
+        if not form_data["town"] or not form_data["flat_type"]:
+            flash("Cannot get estimate. Please select a town and flat type.", "warning")
+            return render_template(
+                "predict.html",
+                result=None,
+                form_data=form_data,
+                towns=TOWNS,
+                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+                flat_models=FLAT_MODELS,
+                storey_ranges=STOREY_RANGES,
+                timeline=None,
+                flat_age=None,
+                remaining_lease=None,
+                town_avg_price=None,
+                recent_transactions=None,
+                prefill_source=prefill_source,
+            )
+
+        if form_data["flat_type"] not in FLAT_TYPE_ORDINAL:
+            flash("Cannot get estimate for this flat type.", "warning")
+            return render_template(
+                "predict.html",
+                result=None,
+                form_data=form_data,
+                towns=TOWNS,
+                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+                flat_models=FLAT_MODELS,
+                storey_ranges=STOREY_RANGES,
+                timeline=None,
+                flat_age=None,
+                remaining_lease=None,
+                town_avg_price=None,
+                recent_transactions=None,
+                prefill_source=prefill_source,
+            )
+        prediction_input = dict(form_data)
+    elif form_data["town"]:
+        if should_auto_predict and form_data["flat_type"] in FLAT_TYPE_ORDINAL:
+            prediction_input = dict(form_data)
+        else:
+            form_data, _ = _complete_prediction_form_data(form_data)
+
+    if prediction_input is not None:
+        form_data, result, _ = _run_prediction_form(prediction_input)
+
         block_distances = None
         if form_data["block"] and form_data["street_name"]:
             block_distances = _get_block_distances(
                 form_data["town"], form_data["street_name"], form_data["block"]
             )
 
-        result = predict_price(
-            form_data["town"],
-            form_data["flat_type"],
-            form_data["flat_model"],
-            form_data["floor_area"],
-            form_data["storey_range"],
-            form_data["lease_commence"],
-            override_distances=block_distances,
-        )
-        result["assumptions"] = assumptions
-
         # Timeline: predict for 1-5 years ahead
         current_year = datetime.now().year
-        timeline = [{"year": current_year, "predicted_price": result["predicted_price"],
-                      "price_low": result["price_low"], "price_high": result["price_high"],
-                      "remaining_lease": max(0, 99 - (current_year - form_data["lease_commence"]))}]
+        timeline = [{
+            "year": current_year,
+            "predicted_price": result["predicted_price"],
+            "price_low": result["price_low"],
+            "price_high": result["price_high"],
+            "remaining_lease": max(0, 99 - (current_year - form_data["lease_commence"])),
+        }]
         for y_offset in range(1, 6):
             future_year = current_year + y_offset
             fp = predict_price(
@@ -2116,6 +2297,7 @@ def predict():
         remaining_lease=remaining_lease,
         town_avg_price=town_avg_price,
         recent_transactions=recent_transactions,
+        prefill_source=prefill_source,
     )
 
 
@@ -2197,7 +2379,13 @@ def map_view():
         flash(f"You've used all {limit} free Map views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
     _log_feature_view(session["user_id"], "map")
-    return render_template("map.html", towns=TOWNS)
+    return render_template(
+        "map.html",
+        towns=TOWNS,
+        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        storey_ranges=STOREY_RANGES,
+        map_transaction_start_year=MAP_TRANSACTION_START_YEAR,
+    )
 
 
 @app.route("/analytics")
@@ -2220,13 +2408,32 @@ def analytics():
 def api_transactions():
     """Return recent transactions with lat/lng for map pins."""
     town = request.args.get("town", "")
-    limit = min(int(request.args.get("limit", 500)), 2000)
+    limit = max(1, min(_coerce_int(request.args.get("limit", 500), 500), MAP_TRANSACTION_LIMIT))
+    min_year = _coerce_int(request.args.get("min_year"))
 
     try:
-        rows = _supabase_rpc("rpc_api_transactions", {
+        rpc_params = {
             "p_town": town or None,
             "p_limit": limit,
-        }) or []
+        }
+
+        if min_year is not None:
+            try:
+                rows = _supabase_rpc("rpc_api_transactions", {
+                    **rpc_params,
+                    "p_min_year": min_year,
+                }) or []
+            except SupabaseError as exc:
+                if not _rpc_param_not_available(exc, "rpc_api_transactions", "p_min_year"):
+                    raise
+                rows = _supabase_rpc("rpc_api_transactions", rpc_params) or []
+                rows = [
+                    row for row in rows
+                    if _coerce_int((row or {}).get("year")) is not None
+                    and _coerce_int((row or {}).get("year")) >= min_year
+                ]
+        else:
+            rows = _supabase_rpc("rpc_api_transactions", rpc_params) or []
         return jsonify(rows)
     except SupabaseError:
         return jsonify([])
@@ -2242,24 +2449,24 @@ def api_district_summary():
 @app.route("/api/predicted_heatmap")
 @api_login_required
 def api_predicted_heatmap():
-    """Run the prediction model for a representative flat in each town.
-
-    Query params (all optional — defaults to a typical 4 Room flat):
-      flat_type       e.g. "4 Room"
-      flat_model      e.g. "Model A"
-      floor_area      e.g. 93
-      storey_range    e.g. "8"
-      lease_commence  e.g. 1995
-    """
-    flat_type = request.args.get("flat_type", "4 Room")
-    flat_model = request.args.get("flat_model", "Model A")
-    floor_area_raw = request.args.get("floor_area", "")
-    storey_range = request.args.get("storey_range", "8")
-    lease_commence_raw = request.args.get("lease_commence", "")
-
+    """Return model-based town estimates using inputs inferred from each town."""
     district_data = _get_prediction_map_seed_data()
     if not district_data:
-        return jsonify({"error": "Prediction map data is currently unavailable."}), 503
+        return jsonify({"error": "Town map data is currently unavailable."}), 503
+
+    scenario_input = {
+        "flat_type": request.args.get("flat_type", "").strip(),
+        "floor_area": request.args.get("floor_area", "").strip(),
+        "storey_range": request.args.get("storey_range", "").strip(),
+        "lease_commence": request.args.get("lease_commence", "").strip(),
+    }
+    use_scenario = any(scenario_input.values())
+
+    comparison_by_town = {
+        row["town"]: dict(row)
+        for row in _get_district_comparison_data()
+        if row.get("town")
+    }
     results = []
 
     for d in district_data:
@@ -2267,28 +2474,47 @@ def api_predicted_heatmap():
         if not d.get("lat") or not d.get("lng"):
             continue
 
-        try:
-            floor_area, lease_commence, _ = _resolve_prediction_inputs(
-                town, flat_type,
-                floor_area_raw or "",
-                lease_commence_raw or "",
+        if use_scenario:
+            profile, _ = _complete_prediction_form_data(
+                {"town": town, **scenario_input},
+                infer_flat_type=True,
             )
-        except Exception:
-            floor_area = DEFAULT_FLOOR_AREA
-            lease_commence = _default_lease_year_range()["avg_year"]
-
-        available_models = _get_available_models_data(town, flat_type)
-        model_to_use = flat_model if flat_model in available_models else (
-            available_models[0] if available_models else flat_model
-        )
+        else:
+            profile = _infer_map_prediction_profile(town)
+        latest_row = comparison_by_town.get(town, {})
+        latest_avg = _safe_metric(latest_row.get("avg_price"))
+        recent_avg = _safe_metric(d.get("recent_avg"))
+        historical_avg = _safe_metric(d.get("avg_price"))
 
         try:
             pred = predict_price(
-                town, flat_type, model_to_use,
-                floor_area, storey_range, lease_commence,
+                town,
+                profile["flat_type"],
+                profile["flat_model"],
+                profile["floor_area"],
+                profile["storey_range"],
+                profile["lease_commence"],
             )
         except Exception:
-            pred = {"predicted_price": 0, "price_low": 0, "price_high": 0}
+            fallback_estimate = next(
+                (
+                    value for value in (latest_avg, recent_avg, historical_avg)
+                    if value is not None and value > 0
+                ),
+                0.0,
+            )
+            pred = {
+                "predicted_price": round(fallback_estimate),
+                "price_low": round(fallback_estimate),
+                "price_high": round(fallback_estimate),
+            }
+
+        comparison_values = [
+            value for value in (latest_avg, recent_avg, historical_avg)
+            if value is not None and value > 0
+        ]
+        market_low = min(comparison_values) if comparison_values else pred["predicted_price"]
+        market_high = max(comparison_values) if comparison_values else pred["predicted_price"]
 
         results.append({
             "town": town,
@@ -2297,9 +2523,17 @@ def api_predicted_heatmap():
             "predicted_price": pred["predicted_price"],
             "price_low": pred["price_low"],
             "price_high": pred["price_high"],
-            "avg_price": d.get("avg_price", 0),
-            "recent_avg": d.get("recent_avg", 0),
-            "total_txns": d.get("total_txns", 0),
+            "avg_price": round(historical_avg) if historical_avg is not None else 0,
+            "recent_avg": round(recent_avg) if recent_avg is not None else 0,
+            "latest_avg": round(latest_avg) if latest_avg is not None else 0,
+            "latest_txns": _coerce_int(latest_row.get("txn_count"), 0) or 0,
+            "total_txns": _coerce_int(d.get("total_txns"), 0) or 0,
+            "market_low": round(market_low),
+            "market_high": round(market_high),
+            "flat_type": profile["flat_type"],
+            "storey_range": profile["storey_range"],
+            "floor_area": round(_coerce_float(profile["floor_area"], DEFAULT_FLOOR_AREA), 1),
+            "lease_commence": _coerce_int(profile["lease_commence"], _default_lease_year_range()["avg_year"]),
         })
 
     return jsonify(results)
@@ -2376,7 +2610,7 @@ def api_street_price_trend():
 def api_district_comparison():
     """Return per-town avg prices for the most recent year."""
     try:
-        return jsonify(_supabase_rpc("rpc_api_district_comparison") or [])
+        return jsonify(_get_district_comparison_data())
     except SupabaseError:
         return jsonify([])
 
@@ -2556,48 +2790,32 @@ def api_prediction_context():
 @api_login_required
 def api_future_prediction():
     """Return a 5-year price forecast as JSON."""
-    town = request.args.get("town", "")
-    flat_type = request.args.get("flat_type", "")
-    flat_model = request.args.get("flat_model", "")
-    floor_area_raw = request.args.get("floor_area", "").strip()
-    storey_range = request.args.get("storey_range", "")
-    lease_commence_raw = request.args.get("lease_commence", "").strip()
-    street_name = request.args.get("street_name", "")
-    block = request.args.get("block", "")
+    form_data = {
+        "town": request.args.get("town", "").strip(),
+        "flat_type": request.args.get("flat_type", "").strip(),
+        "flat_model": request.args.get("flat_model", "").strip(),
+        "floor_area": request.args.get("floor_area", "").strip(),
+        "storey_range": request.args.get("storey_range", "").strip(),
+        "lease_commence": request.args.get("lease_commence", "").strip(),
+        "street_name": request.args.get("street_name", "").strip(),
+        "block": request.args.get("block", "").strip(),
+    }
+    town = form_data["town"]
 
     if not town:
         return jsonify({"error": "town is required"}), 400
 
-    flat_type, forecast_assumptions = _resolve_forecast_flat_type(
-        town,
-        flat_type,
-        street_name=street_name,
-        block=block,
+    resolved_form, assumptions = _complete_prediction_form_data(
+        form_data,
+        infer_flat_type=True,
     )
-
-    floor_area, lease_commence, assumptions = _resolve_prediction_inputs(
-        town,
-        flat_type,
-        floor_area_raw,
-        lease_commence_raw,
-        street_name=street_name,
-        block=block,
-    )
-
-    available_models = _get_available_models_data(town, flat_type)
-    if flat_model and available_models and flat_model not in available_models:
-        flat_model = ""
-    if not flat_model:
-        flat_model = available_models[0] if available_models else "Model A"
-
-    available_storey_ranges = _get_available_storey_ranges_data(town, flat_type)
-    if storey_range and available_storey_ranges and storey_range not in available_storey_ranges:
-        storey_range = ""
-    if not storey_range:
-        if available_storey_ranges:
-            storey_range = available_storey_ranges[len(available_storey_ranges) // 2]
-        else:
-            storey_range = "8"
+    flat_type = resolved_form["flat_type"]
+    flat_model = resolved_form["flat_model"]
+    floor_area = resolved_form["floor_area"]
+    storey_range = resolved_form["storey_range"]
+    lease_commence = resolved_form["lease_commence"]
+    street_name = resolved_form["street_name"]
+    block = resolved_form["block"]
 
     # Resolve block distances if street_name and block provided
     block_distances = None
@@ -2638,7 +2856,7 @@ def api_future_prediction():
             "floor_area": floor_area,
             "storey_range": storey_range,
             "lease_commence": lease_commence,
-            "assumptions": forecast_assumptions + assumptions,
+            "assumptions": assumptions,
         },
     })
 

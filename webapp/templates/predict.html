@@ -16,6 +16,11 @@
                             <i class="bi bi-columns-gap me-1"></i>Compare
                         </a>
                     </div>
+                    {% if prefill_source == 'map_pin' %}
+                    <div class="alert alert-info py-2 px-3 small mb-3">
+                        Filled from the selected map transaction. Review the inputs below and adjust anything you want before estimating again.
+                    </div>
+                    {% endif %}
                     <form method="POST" action="{{ url_for('predict') }}" id="predictForm">
                         <div class="mb-3">
                             <label class="form-label">Town</label>
@@ -339,12 +344,53 @@ var defaultSubmitHtml = predictSubmitBtn ? predictSubmitBtn.innerHTML : '';
 var predictStreetSelect = document.getElementById('predictStreet');
 var predictBlockSelect = document.getElementById('predictBlock');
 var streetRequestToken = 0;
+var prefillStreet = '{{ form_data.get("street_name", "") | e }}';
+var prefillBlock = '{{ form_data.get("block", "") | e }}';
+var prefillFlatType = '{{ form_data.get("flat_type", "") | e }}';
+var prefillFlatModel = '{{ form_data.get("flat_model", "") | e }}';
+var prefillStorey = '{{ form_data.get("storey_range", "") | e }}';
+var prefillFloorArea = '{{ form_data.get("floor_area", "") | e }}';
+var prefillLease = '{{ form_data.get("lease_commence", "") | e }}';
 
 // Cascading dropdowns + dynamic sliders
 var predictTownSelect = document.getElementById('predictTown');
 var townRequestToken = 0;
 var flatTypeRequestToken = 0;
 var pendingOptionRequests = 0;
+
+function setSliderWithinBounds(rangeEl, displayId, minValue, maxValue, preferredValue, fallbackValue) {
+    var min = Number(minValue);
+    var max = Number(maxValue);
+    if (!Number.isFinite(min)) min = Number(rangeEl.min) || 0;
+    if (!Number.isFinite(max)) max = Number(rangeEl.max) || min;
+    rangeEl.min = min;
+    rangeEl.max = max;
+
+    var preferred = Number(preferredValue);
+    var fallback = Number(fallbackValue);
+    var nextValue = Number.isFinite(preferred) ? preferred : fallback;
+    if (!Number.isFinite(nextValue)) nextValue = min;
+    nextValue = Math.min(max, Math.max(min, nextValue));
+    nextValue = Math.round(nextValue);
+    rangeEl.value = String(nextValue);
+    document.getElementById(displayId).textContent = String(nextValue);
+}
+
+function renderSelectOptions(selectEl, values, preferredValue, fallbackValue) {
+    if (!Array.isArray(values) || values.length === 0) return false;
+    var normalizedValues = values.map(function(value) { return String(value); });
+    var preferred = String(preferredValue || '');
+    var fallback = String(fallbackValue || '');
+    var selectedValue = normalizedValues.includes(preferred)
+        ? preferred
+        : (fallback && normalizedValues.includes(fallback) ? fallback : normalizedValues[0]);
+
+    selectEl.innerHTML = normalizedValues.map(function(value) {
+        var selected = value === selectedValue ? ' selected' : '';
+        return '<option value="' + value + '"' + selected + '>' + value + '</option>';
+    }).join('');
+    return true;
+}
 
 function setSubmitButtonState(mode) {
     if (!predictSubmitBtn) return;
@@ -401,6 +447,8 @@ function hideFlatTypeCannotEstimate() {
 
 predictTownSelect.addEventListener('change', async function() {
     var town = this.value;
+    predictStreetSelect.innerHTML = '<option value="">Any street...</option>';
+    predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
     if (!town) return;
     var requestToken = ++townRequestToken;
     beginOptionLoad();
@@ -420,12 +468,17 @@ predictTownSelect.addEventListener('change', async function() {
         if (leaseResp.ok) {
             var data = await leaseResp.json();
             var leaseRange = document.getElementById('predictLeaseRange');
-            leaseRange.min = data.min_year;
-            leaseRange.max = data.max_year;
-            leaseRange.value = data.avg_year;
-            document.getElementById('predictLeaseVal').textContent = data.avg_year;
+            setSliderWithinBounds(
+                leaseRange,
+                'predictLeaseVal',
+                data.min_year,
+                data.max_year,
+                leaseRange.value,
+                data.avg_year
+            );
         }
 
+        var nextFlatType = predictFlatTypeSelect.value;
         if (flatTypeResp.ok) {
             var data2 = await flatTypeResp.json();
             var validTypes = data2.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
@@ -434,6 +487,10 @@ predictTownSelect.addEventListener('change', async function() {
                     opt.disabled = !validTypes.includes(opt.value);
                 }
             });
+            if (validTypes.length > 0 && (!nextFlatType || !validTypes.includes(nextFlatType))) {
+                nextFlatType = validTypes[0];
+                predictFlatTypeSelect.value = nextFlatType;
+            }
         }
 
         if (streetResp.ok) {
@@ -441,10 +498,14 @@ predictTownSelect.addEventListener('change', async function() {
             predictStreetSelect.innerHTML = '<option value="">Any street...</option>' +
                 (data3.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
         }
+        if (nextFlatType) {
+            predictFlatTypeSelect.dispatchEvent(new Event('change'));
+        }
     } catch(e) {
         predictFlatTypeSelect.innerHTML = originalPredictFlatTypeOptions;
-    } finally {
         predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+        predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
+    } finally {
         predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
         endOptionLoad();
     }
@@ -472,11 +533,6 @@ predictStreetSelect.addEventListener('change', async function() {
 (async function() {
     var initTown = predictTownSelect.value;
     if (!initTown) return;
-    var prefillStreet = '{{ form_data.get("street_name", "") | e }}';
-    var prefillBlock = '{{ form_data.get("block", "") | e }}';
-    var prefillFlatType = '{{ form_data.get("flat_type", "") | e }}';
-    var prefillFlatModel = '{{ form_data.get("flat_model", "") | e }}';
-    var prefillStorey = '{{ form_data.get("storey_range", "") | e }}';
 
     try {
         var responses = await Promise.all([
@@ -513,30 +569,56 @@ predictStreetSelect.addEventListener('change', async function() {
             Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
                 if (opt.value && validTypes.length > 0) opt.disabled = !validTypes.includes(opt.value);
             });
+            if (validTypes.length > 0 && (!predictFlatTypeSelect.value || !validTypes.includes(predictFlatTypeSelect.value))) {
+                predictFlatTypeSelect.value = validTypes[0];
+            }
+        }
+
+        if (responses[2].ok) {
+            var leaseData = await responses[2].json();
+            setSliderWithinBounds(
+                document.getElementById('predictLeaseRange'),
+                'predictLeaseVal',
+                leaseData.min_year,
+                leaseData.max_year,
+                prefillLease,
+                leaseData.avg_year
+            );
         }
 
         if (prefillFlatType && responses[1].ok) {
             var detailResponses = await Promise.all([
+                fetch('/api/floor_area_stats?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType)),
                 fetch('/api/available_models?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType)),
                 fetch('/api/available_storey_ranges?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType))
             ]);
 
             if (detailResponses[0].ok) {
-                var modelData = await detailResponses[0].json();
-                if (modelData.models && modelData.models.length > 0) {
-                    predictFlatModelSelect.innerHTML = modelData.models.map(function(m) {
-                        var sel = (m === prefillFlatModel) ? ' selected' : '';
-                        return '<option value="' + m + '"' + sel + '>' + m + '</option>';
-                    }).join('');
-                }
+                var floorData = await detailResponses[0].json();
+                setSliderWithinBounds(
+                    document.getElementById('predictFloorRange'),
+                    'predictFloorVal',
+                    floorData.min_area,
+                    floorData.max_area,
+                    prefillFloorArea,
+                    floorData.avg_area
+                );
             }
             if (detailResponses[1].ok) {
-                var storeyData = await detailResponses[1].json();
-                if (storeyData.storey_ranges && storeyData.storey_ranges.length > 0) {
-                    predictStoreyRangeSelect.innerHTML = storeyData.storey_ranges.map(function(sr) {
-                        var sel = (sr === prefillStorey) ? ' selected' : '';
-                        return '<option value="' + sr + '"' + sel + '>' + sr + '</option>';
-                    }).join('');
+                var modelData = await detailResponses[1].json();
+                if (!(modelData.models && renderSelectOptions(predictFlatModelSelect, modelData.models, prefillFlatModel, modelData.models[0]))) {
+                    predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
+                }
+            }
+            if (detailResponses[2].ok) {
+                var storeyData = await detailResponses[2].json();
+                if (!(storeyData.storey_ranges && renderSelectOptions(
+                    predictStoreyRangeSelect,
+                    storeyData.storey_ranges,
+                    prefillStorey,
+                    storeyData.storey_ranges[Math.floor(storeyData.storey_ranges.length / 2)]
+                ))) {
+                    predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
                 }
             }
         }
@@ -565,24 +647,29 @@ predictFlatTypeSelect.addEventListener('change', async function() {
         if (floorAreaResp.ok) {
             var data = await floorAreaResp.json();
             var floorRange = document.getElementById('predictFloorRange');
-            floorRange.min = data.min_area;
-            floorRange.max = data.max_area;
-            floorRange.value = data.avg_area;
-            document.getElementById('predictFloorVal').textContent = data.avg_area;
+            setSliderWithinBounds(
+                floorRange,
+                'predictFloorVal',
+                data.min_area,
+                data.max_area,
+                floorRange.value,
+                data.avg_area
+            );
         }
         if (modelResp.ok) {
             var data2 = await modelResp.json();
-            if (data2.models && data2.models.length > 0) {
-                predictFlatModelSelect.innerHTML = data2.models.map(function(m) { return '<option value="' + m + '">' + m + '</option>'; }).join('');
-            } else {
+            if (!(data2.models && renderSelectOptions(predictFlatModelSelect, data2.models, predictFlatModelSelect.value, data2.models[0]))) {
                 predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
             }
         }
         if (storeyResp.ok) {
             var data3 = await storeyResp.json();
-            if (data3.storey_ranges && data3.storey_ranges.length > 0) {
-                predictStoreyRangeSelect.innerHTML = data3.storey_ranges.map(function(sr) { return '<option value="' + sr + '">' + sr + '</option>'; }).join('');
-            } else {
+            if (!(data3.storey_ranges && renderSelectOptions(
+                predictStoreyRangeSelect,
+                data3.storey_ranges,
+                predictStoreyRangeSelect.value,
+                data3.storey_ranges[Math.floor(data3.storey_ranges.length / 2)]
+            ))) {
                 predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
             }
         }

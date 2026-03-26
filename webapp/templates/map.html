@@ -137,28 +137,6 @@
     }
     .map-select option { color: #0f172a; }
 
-    /* ── Heatmap config panel ── */
-    .heatmap-config {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.10);
-        border-radius: 12px;
-        padding: 12px;
-        display: grid;
-        gap: 10px;
-    }
-    .heatmap-config-row {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-    }
-    .heatmap-config-row .map-control-group { gap: 4px; }
-    .config-info {
-        font-size: 0.72rem;
-        color: #64748b;
-        line-height: 1.4;
-        padding: 4px 0 0;
-    }
-
     /* ── Amenity dropdown ── */
     .amenity-panel {
         background: rgba(15, 23, 42, 0.6);
@@ -182,6 +160,70 @@
     .amenity-chevron.open { transform: rotate(180deg); }
     .amenity-body { display: none; padding-top: 8px; }
     .amenity-body.open { display: block; }
+
+    .scenario-panel {
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.10);
+        border-radius: 12px;
+        padding: 10px 12px;
+    }
+    .scenario-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        cursor: pointer;
+        user-select: none;
+    }
+    .scenario-heading {
+        display: grid;
+        gap: 4px;
+        min-width: 0;
+    }
+    .scenario-heading .control-label { pointer-events: none; }
+    .scenario-summary {
+        font-size: 0.8rem;
+        color: #cbd5e1;
+        line-height: 1.4;
+    }
+    .scenario-actions {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-shrink: 0;
+    }
+    .scenario-reset-btn {
+        border: 1px solid rgba(96, 165, 250, 0.18);
+        background: rgba(30, 41, 59, 0.8);
+        color: #bfdbfe;
+        border-radius: 999px;
+        padding: 4px 10px;
+        font-size: 0.72rem;
+        font-weight: 700;
+    }
+    .scenario-reset-btn:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+    .scenario-body {
+        display: none;
+        padding-top: 10px;
+    }
+    .scenario-body.open {
+        display: grid;
+        gap: 10px;
+    }
+    .scenario-copy {
+        margin: 0;
+        font-size: 0.76rem;
+        color: #94a3b8;
+        line-height: 1.45;
+    }
+    .scenario-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+    }
 
     .amenity-item {
         display: flex;
@@ -299,15 +341,6 @@
         text-shadow: 0 1px 4px rgba(0,0,0,0.95), 0 0 10px rgba(0,0,0,0.7);
         white-space: nowrap;
     }
-    .district-label .dl-tag {
-        font-size: 8px;
-        font-weight: 600;
-        color: #94a3b8;
-        text-transform: uppercase;
-        letter-spacing: 0.06em;
-        text-shadow: 0 1px 3px rgba(0,0,0,0.9);
-    }
-
     /* ── Legend ── */
     .map-legend-panel {
         position: absolute;
@@ -464,7 +497,7 @@
     @media (max-width: 767px) {
         .map-stat-grid { grid-template-columns: 1fr; }
         .map-sidebar { padding: 14px; }
-        .heatmap-config-row { grid-template-columns: 1fr; }
+        .scenario-grid { grid-template-columns: 1fr; }
     }
 </style>
 {% endblock %}
@@ -476,7 +509,7 @@
             <div class="map-sidebar">
                 <div class="map-kicker">Spatial Market Explorer</div>
                 <h2>HDB Resale Price Map</h2>
-                <p class="sidebar-desc">Prediction view estimates typical prices by town. Click any town to drill into transactions.</p>
+                <p class="sidebar-desc">Prediction view uses the ML model. By default each town uses its own inferred profile, and you can optionally open Map Parameters to compare the same scenario across towns. Click any town to drill into transactions.</p>
 
                 <div class="map-stat-grid">
                     <div class="map-stat">
@@ -484,7 +517,7 @@
                         <span class="map-stat-value" id="statTowns">-</span>
                     </div>
                     <div class="map-stat">
-                        <span class="map-stat-label">Predicted Avg</span>
+                        <span class="map-stat-label" id="statAvgLabel">Model Estimate</span>
                         <span class="map-stat-value" id="statAvgPrice">-</span>
                     </div>
                     <div class="map-stat">
@@ -511,6 +544,42 @@
                         </button>
                     </div>
 
+                    <div class="scenario-panel" id="scenarioPanel">
+                        <div class="scenario-header" onclick="toggleScenarioPanel()">
+                            <div class="scenario-heading">
+                                <span class="control-label">Map Parameters</span>
+                                <span class="scenario-summary" id="scenarioSummary">Town overview active</span>
+                            </div>
+                            <div class="scenario-actions">
+                                <button type="button" class="scenario-reset-btn" id="scenarioResetBtn" disabled>Reset</button>
+                                <i class="bi bi-chevron-down amenity-chevron" id="scenarioChevron"></i>
+                            </div>
+                        </div>
+                        <div class="scenario-body" id="scenarioBody">
+                            <p class="scenario-copy">Optional: compare towns using the same flat profile. Other model inputs still adapt dynamically town by town.</p>
+                            <div class="scenario-grid">
+                                <div class="map-control-group">
+                                    <label for="mapFlatType">Flat Type</label>
+                                    <select id="mapFlatType" class="form-select form-select-sm map-select">
+                                        <option value="">Town-inferred</option>
+                                        {% for ft in flat_types %}
+                                        <option value="{{ ft }}">{{ ft }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="map-control-group">
+                                    <label for="mapStoreyRange">Floor</label>
+                                    <select id="mapStoreyRange" class="form-select form-select-sm map-select">
+                                        <option value="">Town-inferred</option>
+                                        {% for sr in storey_ranges %}
+                                        <option value="{{ sr }}">{{ sr }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Town filter (pin mode only) -->
                     <div class="map-control-group" id="townFilterGroup" style="display:none;">
                         <label for="townFilter">Town Filter</label>
@@ -520,31 +589,6 @@
                             <option value="{{ t }}">{{ t }}</option>
                             {% endfor %}
                         </select>
-                    </div>
-
-                    <!-- Heatmap config (heatmap mode only) -->
-                    <div class="heatmap-config" id="heatmapConfig">
-                        <span class="control-label">Prediction Parameters</span>
-                        <div class="heatmap-config-row">
-                            <div class="map-control-group">
-                                <label for="heatFlatType">Flat Type</label>
-                                <select id="heatFlatType" class="form-select form-select-sm map-select">
-                                    <option value="3 Room">3 Room</option>
-                                    <option value="4 Room" selected>4 Room</option>
-                                    <option value="5 Room">5 Room</option>
-                                    <option value="Executive">Executive</option>
-                                </select>
-                            </div>
-                            <div class="map-control-group">
-                                <label for="heatStorey">Floor</label>
-                                <select id="heatStorey" class="form-select form-select-sm map-select">
-                                    {% for f in range(1, 28) %}
-                                    <option value="{{ f }}" {% if f == 8 %}selected{% endif %}>{{ f }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                        </div>
-                        <p class="config-info">The model predicts a price for each town using these parameters. Colours show relative pricing across towns.</p>
                     </div>
 
                     <!-- Amenity layers (collapsible) -->
@@ -585,11 +629,11 @@
                     </div>
 
                     <div class="map-insight" id="mapInsight">
-                        Prediction view estimates a typical flat price for each town. Click any region to explore individual transactions.
+                        Prediction view compares model-generated town estimates inferred from each town's own market data. Open Map Parameters if you want to compare a shared scenario across towns.
                     </div>
                     <div class="map-period-note" id="mapPeriodNote">
-                        <span class="period-label">Pin Period</span>
-                        <span id="mapPeriodText">Switch to Transactions to view the loaded transaction period.</span>
+                        <span class="period-label">Map Note</span>
+                        <span id="mapPeriodText">Town estimates are generated by the model from each town's own market data.</span>
                     </div>
                 </div>
             </div>
@@ -604,11 +648,11 @@
             <!-- Loading spinner -->
             <div class="map-loading" id="mapLoading">
                 <span class="spinner-border spinner-border-sm"></span>
-                <span id="loadingText">Running predictions...</span>
+                <span id="loadingText">Running town model...</span>
             </div>
 
             <div class="map-legend-panel" id="legendPanel">
-                <div class="map-legend-title" id="legendTitle">Predicted Price</div>
+                <div class="map-legend-title" id="legendTitle">Model Estimate</div>
                 <div class="legend-scale legend-scale-price" id="legendScale"></div>
                 <div class="legend-labels" id="legendLabels">
                     <span id="legendLow">Low</span>
@@ -638,12 +682,20 @@ let heatmapLayer = L.layerGroup().addTo(map);
 let currentMode = 'heatmap';
 let drilledTown = null;
 let activeAmenities = new Set();
+const MAP_TRANSACTION_START_YEAR = Number('{{ map_transaction_start_year }}');
 const initialUrlParams = new URLSearchParams(window.location.search);
 const initialModeParam = (initialUrlParams.get('mode') || '').toLowerCase();
 const initialTown = initialUrlParams.get('town') || '';
 let focusedTown = initialTown;
 let focusedStreet = initialUrlParams.get('street') || '';
 let focusedBlock = initialUrlParams.get('block') || '';
+const scenarioPanel = document.getElementById('scenarioPanel');
+const scenarioBody = document.getElementById('scenarioBody');
+const scenarioChevron = document.getElementById('scenarioChevron');
+const scenarioSummary = document.getElementById('scenarioSummary');
+const scenarioResetBtn = document.getElementById('scenarioResetBtn');
+const mapFlatTypeSelect = document.getElementById('mapFlatType');
+const mapStoreyRangeSelect = document.getElementById('mapStoreyRange');
 const shouldStartInPins = (
     initialModeParam === 'transactions' ||
     initialModeParam === 'pins' ||
@@ -681,6 +733,7 @@ function choroplethColor(value, min, max) {
 function updateStats(data, mode) {
     const records = data.length;
     const townCount = new Set(data.map(d => d.town).filter(Boolean)).size || '-';
+    const avgLabel = document.getElementById('statAvgLabel');
 
     let avgPrice = '-';
     if (mode === 'heatmap') {
@@ -688,11 +741,13 @@ function updateStats(data, mode) {
         avgPrice = prices.length
             ? '$' + Math.round(prices.reduce((s, v) => s + v, 0) / prices.length).toLocaleString()
             : '-';
+        avgLabel.textContent = 'Model Estimate';
     } else {
         const prices = data.map(d => Number(d.resale_price)).filter(Number.isFinite);
         avgPrice = prices.length
             ? '$' + Math.round(prices.reduce((s, v) => s + v, 0) / prices.length).toLocaleString()
             : '-';
+        avgLabel.textContent = 'Sale Avg';
     }
 
     document.getElementById('statTowns').textContent = townCount;
@@ -776,7 +831,7 @@ function updateLegend(mode, minVal, maxVal) {
     const labels = document.getElementById('legendLabels');
 
     if (mode === 'heatmap') {
-        title.textContent = 'Predicted Price';
+        title.textContent = 'Model Estimate';
         scale.className = 'legend-scale legend-scale-price';
         const lo = Number.isFinite(minVal) ? '$' + Math.round(minVal).toLocaleString() : 'Low';
         const hi = Number.isFinite(maxVal) ? '$' + Math.round(maxVal).toLocaleString() : 'High';
@@ -817,29 +872,85 @@ function toggleAmenityPanel() {
     chevron.classList.toggle('open');
 }
 
+function toggleScenarioPanel(forceOpen) {
+    const shouldOpen = typeof forceOpen === 'boolean'
+        ? forceOpen
+        : !scenarioBody.classList.contains('open');
+    scenarioBody.classList.toggle('open', shouldOpen);
+    scenarioChevron.classList.toggle('open', shouldOpen);
+}
+
+function getScenarioState() {
+    return {
+        flat_type: (mapFlatTypeSelect.value || '').trim(),
+        storey_range: (mapStoreyRangeSelect.value || '').trim(),
+    };
+}
+
+function hasScenarioOverrides(state = getScenarioState()) {
+    return Boolean(state.flat_type || state.storey_range);
+}
+
+function buildHeatmapParams() {
+    const state = getScenarioState();
+    const params = new URLSearchParams();
+    if (state.flat_type) params.set('flat_type', state.flat_type);
+    if (state.storey_range) params.set('storey_range', state.storey_range);
+    return params;
+}
+
+function getScenarioSummary(state = getScenarioState()) {
+    if (state.flat_type && state.storey_range) return `${state.flat_type} · Floor ${state.storey_range}`;
+    if (state.flat_type) return state.flat_type;
+    if (state.storey_range) return `Floor ${state.storey_range}`;
+    return 'Town overview active';
+}
+
+function getHeatmapInsight(state = getScenarioState()) {
+    if (hasScenarioOverrides(state)) {
+        return `Comparing towns for ${getScenarioSummary(state)}. Other model inputs still adapt dynamically by town. Click any town to drill down.`;
+    }
+    return 'Showing model-generated town estimates inferred from each town\'s own market data. Click any town to drill down.';
+}
+
+function getHeatmapPeriodNote(state = getScenarioState()) {
+    if (hasScenarioOverrides(state)) {
+        return `Scenario compare is active for ${getScenarioSummary(state)}. Other model inputs still adapt dynamically by town.`;
+    }
+    return 'Town estimates are generated by the model from each town\'s own market data.';
+}
+
+function updateScenarioSummary() {
+    const state = getScenarioState();
+    scenarioSummary.textContent = hasScenarioOverrides(state)
+        ? `Scenario compare: ${getScenarioSummary(state)}`
+        : 'Town overview active';
+    scenarioResetBtn.disabled = !hasScenarioOverrides(state);
+}
+
+function setScenarioPanelVisible(isVisible) {
+    scenarioPanel.style.display = isVisible ? '' : 'none';
+}
+
 // ─── Prediction Mode ─────────────────────────────────────────────
 async function loadHeatmap() {
-    showLoading('Running predictions for each town...');
-    setPeriodText('Switch to Transactions to view the loaded transaction period.');
-
-    const flatType = document.getElementById('heatFlatType').value;
-    const storey = document.getElementById('heatStorey').value;
-    const params = new URLSearchParams({
-        flat_type: flatType,
-        storey_range: storey,
-    });
+    const state = getScenarioState();
+    const params = buildHeatmapParams();
+    const query = params.toString();
+    showLoading(hasScenarioOverrides(state) ? 'Running scenario model...' : 'Running town model...');
+    setPeriodText(getHeatmapPeriodNote(state));
 
     try {
-        const resp = await fetch('/api/predicted_heatmap?' + params);
+        const resp = await fetch('/api/predicted_heatmap' + (query ? '?' + query : ''));
         if (handleAuthFailure(resp)) return;
         if (!resp.ok) {
             const errorData = await resp.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Prediction map request failed.');
+            throw new Error(errorData.error || 'Town estimate map request failed.');
         }
         const data = await resp.json();
 
         if (!Array.isArray(data) || data.length === 0) {
-            throw new Error('No prediction map data returned.');
+            throw new Error('No town map data returned.');
         }
 
         const prices = data.map(d => Number(d.predicted_price)).filter(Number.isFinite);
@@ -851,9 +962,24 @@ async function loadHeatmap() {
         data.forEach(d => {
             if (!d.lat || !d.lng) return;
             const pred = Number(d.predicted_price);
+            const latestAvg = Number(d.latest_avg);
+            const historicalAvg = Number(d.avg_price);
+            const marketLow = Number(d.market_low);
+            const marketHigh = Number(d.market_high);
             const color = choroplethColor(pred, minP, maxP);
             const predFmt = '$' + Math.round(pred).toLocaleString();
-            const rangeFmt = '$' + Math.round(Number(d.price_low)).toLocaleString() + ' – $' + Math.round(Number(d.price_high)).toLocaleString();
+            const latestFmt = Number.isFinite(latestAvg) && latestAvg > 0
+                ? '$' + Math.round(latestAvg).toLocaleString()
+                : predFmt;
+            const historicalFmt = Number.isFinite(historicalAvg) && historicalAvg > 0
+                ? '$' + Math.round(historicalAvg).toLocaleString()
+                : predFmt;
+            const marketRangeFmt = Number.isFinite(marketLow) && Number.isFinite(marketHigh)
+                ? '$' + Math.round(marketLow).toLocaleString() + ' – $' + Math.round(marketHigh).toLocaleString()
+                : historicalFmt;
+            const scenarioLine = hasScenarioOverrides(state)
+                ? `Scenario: ${getScenarioSummary(state)}<br>`
+                : '';
 
             const circle = L.circle([d.lat, d.lng], {
                 radius: 2000,
@@ -867,8 +993,12 @@ async function loadHeatmap() {
             circle.on('mouseout', function() { this.setStyle({ fillOpacity: 0.55 }); });
             circle.bindTooltip(`
                 <strong>${d.town}</strong><br>
-                Predicted: <b>${predFmt}</b><br>
-                Range: ${rangeFmt}<br>
+                Model estimate: <b>${predFmt}</b><br>
+                ${scenarioLine}
+                Model range: $${Math.round(Number(d.price_low)).toLocaleString()} – $${Math.round(Number(d.price_high)).toLocaleString()}<br>
+                Latest avg: ${latestFmt}<br>
+                Market range: ${marketRangeFmt}<br>
+                Historical avg: ${historicalFmt}<br>
                 Txns: ${Number(d.total_txns).toLocaleString()}
             `, { sticky: true });
 
@@ -878,9 +1008,9 @@ async function loadHeatmap() {
                 interactive: false,
                 icon: L.divIcon({
                     className: 'district-label',
-                    html: `<div class="dl-town">${d.town}</div><div class="dl-price">${predFmt}</div><div class="dl-tag">${flatType}</div>`,
-                    iconSize: [140, 42],
-                    iconAnchor: [70, 21],
+                    html: `<div class="dl-town">${d.town}</div><div class="dl-price">${predFmt}</div>`,
+                    iconSize: [140, 34],
+                    iconAnchor: [70, 17],
                 })
             });
 
@@ -890,9 +1020,9 @@ async function loadHeatmap() {
 
         updateLegend('heatmap', minP, maxP);
         updateStats(data, 'heatmap');
-        setInsight(`Showing predicted prices for a typical ${flatType} (floor ${storey}) in each town. Blue = lower, Red = higher. Click to drill down.`);
+        setInsight(getHeatmapInsight(state));
     } catch (e) {
-        setInsight(e && e.message ? e.message : 'Failed to load predictions. Please try again.');
+        setInsight(e && e.message ? e.message : 'Failed to load model-based town estimates. Please try again.');
     } finally {
         hideLoading();
     }
@@ -908,7 +1038,7 @@ function drillDown(town) {
     showBreadcrumb(town);
     currentMode = 'pins';
     setModeButtons('pins');
-    document.getElementById('heatmapConfig').style.display = 'none';
+    setScenarioPanelVisible(false);
     document.getElementById('townFilterGroup').style.display = '';
     document.getElementById('floatNote').style.display = 'none';
     map.removeLayer(heatmapLayer);
@@ -932,7 +1062,8 @@ async function loadPins() {
     const town = document.getElementById('townFilter').value;
     const params = new URLSearchParams();
     if (town) params.set('town', town);
-    params.set('limit', 1800);
+    params.set('limit', town ? '10000' : '3500');
+    params.set('min_year', String(MAP_TRANSACTION_START_YEAR));
 
     try {
         const resp = await fetch('/api/transactions?' + params);
@@ -973,7 +1104,7 @@ async function loadPins() {
                 fillOpacity: isMatch ? 1 : 0.85,
             });
 
-            const predictUrl = `/predict?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
+            const predictUrl = `/predict?source=map_pin&auto_predict=1&town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
             const analysisUrl = `/analytics?town=${encodeURIComponent(txn.town)}&flat_type=${encodeURIComponent(txn.flat_type)}&street_name=${encodeURIComponent(txn.street_name || '')}&block=${encodeURIComponent(txn.block || '')}&floor_area=${txn.floor_area_sqm || ''}&storey_range=${encodeURIComponent(txn.storey_range || '')}`;
 
             marker.bindPopup(`
@@ -1009,10 +1140,10 @@ async function loadPins() {
         updateStats(data, 'pins');
         setInsight(
             matchedLatLngs.length > 0
-                ? `Highlighted ${matchedLatLngs.length.toLocaleString()} matching transaction${matchedLatLngs.length === 1 ? '' : 's'} in ${town}. Each dot = one resale, coloured by price. Period: ${periodLabel}.`
+                ? `Highlighted ${matchedLatLngs.length.toLocaleString()} matching transaction${matchedLatLngs.length === 1 ? '' : 's'} in ${town}. Each dot = one resale from ${MAP_TRANSACTION_START_YEAR} onward, coloured by price. Period: ${periodLabel}.`
                 : town
-                ? `${data.length.toLocaleString()} transactions in ${town}. Each dot = one resale, coloured by price. Period: ${periodLabel}.`
-                : `Showing individual resale transactions across Singapore. Warm colours = higher prices. Period: ${periodLabel}.`
+                ? `${data.length.toLocaleString()} transactions in ${town} from ${MAP_TRANSACTION_START_YEAR} onward. Each dot = one resale, coloured by price. Period: ${periodLabel}.`
+                : `Showing individual resale transactions across Singapore from ${MAP_TRANSACTION_START_YEAR} onward. Warm colours = higher prices. Period: ${periodLabel}.`
         );
     } catch (e) {
         setPeriodText('Period unavailable');
@@ -1045,7 +1176,7 @@ function showPins(options = {}) {
     drilledTown = null;
     hideBreadcrumb();
     setModeButtons('pins');
-    document.getElementById('heatmapConfig').style.display = 'none';
+    setScenarioPanelVisible(false);
     document.getElementById('townFilterGroup').style.display = '';
     document.getElementById('floatNote').style.display = 'none';
     map.removeLayer(heatmapLayer);
@@ -1062,7 +1193,7 @@ function showHeatmap(options = {}) {
     drilledTown = null;
     hideBreadcrumb();
     setModeButtons('heatmap');
-    document.getElementById('heatmapConfig').style.display = '';
+    setScenarioPanelVisible(true);
     document.getElementById('townFilterGroup').style.display = 'none';
     document.getElementById('floatNote').style.display = '';
     map.removeLayer(markers);
@@ -1073,17 +1204,11 @@ function showHeatmap(options = {}) {
     loadHeatmap();
 }
 
-// Event listeners for heatmap params
+// Event listeners
 document.getElementById('townFilter').addEventListener('change', () => {
     focusedStreet = '';
     focusedBlock = '';
     if (currentMode === 'pins') loadPins();
-});
-document.getElementById('heatFlatType').addEventListener('change', () => {
-    if (currentMode === 'heatmap') loadHeatmap();
-});
-document.getElementById('heatStorey').addEventListener('change', () => {
-    if (currentMode === 'heatmap') loadHeatmap();
 });
 
 // ─── AMENITY DATA ────────────────────────────────────────────────
@@ -1328,6 +1453,24 @@ document.getElementById('toggleMalls').addEventListener('change', function() {
     else { map.removeLayer(mallLayer); activeAmenities.delete('mall'); }
     updateAmenityLegend();
 });
+
+[mapFlatTypeSelect, mapStoreyRangeSelect].forEach(function(select) {
+    select.addEventListener('change', function() {
+        updateScenarioSummary();
+        if (currentMode === 'heatmap') loadHeatmap();
+    });
+});
+
+scenarioResetBtn.addEventListener('click', function(event) {
+    event.stopPropagation();
+    mapFlatTypeSelect.value = '';
+    mapStoreyRangeSelect.value = '';
+    updateScenarioSummary();
+    if (currentMode === 'heatmap') loadHeatmap();
+});
+
+updateScenarioSummary();
+toggleScenarioPanel(false);
 
 // ─── Init ────────────────────────────────────────────────────────
 if (initialTown) {

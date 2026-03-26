@@ -22,6 +22,7 @@ Run:
 
 import json
 import math
+import os
 import sqlite3
 from pathlib import Path
 from typing import Any
@@ -32,10 +33,13 @@ import pandas as pd
 # Configuration
 # ---------------------------------------------------------------------------
 
-DB_PATH         = "hdb_resale.db"
+BASE_DIR        = Path(__file__).resolve().parent
+DB_PATH         = os.environ.get("HDB_SQLITE_PATH", str(BASE_DIR / "hdb_resale.db"))
 EARTH_RADIUS_KM = 6371.0                    # mean Earth radius, km
 RAFFLES_PLACE   = (1.2832, 103.8517)        # CBD anchor point (lat, lng)
-REFERENCE_DATA_DIR = Path("reference_data")
+REFERENCE_DATA_DIR = Path(
+    os.environ.get("HDB_REFERENCE_DATA_DIR", str(BASE_DIR / "reference_data"))
+)
 
 # ---------------------------------------------------------------------------
 # Reference data

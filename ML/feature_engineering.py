@@ -1,21 +1,23 @@
 import json
 import os
 import pickle
-import sqlite3
+import time
 from datetime import datetime, UTC
 
 import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
+
+from training_data_source import get_training_data_source_name, load_training_dataframe
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
 
-DB_PATH = "hdb_resale.db"
-TABLE_NAME = "resale_prices"
-OUTPUT_DIR = "model_assets"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.environ.get("MODEL_ASSETS_DIR", os.path.join(BASE_DIR, "model_assets"))
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
@@ -96,12 +98,12 @@ REQUIRED_MODEL_COLS = [
 # Load data
 # ---------------------------------------------------------------------------
 
-def load_data() -> pd.DataFrame:
-    print(f"Loading from {DB_PATH} ...")
-
-    conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql(f"SELECT * FROM {TABLE_NAME}", conn)
-    conn.close()
+def load_data() -> tuple[pd.DataFrame, str]:
+    source = get_training_data_source_name()
+    print(f"Loading training data from {source} ...", flush=True)
+    t0 = time.time()
+    df, data_source = load_training_dataframe()
+    print(f"  Source query completed in {time.time() - t0:.1f}s.")
 
     numeric_cols = [
         "floor_area_sqm",
@@ -124,19 +126,20 @@ def load_data() -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     for col in ["town", "flat_type", "flat_model"]:
-        df[col] = df[col].astype(str).str.strip()
+        # Preserve missing values so required-field cleanup can drop them later.
+        df[col] = df[col].astype("string").str.strip()
+        df[col] = df[col].replace("", pd.NA)
 
     print(f"  Loaded {len(df):,} rows.")
-    return df
+    return df, data_source
 
 
 # ---------------------------------------------------------------------------
-# Remove outliers
+# Outlier diagnostics / conservative cleanup
 # ---------------------------------------------------------------------------
 
 def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
     before = len(df)
-    keep_mask = pd.Series(True, index=df.index)
     bounds: dict[str, dict[str, float]] = {}
 
     for flat_type, idx in df.groupby("flat_type").groups.items():
@@ -147,17 +150,22 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
         lower = q1 - 1.5 * iqr
         upper = q3 + 1.5 * iqr
 
-        keep_mask.loc[idx] = prices.between(lower, upper)
         bounds[str(flat_type)] = {
             "lower": round(float(lower), 2),
             "upper": round(float(upper), 2),
         }
 
+    # Keep premium but valid transactions in training. With a log-price target,
+    # a simple flat_type IQR fence is too aggressive and can remove legitimate
+    # high-end sales that the model needs to learn from.
+    keep_mask = df["resale_price"] > 0
     df = df[keep_mask].copy()
 
     dropped = before - len(df)
+    print("\nOutlier handling: IQR bounds saved for diagnostics only.")
+    print("  High-price transactions are retained to preserve premium-market signal.")
     print(
-        f"\nOutlier removal: dropped {dropped:,} rows "
+        f"  Invalid-price cleanup: dropped {dropped:,} rows "
         f"({dropped / before * 100:.1f}%). Remaining: {len(df):,}"
     )
 
@@ -175,7 +183,6 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
 
 def engineer_features(
     df: pd.DataFrame,
-    price_index: pd.Series,
 ) -> pd.DataFrame:
     print("\nEngineering features ...")
 
@@ -195,18 +202,13 @@ def engineer_features(
             df["flat_type_ordinal"].median()
         )
 
-    # RPI-adjusted target: divide out macro price trend so the model
-    # learns structural property value independent of market timing.
-    quarter_key = (
-        df["year"].astype(int) * 10
-        + ((df["month_num"].astype(int) - 1) // 3 + 1)
-    )
-    df["price_index"] = quarter_key.map(price_index)
-    df[TARGET_COL] = np.log1p(df["resale_price"] / df["price_index"])
+    # Use a direct log-price target so holdout rows do not depend on a
+    # market index estimated from future transactions.
+    df[TARGET_COL] = np.log1p(df["resale_price"])
 
     print(
         "  Features added: flat_age, month_sin, month_cos, "
-        "is_mature_estate, flat_type_ordinal, price_index, log_price (RPI-adjusted)"
+        "is_mature_estate, flat_type_ordinal, log_price"
     )
     return df
 
@@ -227,59 +229,77 @@ def drop_missing_model_rows(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-# ---------------------------------------------------------------------------
-# Quarterly price index (RPI normalization)
-# ---------------------------------------------------------------------------
-
-def compute_price_index(df: pd.DataFrame) -> pd.Series:
-    """
-    Compute a quarterly resale price index from transaction data.
-
-    Each quarter's index = median(resale_price) / base, where
-    base = median of all quarterly medians (centering the index around 1.0).
-
-    The index captures the macro market trend so models can learn
-    structural property value independent of price inflation.
-
-    Parameters:
-        df: DataFrame with 'year', 'month_num', and 'resale_price' columns.
-
-    Returns:
-        pd.Series mapping quarter key (year*10 + quarter_num) to index value.
-    """
-    quarter_key = (
-        df["year"].astype(int) * 10
-        + ((df["month_num"].astype(int) - 1) // 3 + 1)
-    )
-    quarterly_median = df.groupby(quarter_key)["resale_price"].median()
-    base = quarterly_median.median()
-    pi = quarterly_median / base
-
-    print(f"\nPrice index computed ({len(pi)} quarters):")
-    print(f"  Base (median of quarterly medians): SGD {base:,.0f}")
-    print(f"  Index range: {pi.min():.3f} — {pi.max():.3f}")
-    print(f"  Train-era (≤2020) mean: {pi[pi.index <= 20204].mean():.3f}")
-    print(f"  Test-era  (≥2023) mean: {pi[pi.index >= 20231].mean():.3f}")
-
-    return pi
-
-
-# ---------------------------------------------------------------------------
 # Temporal split
 # ---------------------------------------------------------------------------
 
-def temporal_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    train = df[df["year"] <= 2020].copy()
-    val = df[(df["year"] >= 2021) & (df["year"] <= 2022)].copy()
-    test = df[df["year"] >= 2023].copy()
+def stratified_split(df: pd.DataFrame, test_months: int = 3) -> dict[str, pd.DataFrame]:
+    """
+    Split data using a hybrid strategy:
+    - Test set: most recent `test_months` months of data (rolling holdout)
+    - Train/Val: remaining data split 90/10 via stratified random sampling
+      on flat_type for representative coverage.
+    """
+    # Build a year-month column for recency-based test holdout
+    df["_ym"] = df["year"] * 100 + df["month_num"]
+    unique_ym = sorted(df["_ym"].dropna().unique())
+
+    if len(unique_ym) <= test_months:
+        cutoff_ym = unique_ym[0]
+    else:
+        cutoff_ym = unique_ym[-test_months]
+
+    test = df[df["_ym"] >= cutoff_ym].copy()
+    remaining = df[df["_ym"] < cutoff_ym].copy()
+
+    # Stratified random split of remaining data into train (90%) and val (10%)
+    train, val = train_test_split(
+        remaining,
+        test_size=0.10,
+        random_state=42,
+        stratify=remaining["flat_type"],
+    )
+    train = train.copy()
+    val = val.copy()
+
+    # Clean up temp column
+    for split in (train, val, test):
+        split.drop(columns=["_ym"], inplace=True)
+    df.drop(columns=["_ym"], inplace=True)
+
+    splits = {
+        "train": train,
+        "val": val,
+        "test": test,
+    }
 
     total = len(df)
-    print(f"\nTemporal split (total {total:,} rows):")
-    print(f"  Train (≤ 2020) : {len(train):>8,}  ({len(train) / total * 100:.1f}%)")
-    print(f"  Val  (2021–22) : {len(val):>8,}  ({len(val) / total * 100:.1f}%)")
-    print(f"  Test (≥ 2023)  : {len(test):>8,}  ({len(test) / total * 100:.1f}%)")
+    test_start = f"{int(cutoff_ym // 100)}-{int(cutoff_ym % 100):02d}"
+    print(f"\nStratified split with {test_months}-month rolling holdout (total {total:,} rows):")
+    print(f"  Train (random 90%) : {len(train):>8,}  ({len(train) / total * 100:.1f}%)")
+    print(f"  Val   (random 10%) : {len(val):>8,}  ({len(val) / total * 100:.1f}%)")
+    print(f"  Test  (>= {test_start}): {len(test):>8,}  ({len(test) / total * 100:.1f}%)")
 
-    return train, val, test
+    return splits
+
+
+def build_split_metadata(
+    splits: dict[str, pd.DataFrame],
+) -> dict[str, int | None]:
+    train = splits["train"]
+    val = splits["val"]
+    test = splits["test"]
+    return {
+        "train_rows": len(train),
+        "train_min_year": int(train["year"].min()) if not train.empty else None,
+        "train_max_year": int(train["year"].max()) if not train.empty else None,
+        "val_rows": len(val),
+        "val_min_year": int(val["year"].min()) if not val.empty else None,
+        "val_max_year": int(val["year"].max()) if not val.empty else None,
+        "test_rows": len(test),
+        "test_min_year": int(test["year"].min()) if not test.empty else None,
+        "test_max_year": int(test["year"].max()) if not test.empty else None,
+        "split_strategy": "stratified_random_with_rolling_holdout",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -287,12 +307,11 @@ def temporal_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.Dat
 # ---------------------------------------------------------------------------
 
 def target_encode(
-    train: pd.DataFrame,
-    val: pd.DataFrame,
-    test: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, dict]:
+    splits: dict[str, pd.DataFrame],
+) -> tuple[dict[str, pd.DataFrame], dict]:
     print("\nTarget encoding town and flat_model ...")
 
+    train = splits["train"]
     global_mean = train[TARGET_COL].mean()
     encoders = {}
 
@@ -304,13 +323,12 @@ def target_encode(
         }
 
         enc_col = f"{col}_enc"
-        train[enc_col] = train[col].map(means).fillna(global_mean)
-        val[enc_col] = val[col].map(means).fillna(global_mean)
-        test[enc_col] = test[col].map(means).fillna(global_mean)
+        for split in splits.values():
+            split[enc_col] = split[col].map(means).fillna(global_mean)
 
         print(f"  {col}: {len(means)} categories encoded")
 
-    return train, val, test, encoders
+    return splits, encoders
 
 
 # ---------------------------------------------------------------------------
@@ -318,20 +336,22 @@ def target_encode(
 # ---------------------------------------------------------------------------
 
 def scale_features(
-    train: pd.DataFrame,
-    val: pd.DataFrame,
-    test: pd.DataFrame,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, StandardScaler]:
+    splits: dict[str, pd.DataFrame],
+) -> tuple[dict[str, pd.DataFrame], StandardScaler]:
     print("\nScaling numeric features ...")
 
     scaler = StandardScaler()
+    train = splits["train"]
 
     train[SCALE_COLS] = scaler.fit_transform(train[SCALE_COLS])
-    val[SCALE_COLS] = scaler.transform(val[SCALE_COLS])
-    test[SCALE_COLS] = scaler.transform(test[SCALE_COLS])
+    for name, split in splits.items():
+        if name == "train":
+            continue
+        split[SCALE_COLS] = scaler.transform(split[SCALE_COLS])
 
-    print("  StandardScaler fitted on train, applied to val and test.")
-    return train, val, test, scaler
+    applied_to = ", ".join(name for name in splits if name != "train")
+    print(f"  StandardScaler fitted on train, applied to {applied_to}.")
+    return splits, scaler
 
 
 # ---------------------------------------------------------------------------
@@ -339,12 +359,11 @@ def scale_features(
 # ---------------------------------------------------------------------------
 
 def save_artefacts(
-    train: pd.DataFrame,
-    val: pd.DataFrame,
-    test: pd.DataFrame,
+    splits: dict[str, pd.DataFrame],
     target_encoders: dict,
     scaler: StandardScaler,
-    price_index: pd.Series,
+    split_metadata: dict[str, int | None],
+    data_source: str,
 ) -> str:
     run_dir = os.path.join(
         OUTPUT_DIR,
@@ -354,9 +373,12 @@ def save_artefacts(
 
     print(f"\nSaving artefacts to '{run_dir}/' ...")
 
-    for name, split in [("train", train), ("val", val), ("test", test)]:
+    for name in ("train", "val", "test", "future_holdout"):
+        if name not in splits:
+            continue
+        split = splits[name]
         X = split[FEATURE_COLS]
-        y = split[[TARGET_COL, "resale_price", "price_index"]]
+        y = split[[TARGET_COL, "resale_price"]]
 
         X.to_parquet(os.path.join(run_dir, f"X_{name}.parquet"), index=False)
         y.to_parquet(os.path.join(run_dir, f"y_{name}.parquet"), index=False)
@@ -371,22 +393,22 @@ def save_artefacts(
         pickle.dump(scaler, f)
     print("  scaler.pkl")
 
-    with open(os.path.join(run_dir, "price_index.pkl"), "wb") as f:
-        pickle.dump(price_index, f)
-    print(f"  price_index.pkl ({len(price_index)} quarters)")
-
     with open(os.path.join(run_dir, "feature_cols.txt"), "w") as f:
         f.write("\n".join(FEATURE_COLS))
     print("  feature_cols.txt")
 
     manifest = {
         "run_at": datetime.now(UTC).isoformat(),
-        "train_rows": len(train),
-        "val_rows": len(val),
-        "test_rows": len(test),
+        "train_rows": len(splits["train"]),
+        "val_rows": len(splits["val"]),
+        "test_rows": len(splits["test"]),
         "feature_cols": FEATURE_COLS,
         "scale_cols": SCALE_COLS,
         "quantiles": QUANTILES,
+        "split_metadata": split_metadata,
+        "data_source": data_source,
+        "target_transform": "log1p_resale_price",
+        "outlier_strategy": "diagnostic_iqr_bounds_keep_nonzero_prices",
     }
 
     with open(os.path.join(run_dir, "run_manifest.json"), "w") as f:
@@ -406,8 +428,8 @@ def save_artefacts(
 
     latest_path = os.path.join(OUTPUT_DIR, "latest.txt")
     with open(latest_path, "w") as f:
-        f.write(run_dir)
-    print(f"  latest.txt → {run_dir}")
+        f.write(os.path.relpath(run_dir, BASE_DIR))
+    print(f"  latest.txt → {os.path.relpath(run_dir, BASE_DIR)}")
 
     return run_dir
 
@@ -439,18 +461,24 @@ def main() -> None:
     print("HDB Resale — Feature Engineering")
     print("=" * 60)
 
-    df = load_data()
-    df = remove_outliers(df)
-    price_index = compute_price_index(df)
-    df = engineer_features(df, price_index)
+    df, data_source = load_data()
+    df = engineer_features(df)
     df = drop_missing_model_rows(df)
 
-    train, val, test = temporal_split(df)
-    train, val, test, target_encoders = target_encode(train, val, test)
-    train, val, test, scaler = scale_features(train, val, test)
+    splits = stratified_split(df, test_months=3)
+    split_metadata = build_split_metadata(splits)
+    splits["train"] = remove_outliers(splits["train"])
+    splits, target_encoders = target_encode(splits)
+    splits, scaler = scale_features(splits)
 
-    print_summary(train)
-    run_dir = save_artefacts(train, val, test, target_encoders, scaler, price_index)
+    print_summary(splits["train"])
+    run_dir = save_artefacts(
+        splits,
+        target_encoders,
+        scaler,
+        split_metadata,
+        data_source,
+    )
 
     print(f"\nDone. ML-ready data saved to: {run_dir}/")
 

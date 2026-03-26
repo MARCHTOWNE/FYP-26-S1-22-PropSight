@@ -1,0 +1,96 @@
+============================================================
+  HDB Resale — ML Pipeline
+============================================================
+  Started at: 2026-03-26T17:24:12.220275+00:00
+  Project root: /Users/nursyaziah/Documents/Document /SIM-UOW/fyp/hdb_resale
+
+============================================================
+  Step 1/3: Feature engineering
+============================================================
+============================================================
+HDB Resale — Feature Engineering
+============================================================
+Loading training data from supabase ...
+  Source query completed in 16.6s.
+  Loaded 971,877 rows.
+
+Engineering features ...
+  Features added: flat_age, month_sin, month_cos, is_mature_estate, flat_type_ordinal, log_price
+
+Missing-value cleanup: dropped 10,426 rows with missing required model fields. Remaining: 961,451
+
+Stratified split with 3-month rolling holdout (total 961,451 rows):
+  Train (random 90%) :  860,211  (89.5%)
+  Val   (random 10%) :   95,580  (9.9%)
+  Test  (>= 2026-01):    5,660  (0.6%)
+
+Outlier handling: IQR bounds saved for diagnostics only.
+  High-price transactions are retained to preserve premium-market signal.
+  Invalid-price cleanup: dropped 0 rows (0.0%). Remaining: 860,211
+  outlier_bounds.json saved to /Users/nursyaziah/Documents/Document /SIM-UOW/fyp/hdb_resale/ML/model_assets/outlier_bounds.json
+
+Target encoding town and flat_model ...
+  town: 27 categories encoded
+  flat_model: 21 categories encoded
+
+Scaling numeric features ...
+  StandardScaler fitted on train, applied to val, test.
+
+============================================================
+FEATURE ENGINEERING SUMMARY (train set)
+============================================================
+                             mean       std        min        max
+flat_type_ordinal    4.027887e+00  0.943389   1.000000   7.000000
+town_enc             1.256490e+01  0.190769  11.068025  13.104197
+flat_model_enc       1.256490e+01  0.279531  12.191875  13.924722
+floor_area_sqm       2.865263e-16  1.000001  -2.538021  10.563101
+storey_midpoint      4.090401e-17  1.000001  -1.175446   8.644794
+flat_age            -1.540674e-16  1.000001  -1.639236   3.672551
+remaining_lease     -7.898306e-16  1.000001  -3.650766   1.679701
+lease_commence_date -1.012040e-14  1.000001  -2.069721   2.912163
+month_sin            9.779956e-18  1.000001  -1.379548   1.451390
+month_cos            3.277607e-17  1.000001  -1.393217   1.435145
+year                 5.396256e-15  1.000001  -1.733263   1.823227
+is_mature_estate     5.575086e-01  0.496682   0.000000   1.000000
+dist_mrt             1.908413e-16  1.000001  -1.708908  13.490719
+dist_cbd             7.566250e-17  1.000001  -2.621962   2.330859
+dist_primary_school -2.037931e-16  1.000001  -1.668110  18.598850
+dist_major_mall     -1.492104e-16  1.000001  -1.707463   7.743277
+log_price            1.256490e+01  0.612953   8.517393  14.321659
+
+  Null values: 0
+============================================================
+
+Saving artefacts to '/Users/nursyaziah/Documents/Document /SIM-UOW/fyp/hdb_resale/ML/model_assets/20260326_172431/' ...
+  X_train.parquet (860211, 16)   y_train.parquet (860211, 2)
+  X_val.parquet (95580, 16)   y_val.parquet (95580, 2)
+  X_test.parquet (5660, 16)   y_test.parquet (5660, 2)
+  target_encoders.pkl
+  scaler.pkl
+  feature_cols.txt
+  run_manifest.json
+  metrics.json (stub)
+  latest.txt → model_assets/20260326_172431
+
+Done. ML-ready data saved to: /Users/nursyaziah/Documents/Document /SIM-UOW/fyp/hdb_resale/ML/model_assets/20260326_172431/
+
+============================================================
+  Step 2/3: Model training
+============================================================
+======================================================================
+HDB Resale — Model Training
+======================================================================
+  Run directory: /Users/nursyaziah/Documents/Document /SIM-UOW/fyp/hdb_resale/ML/model_assets/20260326_172431
+
+--- LOADING DATA ---
+  X_train: (860211, 16)  X_val: (95580, 16)  X_test: (5660, 16)
+  Tuning config: XGB_TRIALS=25, LGBM_TRIALS=25, TUNING_SAMPLE_SIZE=250,000, XGB_N_ESTIMATORS=2000, LGBM_N_ESTIMATORS=2000, RF_ESTIMATORS=300, FRESH_TUNING=0
+  Tuning subset: 250,000/860,211 rows (29.1%) sampled from train.
+
+--- STEP 1: XGBOOST ---
+
+  Tuning XGBoost with Optuna ...
+  XGBoost: starting a new 25-trial Optuna search.
+  XGBoost: running 25 more trial(s) to reach 25 total.
+  0%|          | 0/25 [00:00<?, ?it/s]Best trial: 0. Best value: 25419.5:   0%|          | 0/25 [00:02<?, ?it/s]Best trial: 0. Best value: 25419.5:   4%|▍         | 1/25 [00:02<00:56,  2.36s/it]Best trial: 1. Best value: 20308.6:   4%|▍         | 1/25 [00:09<00:56,  2.36s/it]Best trial: 1. Best value: 20308.6:   8%|▊         | 2/25 [00:09<01:53,  4.95s/it]Best trial: 1. Best value: 20308.6:   8%|▊         | 2/25 [00:17<01:53,  4.95s/it]Best trial: 1. Best value: 20308.6:  12%|█▏        | 3/25 [00:17<02:21,  6.45s/it]/opt/homebrew/Cellar/python@3.13/3.13.3/Frameworks/Python.framework/Versions/3.13/lib/python3.13/multiprocessing/resource_tracker.py:301: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown: {'/loky-40950-ap7z0kzl'}
+  warnings.warn(

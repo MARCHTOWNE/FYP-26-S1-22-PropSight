@@ -25,6 +25,9 @@ Run:
 """
 
 import logging
+import itertools
+import os
+import re
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -36,18 +39,164 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 
-DB_PATH          = "hdb_resale.db"
+BASE_DIR         = os.path.dirname(os.path.abspath(__file__))
+DB_PATH          = os.environ.get("HDB_SQLITE_PATH", os.path.join(BASE_DIR, "hdb_resale.db"))
 ONEMAP_API_URL   = "https://www.onemap.gov.sg/api/common/elastic/search"
 BATCH_SIZE       = 50     # addresses per batch before flushing cache to DB
 RATE_LIMIT_RPS   = 3      # maximum API calls per second
 MAX_RETRIES      = 5      # retries on HTTP 429
 RETRY_BASE_DELAY = 2.0    # seconds; doubled each retry attempt
+MAX_SEARCH_VARIANTS = 12  # cap derived OneMap query variants per address
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 # Minimum interval between API calls derived from RATE_LIMIT_RPS
 _MIN_CALL_INTERVAL = 1.0 / RATE_LIMIT_RPS
+
+_TOKEN_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "C'WEALTH": ("COMMONWEALTH",),
+    "CWEALTH": ("COMMONWEALTH",),
+    "PK": ("PARK",),
+    "RD": ("ROAD",),
+    "AVE": ("AVENUE",),
+    "CRES": ("CRESCENT",),
+    "CL": ("CLOSE",),
+    "DR": ("DRIVE",),
+    "CTR": ("CENTRE",),
+    "CTRL": ("CENTRAL",),
+    "MKT": ("MARKET",),
+    "GDNS": ("GARDENS",),
+    "UPP": ("UPPER",),
+    "NTH": ("NORTH",),
+    "STH": ("SOUTH",),
+    "BT": ("BUKIT",),
+    "KG": ("KAMPONG",),
+    "JLN": ("JALAN",),
+    "LOR": ("LORONG",),
+}
+_BLOCK_TOKEN_RE = re.compile(r"^\d+[A-Z]?$")
+_TOKEN_RE = re.compile(r"[A-Z0-9]+(?:'[A-Z0-9]+)?")
+
+
+def _normalise_spaces(text: str) -> str:
+    """Collapse repeated whitespace and trim ends."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _split_address(address: str) -> tuple[str, str, str]:
+    """
+    Split an address into block token, street portion, and optional country suffix.
+    """
+    cleaned = _normalise_spaces(address)
+    suffix = ""
+    core = cleaned
+    if cleaned.upper().endswith(" SINGAPORE"):
+        suffix = "SINGAPORE"
+        core = cleaned[:-len(" SINGAPORE")].strip()
+
+    parts = core.split(maxsplit=1)
+    if len(parts) == 2 and _BLOCK_TOKEN_RE.fullmatch(parts[0].upper()):
+        return parts[0].upper(), parts[1], suffix
+    return "", core, suffix
+
+
+def _tokenise_street(street: str) -> list[str]:
+    """Tokenise the street name into uppercase address words."""
+    upper = _normalise_spaces(street).upper().replace(".", " ")
+    return _TOKEN_RE.findall(upper)
+
+
+def _street_token_options(tokens: list[str], idx: int) -> list[str]:
+    """
+    Return ordered token alternatives for dynamic address normalization.
+
+    `ST` is handled contextually:
+      - mid-street token -> prefer SAINT
+      - final token      -> prefer STREET
+    """
+    token = tokens[idx]
+    options: list[str] = []
+
+    if token == "ST":
+        preferred = "SAINT" if idx < len(tokens) - 1 else "STREET"
+        options.extend([preferred, token])
+    else:
+        expanded = _TOKEN_EXPANSIONS.get(token, ())
+        options.extend(expanded)
+        options.append(token)
+
+    if "'" in token:
+        options.append(token.replace("'", ""))
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for option in options:
+        cleaned = _normalise_spaces(option).upper()
+        if not cleaned or cleaned in seen:
+            continue
+        seen.add(cleaned)
+        deduped.append(cleaned)
+    return deduped or [token]
+
+
+def _street_variants(street: str) -> list[str]:
+    """
+    Build a small set of dynamic street-name variants from token expansions.
+    """
+    tokens = _tokenise_street(street)
+    if not tokens:
+        return []
+
+    option_lists = [_street_token_options(tokens, idx) for idx in range(len(tokens))]
+    variants: list[str] = []
+    seen: set[str] = set()
+
+    for combo in itertools.product(*option_lists):
+        variant = " ".join(combo)
+        if variant in seen:
+            continue
+        seen.add(variant)
+        variants.append(variant)
+        if len(variants) >= MAX_SEARCH_VARIANTS:
+            break
+
+    return variants
+
+
+def _build_search_candidates(address: str) -> list[str]:
+    """
+    Generate dynamic OneMap query variants from the address tokens.
+
+    This avoids maintaining a manual per-address fix list and instead
+    derives cleaner search strings by expanding known abbreviations and
+    punctuation patterns generically.
+    """
+    raw = _normalise_spaces(address)
+    raw_upper = raw.upper()
+    block, street, suffix = _split_address(raw)
+
+    candidates = [raw, raw_upper]
+
+    for street_variant in _street_variants(street):
+        full = " ".join(part for part in [block, street_variant, suffix] if part)
+        no_country = " ".join(part for part in [block, street_variant] if part)
+        candidates.extend([full, no_country])
+        if "'" in full:
+            candidates.extend([full.replace("'", ""), no_country.replace("'", "")])
+
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        cleaned = _normalise_spaces(candidate)
+        if not cleaned:
+            continue
+        key = cleaned.upper()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(cleaned)
+    return deduped
 
 
 # ---------------------------------------------------------------------------
@@ -72,58 +221,71 @@ def geocode_address(
         (latitude, longitude) tuple on success, or None if the address
         could not be resolved (no results or API error).
     """
-    params: dict[str, Any] = {
-        "searchVal":      address,
-        "returnGeom":     "Y",
-        "getAddrDetails": "N",
-        "pageNum":        1,
-    }
+    candidates = _build_search_candidates(address)
 
-    # Enforce rate limit before each call
-    time.sleep(_MIN_CALL_INTERVAL)
+    for candidate in candidates:
+        params: dict[str, Any] = {
+            "searchVal":      candidate,
+            "returnGeom":     "Y",
+            "getAddrDetails": "N",
+            "pageNum":        1,
+        }
 
-    for attempt in range(MAX_RETRIES):
-        try:
-            resp = session.get(ONEMAP_API_URL, params=params, timeout=30)
-            if resp.status_code == 429:
-                wait = RETRY_BASE_DELAY * (2 ** attempt)
+        # Enforce rate limit before each call
+        time.sleep(_MIN_CALL_INTERVAL)
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                resp = session.get(ONEMAP_API_URL, params=params, timeout=30)
+                if resp.status_code == 429:
+                    wait = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Rate limited (429) for address '%s'. "
+                        "Waiting %.1fs ... (retry %d/%d)",
+                        candidate, wait, attempt + 1, MAX_RETRIES,
+                    )
+                    time.sleep(wait)
+                    continue
+                resp.raise_for_status()
+            except requests.RequestException as exc:
+                if attempt < MAX_RETRIES - 1:
+                    wait = RETRY_BASE_DELAY * (2 ** attempt)
+                    logger.warning(
+                        "Request error for address '%s': %s. Retrying in %.1fs ...",
+                        candidate, exc, wait,
+                    )
+                    time.sleep(wait)
+                    continue
                 logger.warning(
-                    "Rate limited (429) for address '%s'. "
-                    "Waiting %.1fs ... (retry %d/%d)",
-                    address, wait, attempt + 1, MAX_RETRIES,
+                    "All retries exhausted for address '%s': %s", candidate, exc
                 )
-                time.sleep(wait)
-                continue
-            resp.raise_for_status()
-        except requests.RequestException as exc:
-            if attempt < MAX_RETRIES - 1:
-                wait = RETRY_BASE_DELAY * (2 ** attempt)
+                break
+
+            data = resp.json()
+            results = data.get("results", [])
+            if not results:
+                break
+
+            try:
+                lat = float(results[0]["LATITUDE"])
+                lng = float(results[0]["LONGITUDE"])
+                if candidate != address:
+                    logger.info(
+                        "Resolved '%s' using normalised query '%s'",
+                        address, candidate,
+                    )
+                return (lat, lng)
+            except (KeyError, ValueError, IndexError) as exc:
                 logger.warning(
-                    "Request error for address '%s': %s. Retrying in %.1fs ...",
-                    address, exc, wait,
+                    "Could not parse coordinates for address '%s': %s", candidate, exc
                 )
-                time.sleep(wait)
-                continue
-            logger.warning("All retries exhausted for address '%s': %s", address, exc)
-            return None
+                break
 
-        data = resp.json()
-        results = data.get("results", [])
-        if not results:
-            logger.warning("No results from OneMap for address: '%s'", address)
-            return None
-
-        try:
-            lat = float(results[0]["LATITUDE"])
-            lng = float(results[0]["LONGITUDE"])
-            return (lat, lng)
-        except (KeyError, ValueError, IndexError) as exc:
-            logger.warning(
-                "Could not parse coordinates for address '%s': %s", address, exc
-            )
-            return None
-
-    logger.warning("All retries exhausted for address '%s'", address)
+    logger.warning(
+        "No results from OneMap for address: '%s' (tried %d variants)",
+        address,
+        len(candidates),
+    )
     return None
 
 

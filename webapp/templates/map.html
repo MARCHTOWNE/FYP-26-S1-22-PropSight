@@ -536,17 +536,11 @@
                                 </select>
                             </div>
                             <div class="map-control-group">
-                                <label for="heatStorey">Storey</label>
+                                <label for="heatStorey">Floor</label>
                                 <select id="heatStorey" class="form-select form-select-sm map-select">
-                                    <option value="01 TO 03">01-03</option>
-                                    <option value="04 TO 06">04-06</option>
-                                    <option value="07 TO 09" selected>07-09</option>
-                                    <option value="10 TO 12">10-12</option>
-                                    <option value="13 TO 15">13-15</option>
-                                    <option value="16 TO 18">16-18</option>
-                                    <option value="19 TO 21">19-21</option>
-                                    <option value="22 TO 24">22-24</option>
-                                    <option value="25 TO 27">25-27</option>
+                                    {% for f in range(1, 28) %}
+                                    <option value="{{ f }}" {% if f == 8 %}selected{% endif %}>{{ f }}</option>
+                                    {% endfor %}
                                 </select>
                             </div>
                         </div>
@@ -896,7 +890,7 @@ async function loadHeatmap() {
 
         updateLegend('heatmap', minP, maxP);
         updateStats(data, 'heatmap');
-        setInsight(`Showing predicted prices for a typical ${flatType} (storey ${storey.replace(' TO ', '-')}) in each town. Blue = lower, Red = higher. Click to drill down.`);
+        setInsight(`Showing predicted prices for a typical ${flatType} (floor ${storey}) in each town. Blue = lower, Red = higher. Click to drill down.`);
     } catch (e) {
         setInsight(e && e.message ? e.message : 'Failed to load predictions. Please try again.');
     } finally {

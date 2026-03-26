@@ -1,0 +1,448 @@
+"""
+pipeline_orchestration.py
+=========================
+Shared orchestration helpers for the HDB resale batch pipelines.
+
+This module keeps the step logic in one place so the project can expose
+focused entry scripts without duplicating pipeline code:
+  - scripts/run_data_preprocessing.py
+  - scripts/run_ml_pipeline.py
+  - scripts/sync_to_supabase.py
+  - scripts/retrain_and_deploy.py
+"""
+
+from __future__ import annotations
+
+import importlib
+import json
+import os
+import shutil
+import sqlite3
+import sys
+import time
+import traceback
+from collections.abc import Callable
+from datetime import datetime, timezone
+
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+DATA_PREPROCESSING_DIR = os.path.join(PROJECT_ROOT, "Data Preprocessing")
+ML_DIR = os.path.join(PROJECT_ROOT, "ML")
+DATABASE_DIR = os.path.join(PROJECT_ROOT, "Database")
+MODEL_ASSETS_DIR = os.environ.get("MODEL_ASSETS_DIR", os.path.join(ML_DIR, "model_assets"))
+WEBAPP_MODEL_DIR = os.environ.get(
+    "WEBAPP_MODEL_DIR",
+    os.path.join(PROJECT_ROOT, "webapp", "model_assets"),
+)
+LOCAL_DB_PATH = os.environ.get(
+    "HDB_SQLITE_PATH",
+    os.path.join(DATA_PREPROCESSING_DIR, "hdb_resale.db"),
+)
+
+
+def step_banner(step_num: int, total: int, description: str) -> None:
+    print(f"\n{'=' * 60}")
+    print(f"  Step {step_num}/{total}: {description}")
+    print(f"{'=' * 60}")
+
+
+def _project_banner(title: str) -> None:
+    print("=" * 60)
+    print(f"  {title}")
+    print("=" * 60)
+    print(f"  Started at: {datetime.now(timezone.utc).isoformat()}")
+    print(f"  Project root: {PROJECT_ROOT}")
+
+
+def _ensure_import_path(path: str) -> None:
+    if path not in sys.path:
+        sys.path.insert(0, path)
+
+
+def _run_module_main(module_dir: str, module_name: str) -> None:
+    os.chdir(module_dir)
+    _ensure_import_path(module_dir)
+    importlib.invalidate_caches()
+    module = importlib.import_module(module_name)
+    if not hasattr(module, "main"):
+        raise AttributeError(f"Module '{module_name}' has no main() function.")
+    module.main()
+
+
+def run_api_fetcher() -> None:
+    _run_module_main(DATA_PREPROCESSING_DIR, "api_fetcher")
+
+
+def run_data_pipeline() -> None:
+    _run_module_main(DATA_PREPROCESSING_DIR, "data_pipeline")
+
+
+def run_geocoding() -> None:
+    os.chdir(DATA_PREPROCESSING_DIR)
+    _ensure_import_path(DATA_PREPROCESSING_DIR)
+
+    conn = sqlite3.connect(LOCAL_DB_PATH)
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM resale_prices WHERE latitude IS NULL"
+    ).fetchone()[0]
+    conn.close()
+
+    if pending == 0:
+        print("  All rows already geocoded — skipping.")
+        return
+
+    print(f"  {pending:,} rows pending geocoding.")
+    import geocoding
+
+    geocoding.main()
+
+
+def run_proximity_features() -> None:
+    os.chdir(DATA_PREPROCESSING_DIR)
+    _ensure_import_path(DATA_PREPROCESSING_DIR)
+
+    conn = sqlite3.connect(LOCAL_DB_PATH)
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM resale_prices "
+        "WHERE latitude IS NOT NULL AND dist_mrt IS NULL"
+    ).fetchone()[0]
+    conn.close()
+
+    if pending == 0:
+        print("  All geocoded rows already have proximity features — skipping.")
+        return
+
+    print(f"  {pending:,} rows pending proximity features.")
+    import proximity_features
+
+    proximity_features.main()
+
+
+def run_feature_engineering() -> None:
+    _run_module_main(ML_DIR, "feature_engineering")
+
+
+def run_model_training() -> None:
+    _run_module_main(ML_DIR, "model_training")
+
+
+def _load_project_env() -> str:
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        print("  ERROR: python-dotenv not installed. Skipping Supabase sync.")
+        return ""
+
+    load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    return os.environ.get("SUPABASE_DB_URL", "")
+
+
+def run_supabase_data_sync() -> None:
+    supabase_db_url = _load_project_env()
+    if not supabase_db_url:
+        print("  WARNING: SUPABASE_DB_URL not set in .env — skipping Supabase data sync.")
+        return
+
+    try:
+        import psycopg2  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError(
+            "psycopg2 is required to sync processed data to Supabase."
+        ) from exc
+
+    os.chdir(DATABASE_DIR)
+    _ensure_import_path(DATABASE_DIR)
+
+    import migrate_to_supabase
+
+    migrate_to_supabase.migrate()
+
+
+def run_supabase_model_version_sync(
+    trigger_label: str = "scripts/sync_to_supabase.py",
+) -> None:
+    supabase_db_url = _load_project_env()
+    if not supabase_db_url:
+        print("  WARNING: SUPABASE_DB_URL not set in .env — skipping model_versions update.")
+        return
+
+    try:
+        import psycopg2
+    except ImportError:
+        print("  ERROR: psycopg2 not installed. Skipping model_versions update.")
+        return
+
+    run_dir = get_latest_run_dir()
+    if run_dir is None:
+        print("  Could not find latest run directory — skipping model_versions update.")
+        return
+
+    metrics_path = os.path.join(run_dir, "metrics.json")
+    if not os.path.exists(metrics_path):
+        print(f"  No metrics.json in {run_dir} — skipping model_versions update.")
+        return
+
+    with open(metrics_path) as f:
+        metrics = json.load(f)
+
+    winner = metrics.get("winner", {})
+    winner_name = winner.get("winner", "unknown")
+    test_mape = winner.get("test_mape")
+    test_rmse = winner.get("test_rmse")
+    test_r2 = winner.get("test_r2")
+
+    pg_conn = psycopg2.connect(supabase_db_url)
+    pg_cur = pg_conn.cursor()
+
+    pg_cur.execute("UPDATE model_versions SET is_active = FALSE WHERE is_active = TRUE")
+    pg_cur.execute(
+        """
+        INSERT INTO model_versions (version, run_dir, test_mape, test_rmse, test_r2, notes, is_active)
+        VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+        """,
+        (
+            winner_name,
+            os.path.basename(run_dir),
+            test_mape,
+            test_rmse,
+            test_r2,
+            f"Deployed via {trigger_label} at {datetime.now(timezone.utc).isoformat()}",
+        ),
+    )
+    pg_conn.commit()
+    pg_cur.close()
+    pg_conn.close()
+    print(f"  model_versions updated: {winner_name} (active)")
+
+
+def run_copy_artefacts() -> None:
+    run_dir = get_latest_run_dir()
+    if run_dir is None:
+        raise RuntimeError("Could not find latest ML run directory.")
+
+    os.makedirs(WEBAPP_MODEL_DIR, exist_ok=True)
+
+    dest_run_dir = os.path.join(WEBAPP_MODEL_DIR, os.path.basename(run_dir))
+    if os.path.exists(dest_run_dir):
+        shutil.rmtree(dest_run_dir)
+    shutil.copytree(run_dir, dest_run_dir)
+    print(f"  Copied {run_dir} → {dest_run_dir}")
+
+    latest_target = os.path.basename(dest_run_dir)
+    latest_path = os.path.join(WEBAPP_MODEL_DIR, "latest.txt")
+    with open(latest_path, "w") as f:
+        f.write(latest_target)
+    print(f"  Updated {latest_path} → {latest_target}")
+
+    copied_files: list[str] = []
+    for _, _, files in os.walk(dest_run_dir):
+        copied_files.extend(files)
+    print(f"  {len(copied_files)} files copied: {', '.join(sorted(copied_files))}")
+
+
+def get_latest_run_dir() -> str | None:
+    latest_path = os.path.join(MODEL_ASSETS_DIR, "latest.txt")
+    if not os.path.exists(latest_path):
+        return None
+
+    with open(latest_path) as f:
+        run_dir = f.read().strip()
+
+    if not os.path.isabs(run_dir):
+        run_dir = os.path.join(ML_DIR, run_dir)
+    if not os.path.isdir(run_dir):
+        return None
+    return run_dir
+
+
+def _get_db_counts() -> dict[str, int] | None:
+    if not os.path.exists(LOCAL_DB_PATH):
+        return None
+
+    conn = sqlite3.connect(LOCAL_DB_PATH)
+    counts = {
+        "total_rows": conn.execute(
+            "SELECT COUNT(*) FROM resale_prices"
+        ).fetchone()[0],
+        "geocoded_rows": conn.execute(
+            "SELECT COUNT(*) FROM resale_prices WHERE latitude IS NOT NULL"
+        ).fetchone()[0],
+        "proximity_rows": conn.execute(
+            "SELECT COUNT(*) FROM resale_prices "
+            "WHERE dist_mrt IS NOT NULL AND dist_cbd IS NOT NULL "
+            "AND dist_primary_school IS NOT NULL AND dist_major_mall IS NOT NULL"
+        ).fetchone()[0],
+    }
+    conn.close()
+    return counts
+
+
+def print_data_preprocessing_summary() -> None:
+    print("\n" + "=" * 60)
+    print("  DATA PREPROCESSING SUMMARY")
+    print("=" * 60)
+
+    counts = _get_db_counts()
+    if counts is None:
+        print("  Local SQLite DB not found.")
+    else:
+        print(f"  Total rows in DB:      {counts['total_rows']:,}")
+        print(f"  Geocoded rows:         {counts['geocoded_rows']:,}")
+        print(f"  Rows with proximity:   {counts['proximity_rows']:,}")
+
+    print(f"\n  Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 60)
+
+
+def print_ml_summary() -> None:
+    print("\n" + "=" * 60)
+    print("  ML PIPELINE SUMMARY")
+    print("=" * 60)
+
+    run_dir = get_latest_run_dir()
+    if run_dir is None:
+        print("  No latest ML run directory found.")
+    else:
+        print(f"  Run directory: {os.path.basename(run_dir)}")
+        metrics_path = os.path.join(run_dir, "metrics.json")
+        if os.path.exists(metrics_path):
+            with open(metrics_path) as f:
+                metrics = json.load(f)
+            winner = metrics.get("winner", {})
+            print(f"  Model winner: {winner.get('winner', 'N/A')}")
+            print(f"  Val RMSE:     {winner.get('val_rmse', 'N/A')}")
+            print(f"  Test RMSE:    {winner.get('test_rmse', 'N/A')}")
+            print(f"  Test R²:      {winner.get('test_r2', 'N/A')}")
+            print(f"  Test MAPE:    {winner.get('test_mape', 'N/A')}%")
+
+    print(f"\n  Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 60)
+
+
+def print_deploy_summary() -> None:
+    print("\n" + "=" * 60)
+    print("  SUPABASE DEPLOY SUMMARY")
+    print("=" * 60)
+
+    counts = _get_db_counts()
+    if counts is not None:
+        print(f"  Local DB rows available for deploy: {counts['total_rows']:,}")
+
+    run_dir = get_latest_run_dir()
+    if run_dir is not None:
+        print(f"  Latest ML run: {os.path.basename(run_dir)}")
+
+    print(f"\n  Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 60)
+
+
+def print_full_summary() -> None:
+    print("\n" + "=" * 60)
+    print("  RETRAIN & DEPLOY SUMMARY")
+    print("=" * 60)
+
+    counts = _get_db_counts()
+    if counts is not None:
+        print(f"  Total rows in DB: {counts['total_rows']:,}")
+
+    run_dir = get_latest_run_dir()
+    if run_dir is not None:
+        print(f"  Run directory: {os.path.basename(run_dir)}")
+        metrics_path = os.path.join(run_dir, "metrics.json")
+        if os.path.exists(metrics_path):
+            with open(metrics_path) as f:
+                metrics = json.load(f)
+            winner = metrics.get("winner", {})
+            print(f"  Model winner: {winner.get('winner', 'N/A')}")
+            print(f"  Test RMSE:    {winner.get('test_rmse', 'N/A')}")
+            print(f"  Test R²:      {winner.get('test_r2', 'N/A')}")
+            print(f"  Test MAPE:    {winner.get('test_mape', 'N/A')}%")
+
+    print(f"\n  Timestamp: {datetime.now(timezone.utc).isoformat()}")
+    print("=" * 60)
+
+
+PREPROCESSING_STEPS = [
+    ("Fetch latest data from HDB API", run_api_fetcher),
+    ("Data cleaning & preprocessing", run_data_pipeline),
+    ("Geocoding addresses", run_geocoding),
+    ("Computing proximity features", run_proximity_features),
+    ("Syncing processed data to Supabase", run_supabase_data_sync),
+]
+
+ML_STEPS = [
+    ("Feature engineering", run_feature_engineering),
+    ("Model training", run_model_training),
+    ("Copying model artefacts to webapp/model_assets/", run_copy_artefacts),
+]
+
+
+def run_pipeline(
+    title: str,
+    steps: list[tuple[str, Callable[[], None]]],
+    summary_callback: Callable[[], None] | None = None,
+) -> int:
+    _project_banner(title)
+    t_start = time.time()
+
+    try:
+        total_steps = len(steps)
+        for idx, (description, func) in enumerate(steps, start=1):
+            step_banner(idx, total_steps, description)
+            func()
+    except Exception as exc:
+        print(f"\n  FATAL ERROR: {exc}")
+        traceback.print_exc()
+        return 1
+
+    elapsed = time.time() - t_start
+    print(f"\n  Total elapsed time: {elapsed:.1f}s ({elapsed / 60:.1f} min)")
+
+    if summary_callback is not None:
+        summary_callback()
+    return 0
+
+
+def run_data_preprocessing_pipeline() -> int:
+    return run_pipeline(
+        "HDB Resale — Data Preprocessing Pipeline",
+        PREPROCESSING_STEPS,
+        print_data_preprocessing_summary,
+    )
+
+
+def run_ml_pipeline() -> int:
+    return run_pipeline(
+        "HDB Resale — ML Pipeline",
+        ML_STEPS,
+        print_ml_summary,
+    )
+
+
+def run_supabase_sync_pipeline() -> int:
+    return run_pipeline(
+        "HDB Resale — Supabase Sync",
+        [
+            ("Syncing processed data to Supabase", run_supabase_data_sync),
+            (
+                "Updating deployed model version in Supabase",
+                lambda: run_supabase_model_version_sync("scripts/sync_to_supabase.py"),
+            ),
+        ],
+        print_deploy_summary,
+    )
+
+
+def run_full_pipeline() -> int:
+    full_steps = list(PREPROCESSING_STEPS) + list(ML_STEPS) + [
+        (
+            "Updating deployed model version in Supabase",
+            lambda: run_supabase_model_version_sync("scripts/retrain_and_deploy.py"),
+        ),
+    ]
+    return run_pipeline(
+        "HDB Resale — Retrain & Deploy Pipeline",
+        full_steps,
+        print_full_summary,
+    )

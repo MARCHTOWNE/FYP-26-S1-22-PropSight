@@ -36,7 +36,7 @@ from flask import (
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY", "hdb-resale-dev-key-change-in-prod")
+app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
@@ -93,6 +93,13 @@ FLAT_TYPE_ORDINAL = {
     "5 Room": 5, "Executive": 6, "Multi-Generation": 7,
 }
 
+MODEL_LABELS = {
+    "xgboost": "XGBoost",
+    "lgbm": "LightGBM",
+    "rf": "Random Forest",
+    "ensemble": "Ensemble",
+}
+
 SCALE_COLS = [
     "floor_area_sqm", "storey_midpoint", "flat_age", "remaining_lease",
     "lease_commence_date", "month_sin", "month_cos", "year",
@@ -107,12 +114,185 @@ FEATURE_COLS = [
     "dist_primary_school", "dist_major_mall",
 ]
 
-STOREY_RANGES = [
-    "01 TO 03", "04 TO 06", "07 TO 09", "10 TO 12",
-    "13 TO 15", "16 TO 18", "19 TO 21", "22 TO 24",
-    "25 TO 27", "28 TO 30", "31 TO 33", "34 TO 36",
-    "37 TO 39", "40 TO 42", "43 TO 45", "46 TO 48", "49 TO 51",
-]
+STOREY_RANGES = [str(i) for i in range(1, 52)]
+
+HDB_FIRST_YEAR = 1960
+HDB_DATASET_START_YEAR = 1990
+DEFAULT_FLOOR_AREA = 90
+
+
+def _storey_midpoint(storey_range):
+    """Parse storey value: individual floor number or 'XX TO YY' range."""
+    if " TO " in str(storey_range):
+        parts = storey_range.split(" TO ")
+        return (int(parts[0]) + int(parts[1])) / 2
+    return float(storey_range)
+
+
+def _current_year():
+    return datetime.now().year
+
+
+def _default_lease_year_range():
+    max_year = _current_year()
+    avg_year = max(HDB_FIRST_YEAR, min(max_year, max_year - 35))
+    return {
+        "min_year": HDB_FIRST_YEAR,
+        "max_year": max_year,
+        "avg_year": avg_year,
+    }
+
+
+def _format_model_label(model_key):
+    return MODEL_LABELS.get(model_key, str(model_key).replace("_", " ").title())
+
+
+def _safe_metric(value):
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _year_window_label(start_year, end_year):
+    if start_year is None and end_year is None:
+        return None
+    if start_year == end_year:
+        return str(start_year)
+    if start_year is None:
+        return f"<= {end_year}"
+    if end_year is None:
+        return f">= {start_year}"
+    return f"{start_year}-{end_year}"
+
+
+def _manifest_split_window(manifest, split_name):
+    split_metadata = manifest.get("split_metadata", {}) or {}
+    start_year = split_metadata.get(f"{split_name}_min_year")
+    end_year = split_metadata.get(f"{split_name}_max_year")
+
+    if start_year is None and end_year is None:
+        split_years = manifest.get("split_years", {}) or {}
+        start_year = split_years.get(f"{split_name}_start_year")
+        end_year = split_years.get(f"{split_name}_end_year")
+
+    return _year_window_label(start_year, end_year)
+
+
+def _build_model_performance(metrics, manifest, serving_model_key):
+    winner = metrics.get("winner", {}) or {}
+    model_results = metrics.get("model_results", {}) or {}
+    serving_results = model_results.get(serving_model_key, {}) or {}
+    test_metrics = serving_results.get("test", {}) or {}
+    future_metrics = serving_results.get("future_holdout", {}) or {}
+
+    test_mape = _safe_metric(test_metrics.get("mape"))
+    if test_mape is None and winner.get("winner") == serving_model_key:
+        test_mape = _safe_metric(winner.get("test_mape"))
+
+    test_rmse = _safe_metric(test_metrics.get("rmse"))
+    if test_rmse is None and winner.get("winner") == serving_model_key:
+        test_rmse = _safe_metric(winner.get("test_rmse"))
+
+    test_r2 = _safe_metric(test_metrics.get("r2"))
+    if test_r2 is None and winner.get("winner") == serving_model_key:
+        test_r2 = _safe_metric(winner.get("test_r2"))
+
+    future_mape = _safe_metric(future_metrics.get("mape"))
+    future_rmse = _safe_metric(future_metrics.get("rmse"))
+    future_r2 = _safe_metric(future_metrics.get("r2"))
+
+    return {
+        "key": serving_model_key,
+        "label": _format_model_label(serving_model_key),
+        "is_winner": winner.get("winner") == serving_model_key,
+        "selection_metric": winner.get("selection_metric"),
+        "test_mape": test_mape,
+        "test_mape_display": round(test_mape, 1) if test_mape is not None else None,
+        "test_rmse": test_rmse,
+        "test_rmse_display": f"{round(test_rmse):,}" if test_rmse is not None else None,
+        "test_r2": test_r2,
+        "test_r2_display": f"{test_r2:.3f}" if test_r2 is not None else None,
+        "future_holdout_mape": future_mape,
+        "future_holdout_mape_display": round(future_mape, 1) if future_mape is not None else None,
+        "future_holdout_rmse": future_rmse,
+        "future_holdout_rmse_display": (
+            f"{round(future_rmse):,}" if future_rmse is not None else None
+        ),
+        "future_holdout_r2": future_r2,
+        "future_holdout_r2_display": (
+            f"{future_r2:.3f}" if future_r2 is not None else None
+        ),
+        "val_window": _manifest_split_window(manifest, "val"),
+        "test_window": _manifest_split_window(manifest, "test"),
+        "future_holdout_window": _manifest_split_window(manifest, "future_holdout"),
+    }
+
+
+def _resolve_serving_model_key(run_dir, metrics):
+    preferred = (metrics.get("winner", {}) or {}).get("winner")
+    candidates = []
+    if preferred:
+        candidates.append(preferred)
+    # Prefer the declared winner, then fall back to ensemble or base models.
+    candidates.extend(["ensemble", "xgboost", "lgbm", "rf"])
+
+    seen = set()
+    for model_key in candidates:
+        if model_key in seen:
+            continue
+        seen.add(model_key)
+        model_path = os.path.join(run_dir, f"{model_key}_model.pkl")
+        if os.path.exists(model_path):
+            return model_key, model_path
+
+    raise FileNotFoundError(
+        f"No supported serving model artefact found in {run_dir}"
+    )
+
+
+def _data_year_bounds():
+    manifest = (globals().get("ARTEFACTS") or {}).get("manifest", {}) or {}
+    split_metadata = manifest.get("split_metadata", {}) or {}
+
+    years = []
+    for key, value in split_metadata.items():
+        if key.endswith("_min_year") or key.endswith("_max_year"):
+            try:
+                years.append(int(value))
+            except (TypeError, ValueError):
+                continue
+
+    if not years:
+        split_years = manifest.get("split_years", {}) or {}
+        for key, value in split_years.items():
+            if key.endswith("_start_year") or key.endswith("_end_year"):
+                try:
+                    years.append(int(value))
+                except (TypeError, ValueError):
+                    continue
+
+    if years:
+        return min(years), max(years)
+
+    return HDB_DATASET_START_YEAR, _current_year()
+
+
+@app.context_processor
+def inject_runtime_template_globals():
+    lease_year_range = _default_lease_year_range()
+    data_year_start, data_year_end = _data_year_bounds()
+    return {
+        "current_year": _current_year(),
+        "lease_year_min": lease_year_range["min_year"],
+        "lease_year_max": lease_year_range["max_year"],
+        "default_lease_year": lease_year_range["avg_year"],
+        "data_year_start": data_year_start,
+        "data_year_end": data_year_end,
+        "active_model_performance": ARTEFACTS.get("performance"),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -160,20 +340,64 @@ def _load_artefacts():
     run_dir = _resolve_run_dir()
     artefacts = {}
 
-    with open(os.path.join(run_dir, "xgboost_model.pkl"), "rb") as f:
-        artefacts["model"] = pickle.load(f)
-
     with open(os.path.join(run_dir, "scaler.pkl"), "rb") as f:
         artefacts["scaler"] = pickle.load(f)
 
     with open(os.path.join(run_dir, "target_encoders.pkl"), "rb") as f:
         artefacts["encoders"] = pickle.load(f)
 
-    with open(os.path.join(run_dir, "price_index.pkl"), "rb") as f:
-        artefacts["price_index"] = pickle.load(f)
-
     with open(os.path.join(run_dir, "metrics.json")) as f:
         artefacts["metrics"] = json.load(f)
+
+    manifest_path = os.path.join(run_dir, "run_manifest.json")
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            artefacts["manifest"] = json.load(f)
+    else:
+        artefacts["manifest"] = {}
+
+    serving_model_key, serving_model_path = _resolve_serving_model_key(
+        run_dir,
+        artefacts["metrics"],
+    )
+
+    if serving_model_key == "ensemble":
+        # Load ensemble: meta-learner + all base models
+        with open(serving_model_path, "rb") as f:
+            ensemble_data = pickle.load(f)
+        artefacts["meta_model"] = ensemble_data["meta_model"]
+        base_models = {}
+        for base_name in artefacts["meta_model"].base_learner_order_:
+            base_path = os.path.join(run_dir, f"{base_name}_model.pkl")
+            with open(base_path, "rb") as f:
+                base_models[base_name] = pickle.load(f)
+        artefacts["base_models"] = base_models
+        artefacts["model"] = None  # ensemble uses base_models + meta_model
+    else:
+        with open(serving_model_path, "rb") as f:
+            artefacts["model"] = pickle.load(f)
+        artefacts["base_models"] = None
+        artefacts["meta_model"] = None
+
+    artefacts["model_key"] = serving_model_key
+    artefacts["model_label"] = _format_model_label(serving_model_key)
+
+    price_index_path = os.path.join(run_dir, "price_index.pkl")
+    if os.path.exists(price_index_path):
+        with open(price_index_path, "rb") as f:
+            artefacts["price_index"] = pickle.load(f)
+    else:
+        artefacts["price_index"] = None
+
+    artefacts["target_transform"] = artefacts["manifest"].get(
+        "target_transform",
+        "rpi_adjusted_log_price" if artefacts["price_index"] is not None else "log1p_resale_price",
+    )
+    artefacts["performance"] = _build_model_performance(
+        artefacts["metrics"],
+        artefacts["manifest"],
+        serving_model_key,
+    )
 
     return artefacts
 
@@ -698,13 +922,14 @@ def _push_comparison_saved_prediction_id(prediction_id):
 
 
 def _default_prediction_form_data():
+    default_lease_year = _default_lease_year_range()["avg_year"]
     return {
         "town": "",
         "flat_type": next(iter(FLAT_TYPE_ORDINAL.keys()), ""),
         "flat_model": FLAT_MODELS[0] if FLAT_MODELS else "",
-        "floor_area": 90,
+        "floor_area": DEFAULT_FLOOR_AREA,
         "storey_range": STOREY_RANGES[0] if STOREY_RANGES else "",
-        "lease_commence": 1990,
+        "lease_commence": default_lease_year,
         "street_name": "",
         "block": "",
     }
@@ -795,8 +1020,7 @@ def _run_prediction_form(form_data):
 
     flat_age = datetime.now().year - resolved_form["lease_commence"]
     remaining_lease = max(0, 99 - flat_age)
-    storey_parts = resolved_form["storey_range"].split(" TO ")
-    storey_mid = (int(storey_parts[0]) + int(storey_parts[1])) / 2
+    storey_mid = _storey_midpoint(resolved_form["storey_range"])
     price_per_sqm = round(result["predicted_price"] / resolved_form["floor_area"], 2) if resolved_form["floor_area"] else 0
 
     payload = {
@@ -934,6 +1158,7 @@ def _get_available_models_data(town, flat_type):
 
 @lru_cache(maxsize=128)
 def _get_available_storey_ranges_data(town, flat_type):
+    """Returns individual floor numbers derived from DB storey ranges."""
     town = town or ""
     flat_type = flat_type or ""
 
@@ -942,7 +1167,16 @@ def _get_available_storey_ranges_data(town, flat_type):
             "p_town": town or None,
             "p_flat_type": flat_type or None,
         }) or []
-        return [r["storey_range"] for r in rows]
+        floors = set()
+        for r in rows:
+            sr = r["storey_range"]
+            if " TO " in sr:
+                parts = sr.split(" TO ")
+                for f in range(int(parts[0]), int(parts[1]) + 1):
+                    floors.add(f)
+            else:
+                floors.add(int(sr))
+        return [str(f) for f in sorted(floors)]
     except SupabaseError:
         return []
 
@@ -964,7 +1198,7 @@ def _get_floor_area_stats_data(town, flat_type):
     except SupabaseError:
         pass
 
-    return {"min_area": 30, "max_area": 300, "avg_area": 90}
+    return {"min_area": 30, "max_area": 300, "avg_area": DEFAULT_FLOOR_AREA}
 
 
 @lru_cache(maxsize=64)
@@ -982,7 +1216,7 @@ def _get_lease_year_range_data(town):
     except SupabaseError:
         pass
 
-    return {"min_year": 1960, "max_year": 2024, "avg_year": 1990}
+    return _default_lease_year_range()
 
 
 TOWNS = _get_towns()
@@ -1111,7 +1345,8 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     model = ARTEFACTS["model"]
     scaler = ARTEFACTS["scaler"]
     encoders = ARTEFACTS["encoders"]
-    price_index = ARTEFACTS["price_index"]
+    price_index = ARTEFACTS.get("price_index")
+    target_transform = ARTEFACTS.get("target_transform", "log1p_resale_price")
 
     now = datetime.now()
     year = override_year if override_year is not None else now.year
@@ -1135,8 +1370,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     )
 
     # Storey midpoint
-    parts = storey_range.split(" TO ")
-    storey_mid = (int(parts[0]) + int(parts[1])) / 2
+    storey_mid = _storey_midpoint(storey_range)
 
     # Distances (use block-level if provided, else town averages)
     if override_distances:
@@ -1177,19 +1411,35 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     df[SCALE_COLS] = scaler.transform(df[SCALE_COLS])
 
     # Predict (log1p scale)
-    pred_log = model.predict(df[FEATURE_COLS])[0]
+    if ARTEFACTS["model_key"] == "ensemble":
+        # Ensemble: stack base learner predictions, pass through meta-learner
+        base_models = ARTEFACTS["base_models"]
+        meta_model = ARTEFACTS["meta_model"]
+        meta_features = np.column_stack([
+            base_models[name].predict(df[FEATURE_COLS])
+            for name in meta_model.base_learner_order_
+        ])
+        pred_log = meta_model.predict(meta_features)[0]
+    else:
+        pred_log = model.predict(df[FEATURE_COLS])[0]
 
-    # Get latest price index
-    quarter_key = year * 10 + ((month_num - 1) // 3 + 1)
-    pi = price_index.get(quarter_key)
-    if pi is None:
-        # Fallback to most recent available
-        pi = price_index.iloc[-1]
+    if target_transform == "rpi_adjusted_log_price" and price_index is not None:
+        quarter_key = year * 10 + ((month_num - 1) // 3 + 1)
+        pi = price_index.get(quarter_key)
+        if pi is None:
+            # Fallback to chronologically latest quarter
+            pi = price_index.loc[price_index.index.max()]
+        predicted_price = float(np.expm1(pred_log) * pi)
+    else:
+        predicted_price = float(np.expm1(pred_log))
 
-    predicted_price = float(np.expm1(pred_log) * pi)
-
-    # Confidence range based on model MAPE (~6.5%)
-    mape = ARTEFACTS["metrics"]["winner"]["test_mape"] / 100
+    # Confidence range based on the serving model's recorded test MAPE.
+    performance = ARTEFACTS.get("performance", {})
+    mape_pct = performance.get("test_mape")
+    if mape_pct is None:
+        winner = ARTEFACTS.get("metrics", {}).get("winner", {})
+        mape_pct = _safe_metric(winner.get("test_mape")) or 10.0
+    mape = mape_pct / 100
     price_low = predicted_price * (1 - mape)
     price_high = predicted_price * (1 + mape)
 
@@ -1198,6 +1448,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         "price_low": round(price_low),
         "price_high": round(price_high),
         "mape": round(mape * 100, 1),
+        "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
     }
 
 
@@ -1273,9 +1524,9 @@ def _resolve_prediction_inputs(
                     "p_block": block or None,
                 },
             )
-            floor_area = float(v) if v else 90.0
+            floor_area = float(v) if v else float(DEFAULT_FLOOR_AREA)
         except SupabaseError:
-            floor_area = 90.0
+            floor_area = float(DEFAULT_FLOOR_AREA)
         assumptions.append(f"Used inferred floor area: {floor_area} sqm")
 
     lease_commence = None
@@ -1292,9 +1543,9 @@ def _resolve_prediction_inputs(
                     "p_block": block or None,
                 },
             )
-            lease_commence = int(v) if v else 1990
+            lease_commence = int(v) if v else _default_lease_year_range()["avg_year"]
         except SupabaseError:
-            lease_commence = 1990
+            lease_commence = _default_lease_year_range()["avg_year"]
         assumptions.append(f"Used inferred lease start year: {lease_commence}")
 
     return floor_area, lease_commence, assumptions
@@ -1521,13 +1772,12 @@ def home():
     try:
         total_txns = _supabase_count("transactions")
     except Exception:
-        total_txns = 970000
+        total_txns = None
 
-    # Model MAPE
-    try:
-        artefact_mape = round(ARTEFACTS["metrics"]["winner"]["test_mape"], 1)
-    except Exception:
-        artefact_mape = 6.5
+    total_txns_display = f"{total_txns:,}" if total_txns is not None else "N/A"
+
+    performance = ARTEFACTS.get("performance", {})
+    artefact_mape = performance.get("test_mape_display")
 
     # Popular / personalized predictions for homepage cards
     popular_predictions = []
@@ -1563,7 +1813,9 @@ def home():
         flat_models=FLAT_MODELS,
         storey_ranges=STOREY_RANGES,
         total_txns=total_txns,
+        total_txns_display=total_txns_display,
         artefact_mape=artefact_mape,
+        active_model_performance=performance,
         popular_predictions=popular_predictions,
         is_personalized=is_personalized,
         town_coords=town_coords,
@@ -1996,13 +2248,13 @@ def api_predicted_heatmap():
       flat_type       e.g. "4 Room"
       flat_model      e.g. "Model A"
       floor_area      e.g. 93
-      storey_range    e.g. "07 TO 09"
+      storey_range    e.g. "8"
       lease_commence  e.g. 1995
     """
     flat_type = request.args.get("flat_type", "4 Room")
     flat_model = request.args.get("flat_model", "Model A")
     floor_area_raw = request.args.get("floor_area", "")
-    storey_range = request.args.get("storey_range", "07 TO 09")
+    storey_range = request.args.get("storey_range", "8")
     lease_commence_raw = request.args.get("lease_commence", "")
 
     district_data = _get_prediction_map_seed_data()
@@ -2022,8 +2274,8 @@ def api_predicted_heatmap():
                 lease_commence_raw or "",
             )
         except Exception:
-            floor_area = 90
-            lease_commence = 1990
+            floor_area = DEFAULT_FLOOR_AREA
+            lease_commence = _default_lease_year_range()["avg_year"]
 
         available_models = _get_available_models_data(town, flat_type)
         model_to_use = flat_model if flat_model in available_models else (
@@ -2345,7 +2597,7 @@ def api_future_prediction():
         if available_storey_ranges:
             storey_range = available_storey_ranges[len(available_storey_ranges) // 2]
         else:
-            storey_range = "07 TO 09"
+            storey_range = "8"
 
     # Resolve block distances if street_name and block provided
     block_distances = None

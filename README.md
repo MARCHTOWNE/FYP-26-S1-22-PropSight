@@ -3,7 +3,9 @@
 
 A full-stack data pipeline and web application for Singapore HDB resale property valuation and market analytics.
 
-This project fetches HDB resale transaction data from public sources, cleans and enriches it with geocoding and proximity features, trains machine learning models to predict resale prices, and serves an interactive web platform for market analysis, price predictions, and transaction visualisation. The current runtime uses **Supabase** (PostgreSQL) as the primary application database when configured, while local SQLite remains part of the ETL and migration workflow.
+This project fetches HDB resale transaction data from public sources, cleans and enriches it with geocoding and proximity features, trains machine learning models to predict resale prices, and serves an interactive web platform for market analysis, price predictions, and transaction visualisation. The current codebase uses **Supabase** (PostgreSQL) as the authoritative runtime database for the web app and as the canonical ML training source, while local SQLite remains a staging layer for ETL and migration into Supabase.
+
+Current README revision created on: `2026-03-27`
 
 ---
 
@@ -28,6 +30,34 @@ The current project scope focuses on:
 - a Flask web application with interactive maps, charts, and ML-powered price predictions
 - Supabase (PostgreSQL) as the cloud database backend with normalised schema and RPC functions
 
+In plain English, this repo does 3 big jobs:
+
+1. builds and cleans the HDB resale dataset
+2. trains a time-aware resale price prediction model
+3. serves that model inside a Flask website backed by Supabase
+
+## Start Here
+
+Choose the path that matches what you want to do:
+
+- Run the website only:
+  `python webapp/app.py`
+- Run only the ML pipeline:
+  `./.venv/bin/python scripts/run_ml_pipeline.py`
+- Run only model training against the latest prepared features:
+  `./.venv/bin/python ML/model_training.py`
+- Sync the latest data + deployed model metadata to Supabase:
+  `./.venv/bin/python scripts/sync_to_supabase.py`
+- Run the full retrain + deploy workflow:
+  `./.venv/bin/python scripts/retrain_and_deploy.py`
+
+If you are new to the project, the fastest way to understand it is:
+
+1. read the Architecture section below
+2. read Execution Order
+3. read the Feature Engineering, Model Training, and Latest Model Results sections
+4. then open `scripts/pipeline_orchestration.py` to see how the pieces connect
+
 ---
 
 ## Architecture
@@ -36,30 +66,39 @@ The current project scope focuses on:
 hdb_resale/
 ├── Data Preprocessing/
 │   ├── api_fetcher.py           # Fetch raw HDB CSVs from data.gov.sg
-│   ├── data_pipeline.py         # Build local SQLite analytics tables
+│   ├── data_pipeline.py         # Build the local SQLite staging database
 │   ├── geocoding.py             # Cache-first geocoding via OneMap
 │   ├── fetch_reference_data.py  # Build MRT / school / mall reference JSON
 │   ├── proximity_features.py    # Compute block-level distance features
 │   ├── eda_visualisation.py     # Optional EDA plots
+│   ├── raw/                     # Active raw CSV fetch location
 │   ├── raw hdb data/            # Checked-in raw CSV snapshot
 │   └── reference_data/          # Checked-in MRT / school / mall JSON
 │
 ├── ML/
 │   ├── feature_engineering.py   # Build train / val / test artefacts
+│   ├── training_data_source.py  # Supabase-backed training extract helpers
 │   ├── model_training.py        # Train XGBoost, LightGBM, RF, ensemble
 │   └── model_assets/            # Checked-in model runs and artefacts
 │
-├── Database/                    # Supabase schema, migration script, SQLite copy
+├── Database/                    # Supabase schema + SQLite -> Supabase migration
 │   ├── supabase_schema.sql      # Checked-in Supabase PostgreSQL schema
 │   ├── migrate_to_supabase.py   # SQLite → Supabase migration script
-│   └── hdb_resale.db            # SQLite copy used by migration work
+│
+├── scripts/                     # Shared entry points for preprocessing / ML / deploy
+│   ├── pipeline_orchestration.py
+│   ├── run_data_preprocessing.py
+│   ├── run_ml_pipeline.py
+│   ├── sync_to_supabase.py
+│   └── retrain_and_deploy.py
 │
 ├── webapp/
 │   ├── app.py                   # Flask app, auth, APIs, predictions
+│   ├── model_assets/            # Copied serving artefacts for the web app
 │   ├── templates/               # Jinja2 templates
-│   └── users.db                 # Legacy local user DB from earlier offline mode
+│   └── static/                  # CSS and images
 │
-├── hdb_resale.db                # Local SQLite analytics DB for ETL / training
+├── Data Preprocessing/hdb_resale.db   # Local SQLite staging DB created by ETL
 └── README.md
 ```
 
@@ -208,10 +247,9 @@ Download or copy the trained model artefacts so this structure exists:
 ML/model_assets/
 ├── latest.txt
 └── <run_dir>/
-    ├── xgboost_model.pkl
+    ├── xgboost_model.pkl or lgbm_model.pkl or rf_model.pkl or ensemble_model.pkl
     ├── scaler.pkl
     ├── target_encoders.pkl
-    ├── price_index.pkl
     └── metrics.json
 ```
 
@@ -229,19 +267,14 @@ Then start the app:
 python webapp/app.py
 ```
 
-Then open:
-
-```text
-http://127.0.0.1:5001
-```
-
 Notes:
 
 - `webapp/app.py` automatically loads `.env` from the project root.
 - The app will fail at startup if `SUPABASE_URL` and a Supabase key are not set.
 - The app loads the active run from `ML/model_assets/latest.txt`, so retraining is not required just to run the website.
-- The app expects these artefact files at minimum: `xgboost_model.pkl`, `scaler.pkl`, `target_encoders.pkl`, `price_index.pkl`, and `metrics.json`.
-- `hdb_resale.db` is still used by ETL, migration, and model-training scripts, but it is not required for the website runtime.
+- The app serves the winner declared in `metrics.json` when present and reads performance metadata dynamically from the same run.
+- For current runs, `price_index.pkl` is optional because the newer target is `log1p(resale_price)` rather than RPI-adjusted log price.
+- `hdb_resale.db` is still used by the local ETL and migration flow, but it is not used by the website runtime.
 - On macOS, `xgboost` may require OpenMP. If import fails with `libomp.dylib` not found, run `brew install libomp`.
 - The default dev server port is `5001`. Override it with `FLASK_PORT=<port> python webapp/app.py` if `5001` is already in use.
 
@@ -251,7 +284,7 @@ Notes:
 
 The checked-in PostgreSQL schema lives in `Database/supabase_schema.sql`. `Database/migrate_to_supabase.py` migrates rows from the local SQLite `resale_prices` table into the normalized Supabase tables.
 
-At runtime, `webapp/app.py` requires both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY`. Supabase is the authoritative application database for the current website.
+At runtime, `webapp/app.py` requires both `SUPABASE_URL` and either `SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_KEY`. Supabase is the authoritative application database for the website and the canonical source used by the current ML feature engineering step.
 
 ### Normalised Schema
 
@@ -428,28 +461,19 @@ One row per resale transaction, with foreign keys to dimension tables.
 
 ---
 
-## Local SQLite Databases
+## Local SQLite Database
 
-The current codebase still depends on SQLite for ETL, migration, and model-training workflows. The website runtime uses Supabase instead.
+The current codebase still depends on SQLite for local preprocessing and for staging rows before they are migrated into Supabase. The website runtime does not use SQLite, and the ML training pipeline now reads from Supabase.
 
 ### Main Analytics DB (`hdb_resale.db`)
 
 | Table | Purpose |
 | ----- | ------- |
-| `resale_prices` | Transaction table used by ETL, migration, and training workflows |
+| `resale_prices` | Transaction table used by local ETL and as the source for SQLite → Supabase migration |
 | `district_summary` | Rebuilt aggregate summary table for town / flat_type / year analytics |
 | `geocode_cache` | Cached OneMap geocoding results |
 | `pipeline_meta` | Key-value metadata written by the ETL pipeline |
 | `upload_audit` | Append-only audit trail for ingestion runs |
-
-### Web App User DB (`webapp/users.db`)
-
-| Table | Purpose |
-| ----- | ------- |
-| `users` | Legacy local auth table from earlier offline mode |
-| `saved_predictions` | Legacy local saved-prediction table from earlier offline mode |
-| `pending_registrations` | Legacy local registration table |
-| `feature_view_log` | Legacy local feature-view tracking table |
 
 ---
 
@@ -465,7 +489,20 @@ python webapp/app.py
 
 This requires Supabase credentials in `.env` and model artefacts in `ML/model_assets/`.
 
-### Full data pipeline run
+### Recommended script entry points
+
+Use the `scripts/` entry points from the project root whenever possible:
+
+```bash
+./.venv/bin/python scripts/run_data_preprocessing.py
+./.venv/bin/python scripts/run_ml_pipeline.py
+./.venv/bin/python scripts/sync_to_supabase.py
+./.venv/bin/python scripts/retrain_and_deploy.py
+```
+
+These wrappers call the shared orchestration logic in `scripts/pipeline_orchestration.py` and are easier to run consistently than invoking every lower-level file manually.
+
+### Manual end-to-end pipeline run
 
 ```bash
 python "Data Preprocessing/api_fetcher.py"
@@ -473,6 +510,7 @@ python "Data Preprocessing/data_pipeline.py"
 python "Data Preprocessing/geocoding.py"
 python "Data Preprocessing/fetch_reference_data.py"
 python "Data Preprocessing/proximity_features.py"
+python Database/migrate_to_supabase.py
 python ML/feature_engineering.py
 python ML/model_training.py
 ```
@@ -581,30 +619,32 @@ These features are written back to `resale_prices`.
 ---
 
 ### `feature_engineering.py`
-Transforms the enriched HDB resale database into clean, feature-ready train/val/test splits.
+Transforms the canonical Supabase training extract into clean, feature-ready train/val/test splits.
 
 Split strategy:
-- Train: ≤ 2020
-- Val: 2021–2022
-- Test: ≥ 2023
+- Train: random 90% sample from rows earlier than the rolling test cutoff
+- Val: random 10% sample from the same pre-cutoff window, stratified by `flat_type`
+- Test: most recent `test_months` of data by `year-month` (current default: 3 months)
+- Future holdout: optional only for older run formats; not produced by the current rolling-holdout flow
 
 Key decisions:
-- `log1p(resale_price / price_index)` as the training target
+- newer runs use `log1p(resale_price)` as the training target
+- legacy runs with `price_index` are still supported
 - Ordinal encoding for `flat_type`
 - Target encoding for `town` and `flat_model` (fit on train only to reduce leakage)
 - `StandardScaler` for numeric features (fit on train only)
-- IQR outlier removal by `flat_type`, with bounds saved to `outlier_bounds.json`
+- high-price but valid transactions are kept in training
+- `outlier_bounds.json` is now diagnostic only
 - Cyclical encoding for month using `month_sin` and `month_cos`
-- Quarterly `price_index` normalization so the model learns structural value independent of macro price drift
 - Removal of rows with missing required fields so saved datasets contain no null values
+- feature engineering now reads from the canonical Supabase training source and stores split metadata in `run_manifest.json`
 - Saves processed artefacts to `model_assets/<YYYYMMDD_HHMMSS>/`
 
 Outputs:
-- `X_train.parquet`, `X_val.parquet`, `X_test.parquet`
-- `y_train.parquet`, `y_val.parquet`, `y_test.parquet`
+- `X_train.parquet`, `X_val.parquet`, `X_test.parquet`, `X_future_holdout.parquet` when available
+- `y_train.parquet`, `y_val.parquet`, `y_test.parquet`, `y_future_holdout.parquet` when available
 - `scaler.pkl`
 - `target_encoders.pkl`
-- `price_index.pkl`
 - `outlier_bounds.json`
 - `feature_cols.txt`
 - `run_manifest.json`
@@ -622,8 +662,13 @@ Models trained:
 
 Key decisions:
 - Reads split files from `model_assets/latest.txt`
-- Uses train split for fitting, val split for tuning/early stopping, and test split for final comparison
+- Uses train split for fitting, val split for tuning/early stopping, and keeps test locked for final reporting only
+- XGBoost and LightGBM are tuned on a deterministic train subset for speed, then retrained on the full train split
+- current defaults are `XGB_TRIALS=25`, `LGBM_TRIALS=25`, `TUNING_SAMPLE_SIZE=250000`, `XGB_N_ESTIMATORS=2000`, `LGBM_N_ESTIMATORS=2000`, and `RF_ESTIMATORS=300`
+- Optuna studies can be resumed from saved `.pkl` files, and `FRESH_TUNING=1` forces a clean retune
 - Reports metrics in SGD space (`RMSE`, `MAE`, `R2`, `MAPE`) by inverse-transforming `log1p` predictions
+- Winner selection now chooses the best **base model** on validation RMSE
+- The ensemble is reported separately and excluded from production winner selection until stacking is rebuilt with out-of-fold predictions or a dedicated meta-validation split
 - Writes all training outputs into the same timestamped run folder created by `feature_engineering.py`
 
 Outputs written to `model_assets/<YYYYMMDD_HHMMSS>/`:
@@ -641,24 +686,43 @@ Outputs written to `model_assets/<YYYYMMDD_HHMMSS>/`:
 ## Latest Model Training Results
 
 Latest run:
-- Run directory: `ML/model_assets/20260306_135538/`
-- Model date (timekeeping): `2026-03-06` (derived from run folder timestamp `YYYYMMDD_HHMMSS`)
-- Recommended serving model: `xgboost_model.pkl`
+- Run directory: `ML/model_assets/20260326_182112/`
+- Model date (timekeeping): `2026-03-26` (derived from run folder timestamp `YYYYMMDD_HHMMSS`)
+- Recommended serving model: `lgbm_model.pkl`
 
-Test-set results (`>= 2023` split):
+Split used in this run:
+
+- Train: random 90% of rows before `2026-01`
+- Val: random 10% of rows before `2026-01`
+- Test: `>= 2026-01` rolling 3-month holdout
+
+Model comparison:
 
 | Model      | Val RMSE | Test RMSE | Test R2 | Test MAPE |
 | ---------- | -------- | --------- | ------- | --------- |
-| XGBoost    | 34,248   | 44,790    | 0.8877  | 6.49%     |
-| LightGBM   | 35,088   | 45,209    | 0.8856  | 6.62%     |
-| RF         | 38,031   | 48,379    | 0.8689  | 7.16%     |
-| Ensemble   | 32,403   | 47,445    | 0.8740  | 6.70%     |
+| XGBoost    | 19,092   | 34,020    | 0.9740  | 3.68%     |
+| LightGBM   | 18,868   | 34,142    | 0.9738  | 3.69%     |
+| RF         | 21,572   | 40,400    | 0.9633  | 4.14%     |
+| Ensemble   | 18,678   | 33,781    | 0.9743  | 3.63%     |
 
 Winner:
-- `xgboost` achieved the lowest test RMSE (`44,790`) in this run.
+- `lgbm` is the current serving recommendation because it is the strongest production-safe base model on validation RMSE.
+- The ensemble scored slightly better on the locked test holdout, but it is not selected for serving because its Ridge meta-learner was fit on validation predictions.
+
+Important interpretation note:
+
+- These scores come from a stricter rolling holdout, so the test set is a better proxy for forward-looking drift than a random split alone.
+- Validation remains useful for tuning and production-safe base-model selection, but it is easier than the January 2026+ test window because the current validation split is still random within the pre-cutoff period.
+- The ensemble currently looks strongest numerically, but it is intentionally excluded from production winner selection until stacking becomes leakage-safe.
+
+Upcoming ensemble fix:
+
+- rebuild the ensemble using out-of-fold stacking on the training set
+- re-evaluate it fairly against base models
+- make it deployable as a first-class website serving model if it still wins
 
 Timekeeping note:
-- Use the run folder timestamp (for example `20260306_135538`) as the model version/date key.
+- Use the run folder timestamp (for example `20260326_151359`) as the model version/date key.
 - `ML/model_assets/latest.txt` currently points to the checked-in active run.
 - `run_manifest.json` stores run metadata, and `training_report.txt` stores per-run training/evaluation details.
 ---
@@ -709,12 +773,13 @@ model_assets/
     ├── X_train.parquet
     ├── X_val.parquet
     ├── X_test.parquet
+    ├── X_future_holdout.parquet
     ├── y_train.parquet
     ├── y_val.parquet
     ├── y_test.parquet
+    ├── y_future_holdout.parquet
     ├── scaler.pkl
     ├── target_encoders.pkl
-    ├── price_index.pkl
     ├── feature_cols.txt
     ├── run_manifest.json
     ├── metrics.json

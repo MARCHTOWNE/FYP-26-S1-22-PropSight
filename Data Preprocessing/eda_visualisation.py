@@ -31,9 +31,10 @@ from scipy import stats
 # Config
 # ---------------------------------------------------------------------------
 
-DB_PATH    = "hdb_resale.db"
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+DB_PATH    = os.environ.get("HDB_SQLITE_PATH", os.path.join(BASE_DIR, "hdb_resale.db"))
 TABLE_NAME = "resale_prices"
-OUTPUT_DIR = "eda_plots"
+OUTPUT_DIR = os.environ.get("HDB_EDA_OUTPUT_DIR", os.path.join(BASE_DIR, "eda_plots"))
 
 sns.set_theme(style="whitegrid", palette="muted", font_scale=1.1)
 plt.rcParams["figure.dpi"] = 120

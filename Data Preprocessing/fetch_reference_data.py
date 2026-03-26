@@ -27,6 +27,7 @@ from __future__ import annotations
 import io
 import json
 import math
+import os
 import re
 import struct
 import time
@@ -38,7 +39,8 @@ from typing import Any
 import pandas as pd
 import requests
 
-OUTPUT_DIR = "reference_data"
+BASE_DIR = Path(__file__).resolve().parent
+OUTPUT_DIR = os.environ.get("HDB_REFERENCE_DATA_DIR", str(BASE_DIR / "reference_data"))
 
 ONEMAP_API_URL = "https://www.onemap.gov.sg/api/common/elastic/search"
 DATA_GOV_API_BASE = "https://api-open.data.gov.sg/v1/public/api/datasets"

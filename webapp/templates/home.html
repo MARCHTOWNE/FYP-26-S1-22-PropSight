@@ -84,7 +84,7 @@
                         </div>
                     </div>
                     <div class="col-4">
-                        <label class="form-label small">Storey</label>
+                        <label class="form-label small">Floor</label>
                         <select class="form-select" name="storey_range" id="homeStoreyRange" required>
                             {% for sr in storey_ranges %}
                             <option value="{{ sr }}">{{ sr }}</option>
@@ -95,9 +95,9 @@
                         <label class="form-label small">Lease Start Year</label>
                         <div class="slider-wrap">
                           <input type="range" id="homeLeaseRange" name="lease_commence"
-                                 min="1960" max="2024" value="1990" step="1"
+                                 min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ default_lease_year }}" step="1"
                                  class="form-range accent-range">
-                          <div class="slider-display"><span id="homeLeaseVal">1990</span></div>
+                          <div class="slider-display"><span id="homeLeaseVal">{{ default_lease_year }}</span></div>
                         </div>
                     </div>
                     <div class="col-12 d-grid mt-2">
@@ -115,7 +115,13 @@
                     </div>
                     <div>
                         <small>Confidence</small>
-                        <strong>±{{ artefact_mape }}% MAPE</strong>
+                        <strong>
+                            {% if active_model_performance and active_model_performance.test_mape_display is not none %}
+                            ±{{ active_model_performance.test_mape_display }}% test MAPE
+                            {% else %}
+                            Accuracy summary unavailable
+                            {% endif %}
+                        </strong>
                     </div>
                     <div>
                         <small>Trend Snapshot</small>
@@ -299,19 +305,31 @@
         <div class="trust-scroll-wrapper">
             <div class="trust-scroll-row">
                 <div class="trust-stat">
-                    <div class="trust-stat-value">&plusmn;{{ artefact_mape }}%</div>
-                    <div class="trust-stat-label">Prediction Accuracy (MAPE)</div>
+                    <div class="trust-stat-value">
+                        {% if active_model_performance and active_model_performance.test_mape_display is not none %}
+                        &plusmn;{{ active_model_performance.test_mape_display }}%
+                        {% else %}
+                        N/A
+                        {% endif %}
+                    </div>
+                    <div class="trust-stat-label">Serving Model Test MAPE</div>
                 </div>
                 <div class="trust-stat">
-                    <div class="trust-stat-value">{{ "{:,}".format(total_txns) }}+</div>
+                    <div class="trust-stat-value">{{ total_txns_display }}{% if total_txns is not none %}+{% endif %}</div>
                     <div class="trust-stat-label">Transactions Analysed</div>
                 </div>
                 <div class="trust-stat">
-                    <div class="trust-stat-value">HDB.gov.sg</div>
-                    <div class="trust-stat-label">Official Data Source</div>
+                    <div class="trust-stat-value">
+                        {% if active_model_performance %}
+                        {{ active_model_performance.label }}
+                        {% else %}
+                        Model
+                        {% endif %}
+                    </div>
+                    <div class="trust-stat-label">Active Serving Model</div>
                 </div>
                 <div class="trust-stat">
-                    <div class="trust-stat-value">2000–2024</div>
+                    <div class="trust-stat-value">{{ data_year_start }}–{{ data_year_end }}</div>
                     <div class="trust-stat-label">Years of Market Data</div>
                 </div>
             </div>
@@ -332,8 +350,17 @@
         </h2>
         <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
           <div class="accordion-body bg-soft">
-            Our XGBoost model achieves a Mean Absolute Percentage Error (MAPE) of {{ artefact_mape }}% on unseen test data.
-            Predictions are typically within that percentage of actual transaction prices.
+            {% if active_model_performance and active_model_performance.test_mape_display is not none %}
+            Our active {{ active_model_performance.label }} serving model records a test MAPE of {{ active_model_performance.test_mape_display }}%
+            {% if active_model_performance.test_window %}on the {{ active_model_performance.test_window }} evaluation window{% else %}on unseen test data{% endif %}.
+            {% if active_model_performance.future_holdout_mape_display is not none %}
+            On the {% if active_model_performance.future_holdout_window %}{{ active_model_performance.future_holdout_window }}{% else %}future holdout{% endif %},
+            it records {{ active_model_performance.future_holdout_mape_display }}% MAPE.
+            {% endif %}
+            Predictions are typically within that percentage band of actual transaction prices.
+            {% else %}
+            The active model artefacts are loaded successfully, but the current deployment does not expose a published MAPE summary.
+            {% endif %}
             Results are strongest for common flat types with high data density.
           </div>
         </div>
@@ -346,8 +373,8 @@
         </h2>
         <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
           <div class="accordion-body">
-            Over {{ '{:,}'.format(total_txns) }} historical HDB resale transactions spanning
-            1990 to the present, sourced from data.gov.sg. Each record includes location,
+            Over {{ total_txns_display }} historical HDB resale transactions spanning
+            {{ data_year_start }} to {{ data_year_end }}, sourced from data.gov.sg. Each record includes location,
             flat attributes, storey, floor area, lease details, and nearby amenity distances.
           </div>
         </div>
@@ -388,7 +415,11 @@
         </h2>
         <div id="faq5" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
           <div class="accordion-body bg-soft">
-            The confidence range applies ±{{ artefact_mape }}% MAPE to the central estimate.
+            {% if active_model_performance and active_model_performance.test_mape_display is not none %}
+            The confidence range applies ±{{ active_model_performance.test_mape_display }}% test MAPE from the current serving model to the central estimate.
+            {% else %}
+            The confidence range is derived from the active model output, but the summary MAPE figure is unavailable in the loaded artefacts.
+            {% endif %}
             Most actual transactions for similar properties fall within this band.
           </div>
         </div>
@@ -414,7 +445,7 @@
 <section class="story-section cta-strip" data-reveal>
     <div class="container text-center">
         <h3>Don't overpay. Don't undersell.</h3>
-        <p class="mb-3" style="color:rgba(255,255,255,0.85);">Join users making data-driven HDB decisions — backed by {{ '{:,}'.format(total_txns) }} real transactions.</p>
+        <p class="mb-3" style="color:rgba(255,255,255,0.85);">Join users making data-driven HDB decisions — backed by {{ total_txns_display }} real transactions.</p>
         <a href="{{ url_for('register') }}" class="btn btn-light btn-lg mt-2">Get Free Access — No Credit Card Required</a>
         <div class="mt-2" style="color:rgba(255,255,255,0.7);font-size:0.85rem;">⚡ Takes 30 seconds</div>
     </div>

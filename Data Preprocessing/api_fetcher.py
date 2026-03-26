@@ -29,6 +29,7 @@ import requests
 # Configuration
 # ---------------------------------------------------------------------------
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATASET_IDS = [
     "d_ebc5ab87086db484f88045b47411ebc5",  # 1990–1999
     "d_43f493c6c50d54243cc1eab0df142d6a",  # 2000–Feb 2012
@@ -38,7 +39,7 @@ DATASET_IDS = [
 ]
 
 OPEN_API_BASE    = "https://api-open.data.gov.sg/v1/public/api/datasets"
-RAW_DIR          = "raw"
+RAW_DIR          = os.environ.get("HDB_RAW_DIR", os.path.join(BASE_DIR, "raw"))
 POLL_INTERVAL    = 3       # seconds between poll attempts
 POLL_MAX_TRIES   = 30      # max polling attempts per dataset
 REQUEST_PAUSE    = 3       # seconds to wait between datasets

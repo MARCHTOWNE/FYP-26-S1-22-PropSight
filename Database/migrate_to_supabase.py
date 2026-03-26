@@ -24,9 +24,18 @@ import psycopg2
 import psycopg2.extras
 from dotenv import load_dotenv
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), ".env"))
 
-SQLITE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hdb_resale.db")
+SQLITE_PATH = os.environ.get(
+    "HDB_SQLITE_PATH",
+    os.path.join(
+        PROJECT_ROOT,
+        "Data Preprocessing",
+        "hdb_resale.db",
+    ),
+)
 SUPABASE_DB_URL = os.environ.get("SUPABASE_DB_URL", "")
 BATCH_SIZE = 5000
 
@@ -41,6 +50,33 @@ FLAT_TYPE_ORDINAL = {
     "1 Room": 1, "2 Room": 2, "3 Room": 3, "4 Room": 4,
     "5 Room": 5, "Executive": 6, "Multi-Generation": 7,
 }
+
+
+def _raise_if_missing_dimension_ids(rows, block_id_map, flat_type_id_map, flat_model_id_map):
+    missing_blocks = set()
+    missing_flat_types = set()
+    missing_flat_models = set()
+
+    for r in rows:
+        if (r["block"], r["street_name"]) not in block_id_map:
+            missing_blocks.add((r["block"], r["street_name"]))
+        if r["flat_type"] not in flat_type_id_map:
+            missing_flat_types.add(r["flat_type"])
+        if r["flat_model"] not in flat_model_id_map:
+            missing_flat_models.add(r["flat_model"])
+
+    if missing_blocks or missing_flat_types or missing_flat_models:
+        details = []
+        if missing_blocks:
+            sample = ", ".join(f"{block} {street}" for block, street in sorted(missing_blocks)[:3])
+            details.append(f"missing block IDs (sample: {sample})")
+        if missing_flat_types:
+            sample = ", ".join(sorted(missing_flat_types)[:3])
+            details.append(f"missing flat types ({sample})")
+        if missing_flat_models:
+            sample = ", ".join(sorted(missing_flat_models)[:3])
+            details.append(f"missing flat models ({sample})")
+        raise RuntimeError("Failed to resolve dimension IDs: " + "; ".join(details))
 
 
 def migrate():
@@ -137,44 +173,61 @@ def migrate():
         )
         for r in rows
     ]
-    psycopg2.extras.execute_values(
+    returned_blocks = psycopg2.extras.execute_values(
         pg_cur,
         """
         INSERT INTO blocks
             (block, street_name, town_id, full_address, latitude, longitude,
              dist_mrt, dist_cbd, dist_primary_school, dist_major_mall)
         VALUES %s
-        ON CONFLICT (block, street_name) DO NOTHING
+        ON CONFLICT (block, street_name) DO UPDATE SET
+        town_id = EXCLUDED.town_id,
+        full_address = EXCLUDED.full_address,
+        latitude = EXCLUDED.latitude,
+        longitude = EXCLUDED.longitude,
+        dist_mrt = EXCLUDED.dist_mrt,
+        dist_cbd = EXCLUDED.dist_cbd,
+        dist_primary_school = EXCLUDED.dist_primary_school,
+        dist_major_mall = EXCLUDED.dist_major_mall
+        RETURNING id, block, street_name
         """,
         data,
         page_size=1000,
+        fetch=True,
     )
     pg_conn.commit()
     print(f"  Done — {len(data)} blocks.\n")
 
-    pg_cur.execute("SELECT id, block, street_name FROM blocks")
-    block_id_map = {(b, s): id_ for id_, b, s in pg_cur.fetchall()}
+    block_id_map = {(block, street_name): id_ for id_, block, street_name in returned_blocks}
 
     # ── 5. Transactions ───────────────────────────────────────────
+    print("  Truncating existing transactions...")
+    pg_cur.execute("TRUNCATE TABLE transactions RESTART IDENTITY")
+    pg_conn.commit()
     total = sqlite_conn.execute("SELECT COUNT(*) FROM resale_prices").fetchone()[0]
     print(f"Step 5/5: Migrating {total:,} transactions (batch size={BATCH_SIZE})...")
 
-    offset = 0
+    last_rowid = 0
     inserted = 0
 
     while True:
         rows = sqlite_conn.execute("""
             SELECT
+                rowid,
                 block, street_name, flat_type, flat_model,
                 storey_range, storey_midpoint, floor_area_sqm,
                 lease_commence_date, remaining_lease, remaining_lease_months,
                 resale_price, month, month_num, year
             FROM resale_prices
-            LIMIT ? OFFSET ?
-        """, (BATCH_SIZE, offset)).fetchall()
+            WHERE rowid > ?
+            ORDER BY rowid
+            LIMIT ?
+        """, (last_rowid, BATCH_SIZE)).fetchall()
 
         if not rows:
             break
+
+        _raise_if_missing_dimension_ids(rows, block_id_map, flat_type_id_map, flat_model_id_map)
 
         data = []
         for r in rows:
@@ -203,7 +256,7 @@ def migrate():
         pg_conn.commit()
 
         inserted += len(rows)
-        offset += BATCH_SIZE
+        last_rowid = rows[-1]["rowid"]
         pct = inserted * 100 // total
         print(f"  {inserted:,}/{total:,} ({pct}%)", end="\r")
 

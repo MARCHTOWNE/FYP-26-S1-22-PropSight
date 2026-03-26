@@ -112,15 +112,15 @@
                                 <label class="form-label">Lease Start Year</label>
                                 <div class="slider-wrap">
                                     <input type="range" id="{{ panel.prefix }}LeaseRange" name="{{ panel.prefix }}_lease_commence"
-                                           min="1960" max="2024" value="{{ panel.form_data.get('lease_commence', 1990) or 1990 }}" step="1"
+                                           min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1"
                                            class="form-range accent-range">
-                                    <div class="slider-display"><span id="{{ panel.prefix }}LeaseVal">{{ panel.form_data.get('lease_commence', 1990) or 1990 }}</span></div>
+                                    <div class="slider-display"><span id="{{ panel.prefix }}LeaseVal">{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span></div>
                                 </div>
                             </div>
                         </div>
 
                         <div>
-                            <label class="form-label">Storey Range</label>
+                            <label class="form-label">Floor</label>
                             <select id="{{ panel.prefix }}StoreyRange" name="{{ panel.prefix }}_storey_range" class="form-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}" {% if panel.form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>

@@ -32,8 +32,9 @@ import pandas as pd
 # Configuration
 # ---------------------------------------------------------------------------
 
-RAW_DIR    = "raw"
-DB_PATH    = "hdb_resale.db"
+BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
+RAW_DIR    = os.environ.get("HDB_RAW_DIR", os.path.join(BASE_DIR, "raw"))
+DB_PATH    = os.environ.get("HDB_SQLITE_PATH", os.path.join(BASE_DIR, "hdb_resale.db"))
 TABLE_NAME = "resale_prices"
 
 # Columns kept from raw API data (in order)
@@ -374,14 +375,15 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
               f"outside [{FLOOR_AREA_MIN}, {FLOOR_AREA_MAX}] sqm — kept as-is.")
 
     # ------------------------------------------------------------------
-    # lease_commence_date — validate plausible range (1960–2025)
+    # lease_commence_date — validate plausible range (1960–current+1)
     # ------------------------------------------------------------------
+    current_year = datetime.datetime.now().year
     bad_lease = df["lease_commence_date"].notna() & (
-        (df["lease_commence_date"] < 1960) | (df["lease_commence_date"] > 2025)
+        (df["lease_commence_date"] < 1960) | (df["lease_commence_date"] > current_year + 1)
     )
     if bad_lease.sum() > 0:
         print(f"    WARNING: {bad_lease.sum():,} rows have lease_commence_date "
-              f"outside [1960, 2025] — kept as-is.")
+              f"outside [1960, {current_year + 1}] — kept as-is.")
 
     # ------------------------------------------------------------------
     # remaining_lease + remaining_lease_months

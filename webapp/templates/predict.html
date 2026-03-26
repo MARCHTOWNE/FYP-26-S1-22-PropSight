@@ -83,15 +83,15 @@
                                 <label class="form-label">Lease Start Year</label>
                                 <div class="slider-wrap">
                                   <input type="range" id="predictLeaseRange" name="lease_commence"
-                                         min="1960" max="2024" value="{{ form_data.get('lease_commence', 1990) or 1990 }}" step="1"
+                                         min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1"
                                          class="form-range accent-range">
-                                  <div class="slider-display"><span id="predictLeaseVal">{{ form_data.get('lease_commence', 1990) or 1990 }}</span></div>
+                                  <div class="slider-display"><span id="predictLeaseVal">{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span></div>
                                 </div>
                             </div>
                         </div>
 
                         <div class="mb-3">
-                            <label class="form-label">Storey Range</label>
+                            <label class="form-label">Floor</label>
                             <select name="storey_range" id="predictStoreyRange" class="form-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}"
@@ -125,7 +125,7 @@
                     </div>
 
                     <div class="mt-3 small text-muted">
-                        Based on XGBoost model &middot; MAPE &plusmn;{{ result.mape }}%
+                        Based on {{ result.model_label }} &middot; Test MAPE &plusmn;{{ result.mape }}%
                     </div>
                     {% if result.assumptions %}
                     <div class="alert alert-info mt-3 py-2 px-3 small text-start">
@@ -444,7 +444,6 @@ predictTownSelect.addEventListener('change', async function() {
     } catch(e) {
         predictFlatTypeSelect.innerHTML = originalPredictFlatTypeOptions;
     } finally {
-        // Reset flat model and block
         predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
         predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
         endOptionLoad();
@@ -508,14 +507,15 @@ predictStreetSelect.addEventListener('change', async function() {
             }
         }
 
-        // Load flat type dependent options
-        if (prefillFlatType && responses[1].ok) {
+        if (responses[1].ok) {
             var ftData = await responses[1].json();
             var validTypes = ftData.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
             Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
                 if (opt.value && validTypes.length > 0) opt.disabled = !validTypes.includes(opt.value);
             });
+        }
 
+        if (prefillFlatType && responses[1].ok) {
             var detailResponses = await Promise.all([
                 fetch('/api/available_models?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType)),
                 fetch('/api/available_storey_ranges?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType))

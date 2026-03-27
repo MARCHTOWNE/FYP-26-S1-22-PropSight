@@ -127,6 +127,30 @@ FLAT_TYPE_ORDINAL = {
     "5 Room": 5, "Executive": 6, "Multi-Generation": 7,
 }
 
+FLAT_MODELS_BY_TYPE = {
+    "1 Room": ["Improved"],
+    "2 Room": ["2-Room", "DBSS", "Improved", "Model A", "Premium Apartment", "Standard"],
+    "3 Room": [
+        "Adjoined Flat", "DBSS", "Improved", "Model A", "New Generation",
+        "Premium Apartment", "Simplified", "Standard", "Terrace",
+    ],
+    "4 Room": [
+        "Adjoined Flat", "DBSS", "Improved", "Model A", "Model A2",
+        "New Generation", "Premium Apartment", "Premium Apartment Loft",
+        "Simplified", "Standard", "Terrace", "Type S1",
+    ],
+    "5 Room": [
+        "3Gen", "Adjoined Flat", "DBSS", "Improved", "Improved Maisonette",
+        "Model A", "Model A-Maisonette", "Premium Apartment",
+        "Premium Apartment Loft", "Standard", "Type S2",
+    ],
+    "Executive": [
+        "Adjoined Flat", "Apartment", "Maisonette", "Premium Apartment",
+        "Premium Maisonette",
+    ],
+    "Multi-Generation": ["Multi Generation"],
+}
+
 MODEL_LABELS = {
     "xgboost": "XGBoost",
     "lgbm": "LightGBM",
@@ -1231,6 +1255,11 @@ def _get_available_models_data(town, flat_type, street_name="", block=""):
     flat_type = flat_type or ""
     street_name = street_name or ""
     block = block or ""
+
+    if not flat_type:
+        return list(FLAT_MODELS)
+    if not town:
+        return list(FLAT_MODELS_BY_TYPE.get(flat_type, FLAT_MODELS))
 
     try:
         params = {"p_town": town, "p_flat_type": flat_type}
@@ -2500,6 +2529,7 @@ def map_view():
         towns=TOWNS,
         flat_types=list(FLAT_TYPE_ORDINAL.keys()),
         flat_models=FLAT_MODELS,
+        flat_models_by_type=FLAT_MODELS_BY_TYPE,
         storey_ranges=STOREY_RANGES,
         map_storey_ranges=MAP_STOREY_RANGE_OPTIONS,
         map_transaction_start_year=MAP_TRANSACTION_START_YEAR,

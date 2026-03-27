@@ -706,6 +706,8 @@ const scenarioResetBtn = document.getElementById('scenarioResetBtn');
 const mapFlatTypeSelect = document.getElementById('mapFlatType');
 const mapFlatModelSelect = document.getElementById('mapFlatModel');
 const mapStoreyRangeSelect = document.getElementById('mapStoreyRange');
+const allMapFlatModels = {{ flat_models|tojson }};
+const mapFlatModelsByType = {{ flat_models_by_type|tojson }};
 const shouldStartInPins = (
     initialModeParam === 'transactions' ||
     initialModeParam === 'pins' ||
@@ -869,6 +871,40 @@ function updateAmenityLegend() {
     el.innerHTML = html;
 }
 
+function renderMapSelectOptions(selectEl, values, preferredValue, defaultLabel) {
+    const normalizedValues = Array.isArray(values)
+        ? values.map(function(value) { return String(value); })
+        : [];
+    const selectedValue = normalizedValues.includes(String(preferredValue || ''))
+        ? String(preferredValue || '')
+        : '';
+
+    selectEl.innerHTML = '';
+
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = defaultLabel;
+    defaultOption.selected = selectedValue === '';
+    selectEl.appendChild(defaultOption);
+
+    normalizedValues.forEach(function(value) {
+        const option = document.createElement('option');
+        option.value = value;
+        option.textContent = value;
+        option.selected = value === selectedValue;
+        selectEl.appendChild(option);
+    });
+}
+
+function syncMapFlatModelOptions() {
+    const flatType = (mapFlatTypeSelect.value || '').trim();
+    const currentValue = (mapFlatModelSelect.value || '').trim();
+    const nextOptions = flatType
+        ? (mapFlatModelsByType[flatType] || [])
+        : allMapFlatModels;
+    renderMapSelectOptions(mapFlatModelSelect, nextOptions, currentValue, 'Town-inferred');
+}
+
 function showBreadcrumb(town) {
     document.getElementById('breadcrumb').style.display = 'flex';
     document.getElementById('bcTownName').textContent = town;
@@ -976,28 +1012,15 @@ async function loadHeatmap() {
         data.forEach(d => {
             if (!d.lat || !d.lng) return;
             const pred = Number(d.predicted_price);
-            const latestAvg = Number(d.latest_avg);
-            const historicalAvg = Number(d.avg_price);
-            const marketLow = Number(d.market_low);
-            const marketHigh = Number(d.market_high);
             const color = choroplethColor(pred, minP, maxP);
             const predFmt = '$' + Math.round(pred).toLocaleString();
-            const latestFmt = Number.isFinite(latestAvg) && latestAvg > 0
-                ? '$' + Math.round(latestAvg).toLocaleString()
-                : predFmt;
-            const historicalFmt = Number.isFinite(historicalAvg) && historicalAvg > 0
-                ? '$' + Math.round(historicalAvg).toLocaleString()
-                : predFmt;
-            const marketRangeFmt = Number.isFinite(marketLow) && Number.isFinite(marketHigh)
-                ? '$' + Math.round(marketLow).toLocaleString() + ' – $' + Math.round(marketHigh).toLocaleString()
-                : historicalFmt;
             const profileParts = [d.flat_type, d.flat_model, d.storey_range].filter(Boolean);
             const profileLabel = profileParts.length ? profileParts.join(' · ') : '';
             const scenarioLine = hasScenarioOverrides(state)
                 ? `Scenario: ${getScenarioSummary(state)}<br>`
                 : '';
-            const profileLine = profileLabel
-                ? `${hasScenarioOverrides(state) ? 'Profile used' : 'Town profile'}: ${profileLabel}<br>`
+            const profileLine = hasScenarioOverrides(state) && profileLabel
+                ? `Profile used: ${profileLabel}<br>`
                 : '';
 
             const circle = L.circle([d.lat, d.lng], {
@@ -1015,11 +1038,6 @@ async function loadHeatmap() {
                 Model estimate: <b>${predFmt}</b><br>
                 ${scenarioLine}
                 ${profileLine}
-                Model range: $${Math.round(Number(d.price_low)).toLocaleString()} – $${Math.round(Number(d.price_high)).toLocaleString()}<br>
-                Latest avg: ${latestFmt}<br>
-                Market range: ${marketRangeFmt}<br>
-                Historical avg: ${historicalFmt}<br>
-                Txns: ${Number(d.total_txns).toLocaleString()}
             `, { sticky: true });
 
             circle.on('click', () => drillDown(d.town));
@@ -1476,6 +1494,7 @@ document.getElementById('toggleMalls').addEventListener('change', function() {
 });
 
 mapFlatTypeSelect.addEventListener('change', function() {
+    syncMapFlatModelOptions();
     updateScenarioSummary();
     if (currentMode === 'heatmap') loadHeatmap();
 });
@@ -1495,10 +1514,12 @@ scenarioResetBtn.addEventListener('click', function(event) {
     mapFlatTypeSelect.value = '';
     mapFlatModelSelect.value = '';
     mapStoreyRangeSelect.value = '';
+    syncMapFlatModelOptions();
     updateScenarioSummary();
     if (currentMode === 'heatmap') loadHeatmap();
 });
 
+syncMapFlatModelOptions();
 updateScenarioSummary();
 toggleScenarioPanel(false);
 

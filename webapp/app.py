@@ -15,9 +15,10 @@ import json
 import math
 import os
 import pickle
-from datetime import datetime, timedelta
-from functools import lru_cache, wraps
+from datetime import datetime, timedelta, timezone
+from functools import wraps
 from socket import timeout as SocketTimeout
+import time as _time_mod
 from urllib import error, parse, request as urllib_request
 
 from dotenv import load_dotenv
@@ -32,11 +33,44 @@ from flask import (
 )
 
 # ---------------------------------------------------------------------------
+def _ttl_cache(maxsize=128, ttl=3600):
+    """lru_cache replacement that expires entries after *ttl* seconds."""
+    def decorator(fn):
+        _cache = {}
+        _timestamps = {}
+
+        @wraps(fn)
+        def wrapper(*args):
+            now = _time_mod.monotonic()
+            if args in _cache and (now - _timestamps[args]) < ttl:
+                return _cache[args]
+            # Evict oldest if at capacity
+            if len(_cache) >= maxsize and args not in _cache:
+                oldest_key = min(_timestamps, key=_timestamps.get)
+                _cache.pop(oldest_key, None)
+                _timestamps.pop(oldest_key, None)
+            result = fn(*args)
+            _cache[args] = result
+            _timestamps[args] = now
+            return result
+
+        wrapper.cache_clear = lambda: (_cache.clear(), _timestamps.clear())
+        return wrapper
+    return decorator
+
+
+# ---------------------------------------------------------------------------
 # App setup
 # ---------------------------------------------------------------------------
 
 app = Flask(__name__)
-app.secret_key = os.environ.get("SECRET_KEY") or os.urandom(32)
+_secret = os.environ.get("SECRET_KEY")
+if not _secret:
+    raise RuntimeError(
+        "SECRET_KEY environment variable must be set. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\""
+    )
+app.secret_key = _secret
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
@@ -121,6 +155,29 @@ HDB_DATASET_START_YEAR = 1990
 DEFAULT_FLOOR_AREA = 90
 MAP_TRANSACTION_START_YEAR = 2024
 MAP_TRANSACTION_LIMIT = 10000
+
+
+def _build_map_storey_range_options(storey_values):
+    floors = sorted(
+        int(value) for value in (storey_values or [])
+        if str(value).isdigit()
+    )
+    if not floors:
+        return []
+
+    grouped_ranges = []
+    for idx in range(0, len(floors), 3):
+        chunk = floors[idx:idx + 3]
+        if not chunk:
+            continue
+        if len(chunk) == 1:
+            grouped_ranges.append(f"{chunk[0]:02d}")
+        else:
+            grouped_ranges.append(f"{chunk[0]:02d} TO {chunk[-1]:02d}")
+    return grouped_ranges
+
+
+MAP_STOREY_RANGE_OPTIONS = _build_map_storey_range_options(STOREY_RANGES)
 
 
 def _storey_midpoint(storey_range):
@@ -571,7 +628,7 @@ def _get_supabase_user_by_email(email):
 
 
 def _get_supabase_feature_view_rows(user_id, feature):
-    cutoff = (datetime.utcnow() - timedelta(days=7)).replace(microsecond=0).isoformat() + "Z"
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).replace(microsecond=0).isoformat().replace("+00:00", "Z")
     return _supabase_request(
         "feature_view_log",
         filters={
@@ -1102,7 +1159,7 @@ def _get_town_avg_distances():
         return {}
 
 
-@lru_cache(maxsize=1)
+@_ttl_cache(maxsize=1, ttl=3600)
 def _get_district_summary_data():
     try:
         return _supabase_rpc("rpc_api_district_summary") or []
@@ -1110,7 +1167,7 @@ def _get_district_summary_data():
         return []
 
 
-@lru_cache(maxsize=1)
+@_ttl_cache(maxsize=1, ttl=3600)
 def _get_district_comparison_data():
     try:
         return _supabase_rpc("rpc_api_district_comparison") or []
@@ -1150,7 +1207,7 @@ def _get_prediction_map_seed_data():
     ]
 
 
-@lru_cache(maxsize=256)
+@_ttl_cache(maxsize=256, ttl=3600)
 def _get_flat_type_breakdown_data(town, street_name="", block=""):
     town = town or ""
     street_name = street_name or ""
@@ -1169,32 +1226,54 @@ def _get_flat_type_breakdown_data(town, street_name="", block=""):
         return []
 
 
-@lru_cache(maxsize=128)
-def _get_available_models_data(town, flat_type):
+def _get_available_models_data(town, flat_type, street_name="", block=""):
     town = town or ""
     flat_type = flat_type or ""
+    street_name = street_name or ""
+    block = block or ""
 
     try:
-        rows = _supabase_rpc("rpc_api_available_models", {
-            "p_town": town,
-            "p_flat_type": flat_type,
-        }) or []
+        params = {"p_town": town, "p_flat_type": flat_type}
+        if street_name or block:
+            params["p_street_name"] = street_name or None
+            params["p_block"] = block or None
+            try:
+                rows = _supabase_rpc("rpc_api_available_models", params) or []
+            except SupabaseError as exc:
+                if not _rpc_param_not_available(exc, "rpc_api_available_models", "p_street_name"):
+                    raise
+                rows = _supabase_rpc("rpc_api_available_models", {
+                    "p_town": town, "p_flat_type": flat_type,
+                }) or []
+        else:
+            rows = _supabase_rpc("rpc_api_available_models", params) or []
         return [r["flat_model"] for r in rows]
     except SupabaseError:
         return []
 
 
-@lru_cache(maxsize=128)
-def _get_available_storey_ranges_data(town, flat_type):
+def _get_available_storey_ranges_data(town, flat_type, street_name="", block=""):
     """Returns individual floor numbers derived from DB storey ranges."""
     town = town or ""
     flat_type = flat_type or ""
+    street_name = street_name or ""
+    block = block or ""
 
     try:
-        rows = _supabase_rpc("rpc_api_available_storey_ranges", {
-            "p_town": town or None,
-            "p_flat_type": flat_type or None,
-        }) or []
+        params = {"p_town": town or None, "p_flat_type": flat_type or None}
+        if street_name or block:
+            params["p_street_name"] = street_name or None
+            params["p_block"] = block or None
+            try:
+                rows = _supabase_rpc("rpc_api_available_storey_ranges", params) or []
+            except SupabaseError as exc:
+                if not _rpc_param_not_available(exc, "rpc_api_available_storey_ranges", "p_street_name"):
+                    raise
+                rows = _supabase_rpc("rpc_api_available_storey_ranges", {
+                    "p_town": town or None, "p_flat_type": flat_type or None,
+                }) or []
+        else:
+            rows = _supabase_rpc("rpc_api_available_storey_ranges", params) or []
         floors = set()
         for r in rows:
             sr = r["storey_range"]
@@ -1209,16 +1288,27 @@ def _get_available_storey_ranges_data(town, flat_type):
         return []
 
 
-@lru_cache(maxsize=128)
-def _get_floor_area_stats_data(town, flat_type):
+def _get_floor_area_stats_data(town, flat_type, street_name="", block=""):
     town = town or ""
     flat_type = flat_type or ""
+    street_name = street_name or ""
+    block = block or ""
 
     try:
-        rows = _supabase_rpc("rpc_api_floor_area_stats", {
-            "p_town": town or None,
-            "p_flat_type": flat_type or None,
-        }) or []
+        params = {"p_town": town or None, "p_flat_type": flat_type or None}
+        if street_name or block:
+            params["p_street_name"] = street_name or None
+            params["p_block"] = block or None
+            try:
+                rows = _supabase_rpc("rpc_api_floor_area_stats", params) or []
+            except SupabaseError as exc:
+                if not _rpc_param_not_available(exc, "rpc_api_floor_area_stats", "p_street_name"):
+                    raise
+                rows = _supabase_rpc("rpc_api_floor_area_stats", {
+                    "p_town": town or None, "p_flat_type": flat_type or None,
+                }) or []
+        else:
+            rows = _supabase_rpc("rpc_api_floor_area_stats", params) or []
         if rows and isinstance(rows, list):
             return rows[0]
         if rows and isinstance(rows, dict):
@@ -1229,14 +1319,26 @@ def _get_floor_area_stats_data(town, flat_type):
     return {"min_area": 30, "max_area": 300, "avg_area": DEFAULT_FLOOR_AREA}
 
 
-@lru_cache(maxsize=64)
-def _get_lease_year_range_data(town):
+def _get_lease_year_range_data(town, street_name="", block=""):
     town = town or ""
+    street_name = street_name or ""
+    block = block or ""
 
     try:
-        rows = _supabase_rpc(
-            "rpc_api_lease_year_range", {"p_town": town or None}
-        ) or []
+        params = {"p_town": town or None}
+        if street_name or block:
+            params["p_street_name"] = street_name or None
+            params["p_block"] = block or None
+            try:
+                rows = _supabase_rpc("rpc_api_lease_year_range", params) or []
+            except SupabaseError as exc:
+                if not _rpc_param_not_available(exc, "rpc_api_lease_year_range", "p_street_name"):
+                    raise
+                rows = _supabase_rpc(
+                    "rpc_api_lease_year_range", {"p_town": town or None}
+                ) or []
+        else:
+            rows = _supabase_rpc("rpc_api_lease_year_range", params) or []
         if rows and isinstance(rows, list):
             return rows[0]
         if rows and isinstance(rows, dict):
@@ -1342,6 +1444,15 @@ def _check_feature_limit(feature):
     limit = GENERAL_WEEKLY_VIEW_LIMITS.get(feature, 3)
     count = _get_weekly_view_count(_session_user_id(), feature)
     return count < limit, count, limit
+
+
+def _log_feature_view_once(user_id, feature):
+    """Log a feature view only once per session to avoid burning views on reloads."""
+    session_key = f"_viewed_{feature}"
+    if session.get(session_key):
+        return
+    _log_feature_view(user_id, feature)
+    session[session_key] = True
 
 
 @app.before_request
@@ -1761,7 +1872,7 @@ def _pick_representative_storey(storey_ranges):
     return str(floors[len(floors) // 2])
 
 
-@lru_cache(maxsize=64)
+@_ttl_cache(maxsize=64, ttl=3600)
 def _infer_map_prediction_profile(town):
     """Infer a representative model input profile from a town's own data."""
     resolved_form, _ = _complete_prediction_form_data(
@@ -1945,9 +2056,14 @@ def upgrade():
 def _get_popular_predictions(limit=3):
     """Return the most common town+flat_type prediction combos across all users."""
     try:
+        # Cap the fetch to the 500 most recent predictions to avoid full table scans
         rows = _supabase_request(
             SUPABASE_PREDICTIONS_TABLE,
-            filters={"select": "town,flat_type,predicted_price"},
+            filters={
+                "select": "town,flat_type,predicted_price",
+                "order": "created_at.desc",
+                "limit": "500",
+            },
         ) or []
         aggregates = {}
         for row in rows:
@@ -2040,7 +2156,7 @@ def comparison():
     if not allowed:
         flash(f"You've used all {limit} free Comparison views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
-    _log_feature_view(session["user_id"], "comparison")
+    _log_feature_view_once(session["user_id"], "comparison")
     saved_predictions = []
     if g.user:
         try:
@@ -2378,12 +2494,14 @@ def map_view():
     if not allowed:
         flash(f"You've used all {limit} free Map views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
-    _log_feature_view(session["user_id"], "map")
+    _log_feature_view_once(session["user_id"], "map")
     return render_template(
         "map.html",
         towns=TOWNS,
         flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        flat_models=FLAT_MODELS,
         storey_ranges=STOREY_RANGES,
+        map_storey_ranges=MAP_STOREY_RANGE_OPTIONS,
         map_transaction_start_year=MAP_TRANSACTION_START_YEAR,
     )
 
@@ -2395,7 +2513,7 @@ def analytics():
     if not allowed:
         flash(f"You've used all {limit} free Analytics views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
-    _log_feature_view(session["user_id"], "analytics")
+    _log_feature_view_once(session["user_id"], "analytics")
     return render_template("analytics.html", towns=TOWNS)
 
 
@@ -2456,6 +2574,7 @@ def api_predicted_heatmap():
 
     scenario_input = {
         "flat_type": request.args.get("flat_type", "").strip(),
+        "flat_model": request.args.get("flat_model", "").strip(),
         "floor_area": request.args.get("floor_area", "").strip(),
         "storey_range": request.args.get("storey_range", "").strip(),
         "lease_commence": request.args.get("lease_commence", "").strip(),
@@ -2531,6 +2650,7 @@ def api_predicted_heatmap():
             "market_low": round(market_low),
             "market_high": round(market_high),
             "flat_type": profile["flat_type"],
+            "flat_model": profile["flat_model"],
             "storey_range": profile["storey_range"],
             "floor_area": round(_coerce_float(profile["floor_area"], DEFAULT_FLOOR_AREA), 1),
             "lease_commence": _coerce_int(profile["lease_commence"], _default_lease_year_range()["avg_year"]),
@@ -2686,7 +2806,9 @@ def api_available_models():
     """Returns flat models available for a given town and flat_type."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
-    return jsonify({"models": _get_available_models_data(town, flat_type)})
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+    return jsonify({"models": _get_available_models_data(town, flat_type, street_name, block)})
 
 
 @app.route("/api/available_storey_ranges")
@@ -2695,7 +2817,9 @@ def api_available_storey_ranges():
     """Returns storey ranges available for a given town and flat_type."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
-    return jsonify({"storey_ranges": _get_available_storey_ranges_data(town, flat_type)})
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+    return jsonify({"storey_ranges": _get_available_storey_ranges_data(town, flat_type, street_name, block)})
 
 
 @app.route("/api/floor_area_stats")
@@ -2704,7 +2828,9 @@ def api_floor_area_stats():
     """Min, max, avg floor area for a town + flat_type combination."""
     town = request.args.get("town", "")
     flat_type = request.args.get("flat_type", "")
-    return jsonify(_get_floor_area_stats_data(town, flat_type))
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+    return jsonify(_get_floor_area_stats_data(town, flat_type, street_name, block))
 
 
 @app.route("/api/lease_year_range")
@@ -2712,7 +2838,9 @@ def api_floor_area_stats():
 def api_lease_year_range():
     """Min and max lease_commence_date for a town."""
     town = request.args.get("town", "")
-    return jsonify(_get_lease_year_range_data(town))
+    street_name = request.args.get("street_name", "")
+    block = request.args.get("block", "")
+    return jsonify(_get_lease_year_range_data(town, street_name, block))
 
 
 @app.route("/api/available_streets")

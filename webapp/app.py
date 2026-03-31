@@ -557,6 +557,9 @@ def _load_artefacts():
 
 
 ARTEFACTS = _load_artefacts()
+SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "rf"}
+_SHAP_EXPLAINER = None
+_SHAP_IMPORT_ERROR = None
 
 
 class SupabaseError(RuntimeError):
@@ -1600,23 +1603,125 @@ def load_user():
 # Prediction engine
 # ---------------------------------------------------------------------------
 
-def predict_price(town, flat_type, flat_model, floor_area, storey_range,
-                  lease_commence, override_year=None, override_distances=None):
-    """
-    Run the full feature engineering + prediction pipeline for a single property.
-    Returns dict with predicted_price, price_low, price_high.
-    """
+def _load_shap_module():
+    global _SHAP_IMPORT_ERROR
+    if _SHAP_IMPORT_ERROR is not None:
+        return None
+    try:
+        import shap
+    except Exception as exc:
+        _SHAP_IMPORT_ERROR = exc
+        return None
+    return shap
+
+
+def _get_shap_explainer():
+    global _SHAP_EXPLAINER
+    if ARTEFACTS.get("model_key") not in SHAP_SUPPORTED_MODEL_KEYS:
+        return None
+    if ARTEFACTS.get("model") is None:
+        return None
+    if _SHAP_EXPLAINER is not None:
+        return _SHAP_EXPLAINER
+
+    shap = _load_shap_module()
+    if shap is None:
+        return None
+
+    _SHAP_EXPLAINER = shap.TreeExplainer(ARTEFACTS["model"])
+    return _SHAP_EXPLAINER
+
+
+def _compute_feature_contributions(feature_frame):
+    model_key = ARTEFACTS.get("model_key")
+    model = ARTEFACTS.get("model")
+
+    if model_key == "xgboost" and model is not None:
+        booster = model.get_booster() if hasattr(model, "get_booster") else model
+        contrib_source = feature_frame
+        if hasattr(booster, "predict"):
+            try:
+                import xgboost as xgb
+                contrib_source = xgb.DMatrix(feature_frame, feature_names=FEATURE_COLS)
+            except Exception:
+                contrib_source = feature_frame
+        contribs = booster.predict(contrib_source, pred_contribs=True)
+        contribs = np.asarray(contribs, dtype=float)
+        if contribs.ndim > 2:
+            contribs = contribs.reshape(contribs.shape[0], -1)
+        contrib_row = contribs[0]
+        return contrib_row[:-1], float(contrib_row[-1])
+
+    explainer = _get_shap_explainer()
+    if explainer is None:
+        return None, None
+
+    shap_values = explainer.shap_values(feature_frame)
+    if isinstance(shap_values, list):
+        shap_values = shap_values[0]
+    shap_values = np.asarray(shap_values, dtype=float).reshape(-1)
+    expected_value = _coerce_scalar(getattr(explainer, "expected_value", 0.0))
+    return shap_values, expected_value
+
+
+def _resolve_price_index_multiplier(year, month_num):
+    target_transform = ARTEFACTS.get("target_transform", "log1p_resale_price")
+    price_index = ARTEFACTS.get("price_index")
+    if target_transform != "rpi_adjusted_log_price" or price_index is None:
+        return 1.0
+
+    quarter_key = int(year) * 10 + ((int(month_num) - 1) // 3 + 1)
+    pi = None
+    try:
+        pi = price_index.get(quarter_key)
+    except AttributeError:
+        pi = None
+
+    if pi is None:
+        try:
+            pi = price_index[quarter_key]
+        except Exception:
+            pi = None
+
+    if pi is None:
+        if hasattr(price_index, "loc") and hasattr(price_index, "index") and len(price_index.index):
+            pi = price_index.loc[price_index.index.max()]
+        elif isinstance(price_index, dict) and price_index:
+            pi = price_index[max(price_index)]
+
+    try:
+        return float(pi)
+    except (TypeError, ValueError):
+        return 1.0
+
+
+def _inverse_target_prediction(pred_log, year, month_num):
+    return float(np.expm1(pred_log)) * _resolve_price_index_multiplier(year, month_num)
+
+
+def _predict_log_price_from_scaled_df(df):
     model = ARTEFACTS["model"]
+    if ARTEFACTS["model_key"] == "ensemble":
+        base_models = ARTEFACTS["base_models"]
+        meta_model = ARTEFACTS["meta_model"]
+        meta_features = np.column_stack([
+            base_models[name].predict(df[FEATURE_COLS])
+            for name in meta_model.base_learner_order_
+        ])
+        return float(meta_model.predict(meta_features)[0])
+    return float(model.predict(df[FEATURE_COLS])[0])
+
+
+def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_range,
+                             lease_commence, override_year=None, override_distances=None):
+    """Build a single-row scaled feature frame for prediction and explainability."""
     scaler = ARTEFACTS["scaler"]
     encoders = ARTEFACTS["encoders"]
-    price_index = ARTEFACTS.get("price_index")
-    target_transform = ARTEFACTS.get("target_transform", "log1p_resale_price")
 
     now = datetime.now()
     year = override_year if override_year is not None else now.year
     month_num = now.month
 
-    # Derived features
     flat_age = year - lease_commence
     remaining_lease = max(0, 99 - flat_age)
     month_sin = math.sin(2 * math.pi * month_num / 12)
@@ -1624,7 +1729,6 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     is_mature = 1 if town in MATURE_ESTATES else 0
     flat_type_ord = FLAT_TYPE_ORDINAL.get(flat_type, 4)
 
-    # Target encoding
     town_enc_map = encoders["town"]["means"]
     town_enc = town_enc_map.get(town, encoders["town"]["global_mean"])
 
@@ -1633,10 +1737,8 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         flat_model, encoders["flat_model"]["global_mean"]
     )
 
-    # Storey midpoint
     storey_mid = _storey_midpoint(storey_range)
 
-    # Distances (use block-level if provided, else town averages)
     if override_distances:
         dist_mrt = override_distances.get("dist_mrt", 500)
         dist_cbd = override_distances.get("dist_cbd", 10000)
@@ -1651,7 +1753,6 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
 
     appreciation = _resolve_town_appreciation_features(town, year)
 
-    # Build feature row (pre-scaling)
     raw = {
         "flat_type_ordinal": flat_type_ord,
         "town_enc": town_enc,
@@ -1674,32 +1775,309 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
     }
 
     df = pd.DataFrame([raw])
-
-    # Scale
     df[SCALE_COLS] = scaler.transform(df[SCALE_COLS])
 
-    # Predict (log1p scale)
-    if ARTEFACTS["model_key"] == "ensemble":
-        # Ensemble: stack base learner predictions, pass through meta-learner
-        base_models = ARTEFACTS["base_models"]
-        meta_model = ARTEFACTS["meta_model"]
-        meta_features = np.column_stack([
-            base_models[name].predict(df[FEATURE_COLS])
-            for name in meta_model.base_learner_order_
-        ])
-        pred_log = meta_model.predict(meta_features)[0]
-    else:
-        pred_log = model.predict(df[FEATURE_COLS])[0]
+    raw_values = dict(raw)
+    raw_values.update({
+        "town": town,
+        "flat_type": flat_type,
+        "flat_model": flat_model,
+        "storey_range": storey_range,
+        "prediction_year": year,
+        "prediction_month": month_num,
+    })
+    return df, raw_values
 
-    if target_transform == "rpi_adjusted_log_price" and price_index is not None:
-        quarter_key = year * 10 + ((month_num - 1) // 3 + 1)
-        pi = price_index.get(quarter_key)
-        if pi is None:
-            # Fallback to chronologically latest quarter
-            pi = price_index.loc[price_index.index.max()]
-        predicted_price = float(np.expm1(pred_log) * pi)
+
+def _coerce_scalar(value):
+    if isinstance(value, (list, tuple, np.ndarray)):
+        arr = np.asarray(value).reshape(-1)
+        if arr.size == 0:
+            return 0.0
+        return float(arr[0])
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _format_metric_number(value, suffix=""):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return suffix.strip() or "N/A"
+
+    if number.is_integer():
+        return f"{int(number):,}{suffix}"
+    return f"{number:,.1f}{suffix}"
+
+
+def _format_rate_label(value):
+    try:
+        pct = float(value) * 100
+    except (TypeError, ValueError):
+        return "0.0%"
+    return f"{pct:+.1f}%"
+
+
+def _describe_storey_label(storey_range, midpoint):
+    try:
+        level = int(round(float(midpoint)))
+    except (TypeError, ValueError):
+        level = None
+
+    if level is None:
+        return f"Storey ({storey_range})" if storey_range else "Storey"
+
+    if level <= 3:
+        band = "Low floor"
+    elif level <= 9:
+        band = "Mid floor"
+    elif level <= 18:
+        band = "High floor"
     else:
-        predicted_price = float(np.expm1(pred_log))
+        band = "Very high floor"
+
+    detail = storey_range or str(level)
+    return f"{band} ({detail})"
+
+
+def _feature_label(feature_name, raw_values):
+    if feature_name == "floor_area_sqm":
+        return f"Floor area ({_format_metric_number(raw_values.get(feature_name), ' sqm')})"
+    if feature_name == "storey_midpoint":
+        return _describe_storey_label(
+            raw_values.get("storey_range"),
+            raw_values.get(feature_name),
+        )
+    if feature_name == "flat_age":
+        return f"Flat age ({_format_metric_number(raw_values.get(feature_name), ' yrs')})"
+    if feature_name == "remaining_lease":
+        return f"Remaining lease ({_format_metric_number(raw_values.get(feature_name), ' yrs')})"
+    if feature_name == "lease_commence_date":
+        return f"Lease start year ({int(raw_values.get(feature_name) or 0)})"
+    if feature_name == "year":
+        return f"Market year ({int(raw_values.get(feature_name) or 0)})"
+    if feature_name == "is_mature_estate":
+        return (
+            "Estate maturity (Mature estate)"
+            if raw_values.get(feature_name)
+            else "Estate maturity (Non-mature estate)"
+        )
+    if feature_name == "dist_mrt":
+        return f"Distance to MRT ({_format_distance(raw_values.get(feature_name))})"
+    if feature_name == "dist_cbd":
+        return f"Distance to CBD ({_format_distance(raw_values.get(feature_name))})"
+    if feature_name == "dist_primary_school":
+        return f"Distance to school ({_format_distance(raw_values.get(feature_name))})"
+    if feature_name == "dist_major_mall":
+        return f"Distance to mall ({_format_distance(raw_values.get(feature_name))})"
+    if feature_name == "flat_type_ordinal":
+        return f"Flat type ({raw_values.get('flat_type', 'Unknown')})"
+    if feature_name == "town_enc":
+        return f"Town profile ({str(raw_values.get('town', 'Unknown')).title()})"
+    if feature_name == "flat_model_enc":
+        return f"Flat model ({raw_values.get('flat_model', 'Unknown')})"
+    if feature_name == "town_yoy_appreciation_lag1":
+        return f"Town 1Y appreciation ({_format_rate_label(raw_values.get(feature_name))})"
+    if feature_name == "town_5yr_cagr_lag1":
+        return f"Town 5Y CAGR ({_format_rate_label(raw_values.get(feature_name))})"
+    if feature_name in {"month_sin", "month_cos"}:
+        return "Seasonal timing"
+    return feature_name.replace("_", " ").title()
+
+
+def _feature_phrase(label):
+    return label.split(" (", 1)[0].lower()
+
+
+def _join_readable(items):
+    items = [item for item in items if item]
+    if not items:
+        return ""
+    if len(items) == 1:
+        return items[0]
+    if len(items) == 2:
+        return f"{items[0]} and {items[1]}"
+    return f"{', '.join(items[:-1])}, and {items[-1]}"
+
+
+def _generate_narrative_template(features, predicted_price, town, town_avg_price=None,
+                                 baseline_price=None):
+    positives = [item for item in features if item["dollar_impact"] > 0]
+    negatives = [item for item in features if item["dollar_impact"] < 0]
+    sentences = []
+    town_title = str(town or "").title()
+
+    if town_avg_price:
+        diff = int(round(predicted_price - float(town_avg_price)))
+        if abs(diff) < 1000:
+            sentences.append(
+                f"This estimate is broadly in line with the average {town_title} resale value for this flat type."
+            )
+        else:
+            direction = "above" if diff > 0 else "below"
+            sentences.append(
+                f"This estimate sits about ${abs(diff):,} {direction} the average {town_title} resale value for this flat type."
+            )
+    elif baseline_price is not None:
+        diff = int(round(predicted_price - float(baseline_price)))
+        if abs(diff) >= 1000:
+            direction = "above" if diff > 0 else "below"
+            sentences.append(
+                f"This flat is about ${abs(diff):,} {direction} the model baseline for similar homes."
+            )
+
+    top_positives = positives[:2]
+    if top_positives:
+        pos_total = sum(item["dollar_impact"] for item in top_positives)
+        pos_labels = [_feature_phrase(item["label"]) for item in top_positives]
+        sentences.append(
+            f"The strongest upward pushes come from {_join_readable(pos_labels)}, adding about ${abs(int(round(pos_total))):,} combined."
+        )
+
+    top_negatives = negatives[:2]
+    if top_negatives:
+        neg_total = sum(abs(item["dollar_impact"]) for item in top_negatives)
+        neg_labels = [_feature_phrase(item["label"]) for item in top_negatives]
+        sentences.append(
+            f"The main downward pressure comes from {_join_readable(neg_labels)}, trimming roughly ${abs(int(round(neg_total))):,}."
+        )
+
+    if not sentences:
+        sentences.append(
+            "The feature contributions are tightly balanced, so no single factor dominates this estimate."
+        )
+
+    return " ".join(sentences)
+
+
+def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_range,
+                             lease_commence, predicted_price=None, override_year=None,
+                             override_distances=None, town_avg_price=None):
+    if ARTEFACTS.get("model_key") not in SHAP_SUPPORTED_MODEL_KEYS:
+        return None
+
+    df, raw_values = _build_scaled_feature_df(
+        town,
+        flat_type,
+        flat_model,
+        floor_area,
+        storey_range,
+        lease_commence,
+        override_year=override_year,
+        override_distances=override_distances,
+    )
+    feature_frame = df[FEATURE_COLS]
+    shap_values, baseline_log = _compute_feature_contributions(feature_frame)
+    if shap_values is None:
+        return None
+
+    pred_log = _predict_log_price_from_scaled_df(df)
+    prediction_year = raw_values["prediction_year"]
+    prediction_month = raw_values["prediction_month"]
+    predicted_price_raw = _inverse_target_prediction(
+        pred_log,
+        prediction_year,
+        prediction_month,
+    )
+    baseline_price = _inverse_target_prediction(
+        baseline_log,
+        prediction_year,
+        prediction_month,
+    )
+
+    raw_impacts = []
+    for feature_name, shap_value in zip(FEATURE_COLS, shap_values):
+        counterfactual_price = _inverse_target_prediction(
+            pred_log - float(shap_value),
+            prediction_year,
+            prediction_month,
+        )
+        raw_impacts.append({
+            "key": feature_name,
+            "label": _feature_label(feature_name, raw_values),
+            "dollar_impact": predicted_price_raw - counterfactual_price,
+        })
+
+    delta_target = predicted_price_raw - baseline_price
+    raw_total = sum(item["dollar_impact"] for item in raw_impacts)
+    scale = (delta_target / raw_total) if abs(raw_total) > 1e-9 else 1.0
+
+    for item in raw_impacts:
+        item["dollar_impact"] *= scale
+
+    grouped_items = []
+    grouped_map = {}
+    for item in raw_impacts:
+        group_key = (
+            "seasonal_timing"
+            if item["key"] in {"month_sin", "month_cos"}
+            else item["key"]
+        )
+        if group_key not in grouped_map:
+            grouped_map[group_key] = {
+                "key": group_key,
+                "label": "Seasonal timing" if group_key == "seasonal_timing" else item["label"],
+                "dollar_impact": 0.0,
+            }
+            grouped_items.append(grouped_map[group_key])
+        grouped_map[group_key]["dollar_impact"] += item["dollar_impact"]
+
+    rounded_items = []
+    for item in grouped_items:
+        rounded_impact = int(round(item["dollar_impact"]))
+        rounded_items.append({
+            "key": item["key"],
+            "label": item["label"],
+            "dollar_impact": rounded_impact,
+            "is_positive": rounded_impact >= 0,
+        })
+
+    rounded_items.sort(key=lambda item: abs(item["dollar_impact"]), reverse=True)
+
+    return {
+        "features": rounded_items,
+        "baseline_price": int(round(baseline_price)),
+        "predicted_price": int(round(
+            predicted_price_raw if predicted_price is None else float(predicted_price)
+        )),
+        "delta_from_baseline": int(round(predicted_price_raw - baseline_price)),
+        "narrative": _generate_narrative_template(
+            rounded_items,
+            predicted_price_raw,
+            town,
+            town_avg_price=town_avg_price,
+            baseline_price=baseline_price,
+        ),
+        "model_note": None,
+        "model_label": ARTEFACTS.get("model_label", "Model"),
+        "feature_count": len(rounded_items),
+    }
+
+
+def predict_price(town, flat_type, flat_model, floor_area, storey_range,
+                  lease_commence, override_year=None, override_distances=None):
+    """
+    Run the full feature engineering + prediction pipeline for a single property.
+    Returns dict with predicted_price, price_low, price_high.
+    """
+    df, raw_values = _build_scaled_feature_df(
+        town,
+        flat_type,
+        flat_model,
+        floor_area,
+        storey_range,
+        lease_commence,
+        override_year=override_year,
+        override_distances=override_distances,
+    )
+    pred_log = _predict_log_price_from_scaled_df(df)
+    predicted_price = _inverse_target_prediction(
+        pred_log,
+        raw_values["prediction_year"],
+        raw_values["prediction_month"],
+    )
 
     # Confidence range based on the serving model's recorded test MAPE.
     performance = ARTEFACTS.get("performance", {})
@@ -2404,6 +2782,7 @@ def comparison_select_saved(pred_id):
 @login_required
 def predict():
     result = None
+    is_premium = session.get("subscription_tier", "general") == "premium"
     prefill_source = request.args.get("source", "").strip()
     should_auto_predict = (
         request.method == "GET"
@@ -2425,6 +2804,7 @@ def predict():
     town_avg_price = None
     recent_transactions = None
     prediction_input = None
+    explanation = None
 
     if request.method == "POST":
         form_data = {
@@ -2454,6 +2834,8 @@ def predict():
                 town_avg_price=None,
                 recent_transactions=None,
                 prefill_source=prefill_source,
+                explanation=None,
+                is_premium=is_premium,
             )
 
         if form_data["flat_type"] not in FLAT_TYPE_ORDINAL:
@@ -2472,6 +2854,8 @@ def predict():
                 town_avg_price=None,
                 recent_transactions=None,
                 prefill_source=prefill_source,
+                explanation=None,
+                is_premium=is_premium,
             )
         prediction_input = dict(form_data)
     elif form_data["town"]:
@@ -2529,6 +2913,22 @@ def predict():
             block=form_data.get("block", ""),
         )
 
+        if is_premium:
+            try:
+                explanation = compute_shap_explanation(
+                    town=form_data["town"],
+                    flat_type=form_data["flat_type"],
+                    flat_model=form_data["flat_model"],
+                    floor_area=form_data["floor_area"],
+                    storey_range=form_data["storey_range"],
+                    lease_commence=form_data["lease_commence"],
+                    predicted_price=result["predicted_price"],
+                    override_distances=block_distances,
+                    town_avg_price=town_avg_price,
+                )
+            except Exception:
+                app.logger.warning("SHAP explanation failed", exc_info=True)
+
     return render_template(
         "predict.html",
         result=result,
@@ -2543,6 +2943,8 @@ def predict():
         town_avg_price=town_avg_price,
         recent_transactions=recent_transactions,
         prefill_source=prefill_source,
+        explanation=explanation,
+        is_premium=is_premium,
     )
 
 

@@ -16,7 +16,6 @@ from __future__ import annotations
 import importlib
 import json
 import os
-import shutil
 import sqlite3
 import sys
 import time
@@ -31,10 +30,6 @@ DATA_PREPROCESSING_DIR = os.path.join(PROJECT_ROOT, "Data Preprocessing")
 ML_DIR = os.path.join(PROJECT_ROOT, "ML")
 DATABASE_DIR = os.path.join(PROJECT_ROOT, "Database")
 MODEL_ASSETS_DIR = os.environ.get("MODEL_ASSETS_DIR", os.path.join(ML_DIR, "model_assets"))
-WEBAPP_MODEL_DIR = os.environ.get(
-    "WEBAPP_MODEL_DIR",
-    os.path.join(PROJECT_ROOT, "webapp", "model_assets"),
-)
 LOCAL_DB_PATH = os.environ.get(
     "HDB_SQLITE_PATH",
     os.path.join(DATA_PREPROCESSING_DIR, "hdb_resale.db"),
@@ -216,31 +211,6 @@ def run_supabase_model_version_sync(
     print(f"  model_versions updated: {winner_name} (active)")
 
 
-def run_copy_artefacts() -> None:
-    run_dir = get_latest_run_dir()
-    if run_dir is None:
-        raise RuntimeError("Could not find latest ML run directory.")
-
-    os.makedirs(WEBAPP_MODEL_DIR, exist_ok=True)
-
-    dest_run_dir = os.path.join(WEBAPP_MODEL_DIR, os.path.basename(run_dir))
-    if os.path.exists(dest_run_dir):
-        shutil.rmtree(dest_run_dir)
-    shutil.copytree(run_dir, dest_run_dir)
-    print(f"  Copied {run_dir} → {dest_run_dir}")
-
-    latest_target = os.path.basename(dest_run_dir)
-    latest_path = os.path.join(WEBAPP_MODEL_DIR, "latest.txt")
-    with open(latest_path, "w") as f:
-        f.write(latest_target)
-    print(f"  Updated {latest_path} → {latest_target}")
-
-    copied_files: list[str] = []
-    for _, _, files in os.walk(dest_run_dir):
-        copied_files.extend(files)
-    print(f"  {len(copied_files)} files copied: {', '.join(sorted(copied_files))}")
-
-
 def get_latest_run_dir() -> str | None:
     latest_path = os.path.join(MODEL_ASSETS_DIR, "latest.txt")
     if not os.path.exists(latest_path):
@@ -374,7 +344,6 @@ PREPROCESSING_STEPS = [
 ML_STEPS = [
     ("Feature engineering", run_feature_engineering),
     ("Model training", run_model_training),
-    ("Copying model artefacts to webapp/model_assets/", run_copy_artefacts),
 ]
 
 

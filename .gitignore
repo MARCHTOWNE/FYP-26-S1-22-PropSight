@@ -29,3 +29,4 @@ venv/
 
 model_assets/latest.txt
 model_assets/*/
+webapp/model_assets/

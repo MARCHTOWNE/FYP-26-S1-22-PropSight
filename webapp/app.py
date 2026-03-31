@@ -89,7 +89,6 @@ def _first_existing_path(paths):
 
 ASSETS_DIR = _first_existing_path([
     os.environ.get("MODEL_ASSETS_DIR", ""),
-    os.path.join(PROJECT_DIR, "model_assets"),
     os.path.join(PROJECT_DIR, "ML", "model_assets"),
 ])
 
@@ -358,8 +357,29 @@ def _resolve_serving_model_key(run_dir, metrics):
             continue
         seen.add(model_key)
         model_path = os.path.join(run_dir, f"{model_key}_model.pkl")
-        if os.path.exists(model_path):
-            return model_key, model_path
+        if not os.path.exists(model_path):
+            continue
+
+        if model_key == "ensemble":
+            try:
+                with open(model_path, "rb") as f:
+                    ensemble_data = pickle.load(f)
+                meta_model = ensemble_data.get("meta_model")
+                base_model_order = getattr(meta_model, "base_learner_order_", None) or []
+            except (AttributeError, EOFError, OSError, pickle.PickleError):
+                continue
+
+            if not base_model_order:
+                continue
+
+            missing_base_models = [
+                name for name in base_model_order
+                if not os.path.exists(os.path.join(run_dir, f"{name}_model.pkl"))
+            ]
+            if missing_base_models:
+                continue
+
+        return model_key, model_path
 
     raise FileNotFoundError(
         f"No supported serving model artefact found in {run_dir}"
@@ -412,6 +432,27 @@ def inject_runtime_template_globals():
 # Load model artefacts at startup
 # ---------------------------------------------------------------------------
 
+REQUIRED_ARTEFACT_FILES = ("scaler.pkl", "target_encoders.pkl", "metrics.json")
+
+
+def _is_valid_run_dir(run_dir):
+    if not run_dir or not os.path.isdir(run_dir):
+        return False
+
+    for filename in REQUIRED_ARTEFACT_FILES:
+        if not os.path.exists(os.path.join(run_dir, filename)):
+            return False
+
+    try:
+        with open(os.path.join(run_dir, "metrics.json")) as f:
+            metrics = json.load(f)
+        _resolve_serving_model_key(run_dir, metrics)
+    except (FileNotFoundError, json.JSONDecodeError, OSError, pickle.PickleError):
+        return False
+
+    return True
+
+
 def _resolve_run_dir():
     latest_file = os.path.join(ASSETS_DIR, "latest.txt")
     run_dir = None
@@ -429,20 +470,20 @@ def _resolve_run_dir():
                     os.path.join(ASSETS_DIR, os.path.basename(configured)),
                 ]
             run_dir = _first_existing_path(candidates)
-            if not os.path.exists(run_dir):
+            if not _is_valid_run_dir(run_dir):
                 run_dir = None
 
     if run_dir is None:
-        # Fallback: pick the newest artefact directory under ASSETS_DIR.
+        # Fallback: pick the newest valid artefact directory under ASSETS_DIR.
         dirs = []
         if os.path.isdir(ASSETS_DIR):
             for name in os.listdir(ASSETS_DIR):
                 p = os.path.join(ASSETS_DIR, name)
-                if os.path.isdir(p) and os.path.exists(os.path.join(p, "xgboost_model.pkl")):
+                if _is_valid_run_dir(p):
                     dirs.append(p)
         if not dirs:
             raise FileNotFoundError(
-                f"No model artefact run directory found under {ASSETS_DIR}"
+                f"No valid model artefact run directory found under {ASSETS_DIR}"
             )
         run_dir = sorted(dirs)[-1]
 

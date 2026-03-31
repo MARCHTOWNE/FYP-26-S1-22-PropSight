@@ -94,7 +94,6 @@ hdb_resale/
 │
 ├── webapp/
 │   ├── app.py                   # Flask app, auth, APIs, predictions
-│   ├── model_assets/            # Copied serving artefacts for the web app
 │   ├── templates/               # Jinja2 templates
 │   └── static/                  # CSS and images
 │
@@ -145,7 +144,6 @@ The Flask app in `webapp/app.py` loads `.env` from the project root, reads train
 At startup, the app resolves model artefacts from:
 
 - `MODEL_ASSETS_DIR` if set
-- `./model_assets`
 - `./ML/model_assets`
 
 The active run is chosen from `latest.txt` when present, otherwise the newest run directory under the artefact root.
@@ -763,7 +761,7 @@ Validation is handled in `validate_data()` in `data_pipeline.py`.
 
 ## Processed Assets Structure
 
-The checked-in artefacts currently live under `ML/model_assets/`. The scripts themselves write to a relative `model_assets/` directory based on the working directory used to run them.
+The checked-in artefacts currently live under `ML/model_assets/`. The ML scripts default to writing there as well, because they run from the `ML/` directory unless `MODEL_ASSETS_DIR` overrides that path.
 
 ```text
 model_assets/

@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from training_data_source import get_training_data_source_name, load_training_dataframe
+from training_data_source import load_training_dataframe
 
 
 # ---------------------------------------------------------------------------
@@ -103,10 +103,10 @@ REQUIRED_MODEL_COLS = [
 # ---------------------------------------------------------------------------
 
 def load_data() -> tuple[pd.DataFrame, str]:
-    source = get_training_data_source_name()
-    print(f"Loading training data from {source} ...", flush=True)
+    print("Loading training data ...", flush=True)
     t0 = time.time()
     df, data_source = load_training_dataframe()
+    print(f"  Source: {data_source}")
     print(f"  Source query completed in {time.time() - t0:.1f}s.")
 
     numeric_cols = [

@@ -6,6 +6,9 @@ Run the full end-to-end workflow:
   2. ML pipeline
   3. Supabase sync
 
+Use this when you want a fresh model training run. For routine weekly
+database refreshes from data.gov.sg, prefer scripts/run_data_preprocessing.py.
+
 Focused scripts also exist:
   - python scripts/run_data_preprocessing.py
   - python scripts/run_ml_pipeline.py

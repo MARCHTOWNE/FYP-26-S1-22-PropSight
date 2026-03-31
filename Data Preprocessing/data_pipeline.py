@@ -6,6 +6,9 @@ validate, and write the authoritative dataset to hdb_resale.db.
 
 Design decisions:
   - All API fetching has been moved to api_fetcher.py.
+  - After the initial bootstrap, routine runs append only new rows from the
+    Jan 2017-present raw split instead of rebuilding the whole database.
+  - Set HDB_FULL_REBUILD=1 to force a full SQLite rebuild from all raw CSVs.
   - full_address is derived here and stored in the DB for use by geocoding.py.
   - Nullable columns (latitude, longitude, dist_mrt, dist_cbd,
     dist_primary_school, dist_major_mall) are created in this step so
@@ -28,6 +31,8 @@ import sqlite3
 
 import pandas as pd
 
+LAST_RUN_INFO: dict[str, object] = {}
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -36,6 +41,8 @@ BASE_DIR   = os.path.dirname(os.path.abspath(__file__))
 RAW_DIR    = os.environ.get("HDB_RAW_DIR", os.path.join(BASE_DIR, "raw"))
 DB_PATH    = os.environ.get("HDB_SQLITE_PATH", os.path.join(BASE_DIR, "hdb_resale.db"))
 TABLE_NAME = "resale_prices"
+CURRENT_DATASET_ID = "d_8b84c4ee58e3cfc0ece0d773c8ca6abc"
+CURRENT_RAW_FILENAME = f"{CURRENT_DATASET_ID}.csv"
 
 # Columns kept from raw API data (in order)
 RAW_COLUMNS = [
@@ -116,6 +123,15 @@ FLOOR_AREA_MAX = 320.0  # larger than any known multi-gen unit
 
 # Key columns used to detect duplicate records during admin ingestion
 _ADMIN_DEDUP_KEY = ["month", "block", "street_name", "flat_type", "storey_range"]
+TRANSACTION_DEDUP_KEY = [
+    "month",
+    "block",
+    "street_name",
+    "flat_type",
+    "storey_range",
+    "floor_area_sqm",
+    "resale_price",
+]
 
 # Validation thresholds for validate_data()
 PRICE_PER_SQM_MIN = 1_000    # SGD — below this is almost certainly corrupt data
@@ -147,6 +163,60 @@ HDB_FIRST_YEAR           = 1960  # no HDB flats existed before this year
 # ---------------------------------------------------------------------------
 # Step 1: Load raw CSVs from /raw
 # ---------------------------------------------------------------------------
+
+def _env_flag(name: str) -> bool:
+    """Return True when an environment variable is set to a truthy value."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _current_raw_csv_path(raw_dir: str = RAW_DIR) -> str:
+    """Return the raw CSV path for the Jan 2017-present split."""
+    return os.path.join(raw_dir, CURRENT_RAW_FILENAME)
+
+
+def get_current_raw_refreshed_at(raw_dir: str = RAW_DIR) -> str | None:
+    """Return the last modified timestamp of the live raw CSV as an ISO string."""
+    csv_path = _current_raw_csv_path(raw_dir)
+    if not os.path.exists(csv_path):
+        return None
+    return datetime.datetime.fromtimestamp(
+        os.path.getmtime(csv_path),
+        tz=datetime.timezone.utc,
+    ).isoformat()
+
+
+def get_latest_raw_month(raw_dir: str = RAW_DIR) -> str | None:
+    """
+    Inspect the cached Jan 2017-present raw CSV and return its latest month.
+
+    Returns None when the file is missing or the month column cannot be read.
+    """
+    csv_path = _current_raw_csv_path(raw_dir)
+    if not os.path.exists(csv_path):
+        return None
+
+    try:
+        month_series = pd.read_csv(
+            csv_path,
+            usecols=["month"],
+            dtype={"month": "string"},
+        )["month"].dropna()
+    except Exception as exc:
+        print(f"  WARNING: Could not inspect latest raw month from {csv_path}: {exc}")
+        return None
+
+    if month_series.empty:
+        return None
+    return month_series.astype(str).str[:7].max()
+
+
+def _table_exists(conn: sqlite3.Connection, table_name: str) -> bool:
+    """Return True when a table exists in the SQLite database."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        (table_name,),
+    ).fetchone()
+    return row is not None
 
 def load_raw_csvs(raw_dir: str = RAW_DIR) -> list[pd.DataFrame]:
     """
@@ -236,12 +306,8 @@ def combine_datasets(dataframes: list[pd.DataFrame]) -> pd.DataFrame:
     print(f"\n  Combined: {len(combined):,} rows × {combined.shape[1]} columns")
 
     # Drop rows that are identical across all transaction-identifying fields
-    _DEDUP_COLS = [
-        "month", "block", "street_name", "flat_type",
-        "storey_range", "floor_area_sqm", "resale_price",
-    ]
     before = len(combined)
-    combined = combined.drop_duplicates(subset=_DEDUP_COLS)
+    combined = combined.drop_duplicates(subset=TRANSACTION_DEDUP_KEY)
     removed = before - len(combined)
     print(f"  Duplicates removed: {removed:,}  Rows remaining: {len(combined):,}")
     return combined
@@ -302,10 +368,16 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # ------------------------------------------------------------------
     # month → parse to datetime, derive year and month_num, store as text
     # ------------------------------------------------------------------
-    df["month"] = pd.to_datetime(df["month"], format="%Y-%m", errors="coerce")
-    df["year"]      = df["month"].dt.year
-    df["month_num"] = df["month"].dt.month
-    df["month"]     = df["month"].dt.strftime("%Y-%m")  # back to canonical string
+    month_text = df["month"].astype("string").str.strip()
+    month_parts = month_text.str.extract(r"^(?P<year>\d{4})-(?P<month_num>\d{2})$")
+    month_year = pd.to_numeric(month_parts["year"], errors="coerce")
+    month_num = pd.to_numeric(month_parts["month_num"], errors="coerce")
+    invalid_month_num = month_num.notna() & ~month_num.between(1, 12)
+    month_year = month_year.mask(invalid_month_num)
+    month_num = month_num.mask(invalid_month_num)
+    df["year"] = month_year.astype("Int64")
+    df["month_num"] = month_num.astype("Int64")
+    df["month"] = month_text.where(df["month_num"].notna(), pd.NA)
 
     # ------------------------------------------------------------------
     # Numeric columns
@@ -348,14 +420,10 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # storey_range — kept as text; derive storey_midpoint
     # ------------------------------------------------------------------
     df["storey_range"] = df["storey_range"].astype(str).str.strip().str.upper()
-
-    def _storey_midpoint(val: str) -> float:
-        m = re.search(r"(\d+)\s+TO\s+(\d+)", str(val), re.IGNORECASE)
-        if m:
-            return (int(m.group(1)) + int(m.group(2))) / 2.0
-        return float("nan")
-
-    df["storey_midpoint"] = df["storey_range"].apply(_storey_midpoint)
+    storey_parts = df["storey_range"].str.extract(r"(\d+)\s+TO\s+(\d+)", expand=True)
+    storey_lo = pd.to_numeric(storey_parts[0], errors="coerce")
+    storey_hi = pd.to_numeric(storey_parts[1], errors="coerce")
+    df["storey_midpoint"] = (storey_lo + storey_hi) / 2.0
 
     # ------------------------------------------------------------------
     # flat_model — title-case, normalise known aliases
@@ -395,15 +463,29 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     # ------------------------------------------------------------------
 
     # Step 1: parse numeric value from the raw string
-    df["remaining_lease_months"] = df["remaining_lease"].apply(_parse_lease_str)
+    lease_text = df["remaining_lease"].astype("string").str.strip().str.lower()
+    lease_parts = lease_text.str.extract(
+        r"(?:(?P<years>\d+)\s*year[s]?)?\s*(?:(?P<months>\d+)\s*month[s]?)?",
+        expand=True,
+    )
+    lease_years = pd.to_numeric(lease_parts["years"], errors="coerce")
+    lease_months = pd.to_numeric(lease_parts["months"], errors="coerce")
+    has_lease_parts = lease_years.notna() | lease_months.notna()
+    df["remaining_lease_months"] = (
+        lease_years.fillna(0) * 12 + lease_months.fillna(0)
+    ).where(has_lease_parts)
 
     # Step 2: fill missing numeric values by calculation
     missing_mask = df["remaining_lease_months"].isna()
     if missing_mask.sum() > 0:
-        df.loc[missing_mask, "remaining_lease_months"] = df[missing_mask].apply(
-            lambda r: _derive_lease_months(r["year"], r["lease_commence_date"], r["month_num"]),
-            axis=1,
+        derived_months = (
+            (pd.to_numeric(df.loc[missing_mask, "year"], errors="coerce")
+             - pd.to_numeric(df.loc[missing_mask, "lease_commence_date"], errors="coerce")) * 12
+            + pd.to_numeric(df.loc[missing_mask, "month_num"], errors="coerce")
         )
+        df.loc[missing_mask, "remaining_lease_months"] = (
+            (99 * 12) - derived_months
+        ).clip(lower=0)
         filled = missing_mask.sum() - df["remaining_lease_months"].isna().sum()
         print(f"    remaining_lease_months: derived {filled:,} missing values from lease_commence_date.")
 
@@ -633,6 +715,157 @@ def _enforce_not_null(df: pd.DataFrame) -> pd.DataFrame:
 # Step 6: Save to SQLite
 # ---------------------------------------------------------------------------
 
+def _build_district_summary(df: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate district-level yearly summary statistics from resale rows."""
+    return (
+        df.groupby(["town", "flat_type", "year"])
+        .agg(
+            median_price=("resale_price", "median"),
+            avg_price=("resale_price", "mean"),
+            transaction_count=("resale_price", "count"),
+            avg_floor_area=("floor_area_sqm", "mean"),
+            avg_remaining_lease=("remaining_lease", "mean"),
+        )
+        .reset_index()
+    )
+
+
+def _write_district_summary(conn: sqlite3.Connection, summary: pd.DataFrame) -> None:
+    """Replace district_summary with the provided aggregated DataFrame."""
+    conn.execute("DROP TABLE IF EXISTS district_summary")
+    summary.to_sql("district_summary", conn, if_exists="replace", index=False)
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_ds_town_year ON district_summary(town, year)"
+    )
+    conn.commit()
+    print(f"  district_summary: {len(summary):,} aggregated rows saved.")
+
+
+def _upsert_pipeline_meta(
+    conn: sqlite3.Connection,
+    *,
+    last_fetched_month: str,
+    total_rows: int,
+    current_raw_refreshed_at: str | None = None,
+) -> None:
+    """Write the current pipeline metadata values into pipeline_meta."""
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS pipeline_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+    )
+    meta_entries = [
+        ("last_fetched_month", last_fetched_month),
+        ("last_run_at", datetime.datetime.utcnow().isoformat()),
+        ("total_rows", str(total_rows)),
+    ]
+    if current_raw_refreshed_at:
+        meta_entries.append(("current_raw_refreshed_at", current_raw_refreshed_at))
+    for key, value in meta_entries:
+        conn.execute(
+            "INSERT OR REPLACE INTO pipeline_meta (key, value) VALUES (?, ?)",
+            (key, value),
+        )
+    conn.commit()
+
+
+def _load_and_clean_single_csv(csv_path: str) -> pd.DataFrame:
+    """Read, standardize, clean, validate, and de-duplicate a single raw CSV."""
+    raw = pd.read_csv(csv_path)
+    cleaned = standardize_columns(raw)
+    cleaned = clean_data(cleaned)
+    cleaned = validate_data(cleaned)
+    cleaned = _enforce_not_null(cleaned)
+
+    before = len(cleaned)
+    cleaned = cleaned.drop_duplicates(subset=TRANSACTION_DEDUP_KEY)
+    removed = before - len(cleaned)
+    if removed:
+        print(f"  Incremental duplicate rows removed: {removed:,}")
+    return cleaned
+
+
+def incremental_update_from_latest_raw(
+    raw_dir: str = RAW_DIR,
+    db_path: str = DB_PATH,
+) -> int:
+    """
+    Append only new rows from the Jan 2017-present raw split into SQLite.
+
+    Intended for regular refreshes after the initial full bootstrap.
+    """
+    csv_path = _current_raw_csv_path(raw_dir)
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(
+            f"Latest raw CSV not found at '{csv_path}'. "
+            "Run api_fetcher.py first or set HDB_FULL_REBUILD=1."
+        )
+
+    print(f"\n  Incremental update from: {csv_path}")
+    df = _load_and_clean_single_csv(csv_path)
+    latest_month = str(df["month"].max())
+    current_raw_refreshed_at = get_current_raw_refreshed_at(raw_dir)
+    min_year = int(df["year"].min())
+
+    conn = sqlite3.connect(db_path)
+    try:
+        if not _table_exists(conn, TABLE_NAME):
+            raise RuntimeError(
+                f"Table '{TABLE_NAME}' does not exist in {db_path}. "
+                "Run a full rebuild first."
+            )
+
+        select_cols = ", ".join(TRANSACTION_DEDUP_KEY)
+        existing = pd.read_sql(
+            f'SELECT {select_cols} FROM "{TABLE_NAME}" WHERE year >= ?',
+            conn,
+            params=(min_year,),
+        )
+        if not existing.empty:
+            existing = existing.drop_duplicates(subset=TRANSACTION_DEDUP_KEY)
+
+        merged = df.merge(existing, on=TRANSACTION_DEDUP_KEY, how="left", indicator=True)
+        new_rows = df[(merged["_merge"] == "left_only").to_numpy()].copy()
+        inserted = len(new_rows)
+        skipped = len(df) - inserted
+        print(
+            f"  Incremental rows to insert: {inserted:,}  "
+            f"(skipped {skipped:,} already-present rows)"
+        )
+
+        if inserted > 0:
+            new_rows.to_sql(TABLE_NAME, conn, if_exists="append", index=False)
+            conn.execute(f'CREATE INDEX IF NOT EXISTS idx_month ON "{TABLE_NAME}"(month)')
+            conn.execute(f'CREATE INDEX IF NOT EXISTS idx_town  ON "{TABLE_NAME}"(town)')
+            conn.execute(f'CREATE INDEX IF NOT EXISTS idx_flat  ON "{TABLE_NAME}"(flat_type)')
+            conn.commit()
+
+            summary_source = pd.read_sql(
+                f'''
+                SELECT town, flat_type, year, resale_price, floor_area_sqm, remaining_lease
+                FROM "{TABLE_NAME}"
+                ''',
+                conn,
+            )
+            summary = _build_district_summary(summary_source)
+            _write_district_summary(conn, summary)
+
+        total_rows = conn.execute(
+            f'SELECT COUNT(*) FROM "{TABLE_NAME}"'
+        ).fetchone()[0]
+        _upsert_pipeline_meta(
+            conn,
+            last_fetched_month=latest_month,
+            total_rows=total_rows,
+            current_raw_refreshed_at=current_raw_refreshed_at,
+        )
+    finally:
+        conn.close()
+
+    if inserted == 0:
+        print("  No new rows detected in the latest raw dataset.")
+    else:
+        print(f"  SQLite table now contains {total_rows:,} rows.")
+    return inserted
+
 def save_to_sqlite(df: pd.DataFrame) -> None:
     """
     Write the cleaned DataFrame to hdb_resale.db and maintain all
@@ -693,41 +926,14 @@ def save_to_sqlite(df: pd.DataFrame) -> None:
     conn.commit()
     print(f"  Saved {len(df):,} rows.")
 
-    # district_summary — drop and recreate each run for accuracy
-    conn.execute("DROP TABLE IF EXISTS district_summary")
-    summary = (
-        df.groupby(["town", "flat_type", "year"])
-        .agg(
-            median_price=("resale_price", "median"),
-            avg_price=("resale_price", "mean"),
-            transaction_count=("resale_price", "count"),
-            avg_floor_area=("floor_area_sqm", "mean"),
-            avg_remaining_lease=("remaining_lease", "mean"),
-        )
-        .reset_index()
+    summary = _build_district_summary(df)
+    _write_district_summary(conn, summary)
+    _upsert_pipeline_meta(
+        conn,
+        last_fetched_month=str(df["month"].max()),
+        total_rows=len(df),
+        current_raw_refreshed_at=get_current_raw_refreshed_at(),
     )
-    summary.to_sql("district_summary", conn, if_exists="replace", index=False)
-    conn.execute(
-        "CREATE INDEX IF NOT EXISTS idx_ds_town_year ON district_summary(town, year)"
-    )
-    conn.commit()
-    print(f"  district_summary: {len(summary):,} aggregated rows saved.")
-
-    # pipeline_meta — persists across runs; upserted on each run
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS pipeline_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)"
-    )
-    meta_entries = [
-        ("last_fetched_month", str(df["month"].max())),
-        ("last_run_at",        datetime.datetime.utcnow().isoformat()),
-        ("total_rows",         str(len(df))),
-    ]
-    for key, value in meta_entries:
-        conn.execute(
-            "INSERT OR REPLACE INTO pipeline_meta (key, value) VALUES (?, ?)",
-            (key, value),
-        )
-    conn.commit()
     conn.close()
 
 
@@ -941,6 +1147,86 @@ def main() -> None:
     print("HDB Resale — Data Pipeline")
     print("=" * 60)
     print(f"\n  Reading raw CSVs from: {RAW_DIR}/")
+    global LAST_RUN_INFO
+    force_full_rebuild = _env_flag("HDB_FULL_REBUILD")
+    latest_raw_month = get_latest_raw_month(RAW_DIR)
+    pipeline_meta = get_pipeline_meta(DB_PATH) if os.path.exists(DB_PATH) else {}
+    db_latest_month = pipeline_meta.get("last_fetched_month")
+    current_raw_refreshed_at = get_current_raw_refreshed_at(RAW_DIR)
+    db_raw_refreshed_at = pipeline_meta.get("current_raw_refreshed_at")
+    incremental_reasons: list[str] = []
+
+    if force_full_rebuild:
+        print("  HDB_FULL_REBUILD=1 detected — running a full rebuild.")
+    elif not os.path.exists(DB_PATH) or not pipeline_meta or not db_latest_month:
+        print("  No initialized SQLite pipeline found — running a full rebuild.")
+    elif latest_raw_month is None:
+        print("  Could not determine latest raw month — running a full rebuild.")
+    else:
+        if latest_raw_month > db_latest_month:
+            incremental_reasons.append(
+                f"latest raw month {db_latest_month} -> {latest_raw_month}"
+            )
+        if current_raw_refreshed_at:
+            if not db_raw_refreshed_at:
+                incremental_reasons.append(
+                    "pipeline metadata is missing the last processed raw refresh timestamp"
+                )
+            elif current_raw_refreshed_at > db_raw_refreshed_at:
+                incremental_reasons.append(
+                    "live raw CSV was refreshed after the last SQLite update "
+                    f"({db_raw_refreshed_at[:10]} -> {current_raw_refreshed_at[:10]})"
+                )
+
+    if (
+        not force_full_rebuild
+        and os.path.exists(DB_PATH)
+        and pipeline_meta
+        and db_latest_month
+        and latest_raw_month is not None
+        and not incremental_reasons
+    ):
+        LAST_RUN_INFO = {
+            "mode": "skip",
+            "db_changed": False,
+            "rows_inserted": 0,
+            "latest_raw_month": latest_raw_month,
+            "db_latest_month": db_latest_month,
+            "current_raw_refreshed_at": current_raw_refreshed_at,
+            "db_raw_refreshed_at": db_raw_refreshed_at,
+        }
+        print(
+            f"  SQLite DB already up to date through {db_latest_month} "
+            f"(latest raw month: {latest_raw_month}; "
+            f"last processed raw refresh: {db_raw_refreshed_at or 'unknown'}) — skipping."
+        )
+        print(f"\nDone. Database unchanged: {DB_PATH}")
+        return
+
+    if (
+        not force_full_rebuild
+        and os.path.exists(DB_PATH)
+        and pipeline_meta
+        and db_latest_month
+        and latest_raw_month is not None
+    ):
+        print(
+            "  Incremental update required: "
+            + "; ".join(incremental_reasons)
+            + "."
+        )
+        inserted = incremental_update_from_latest_raw(RAW_DIR, DB_PATH)
+        LAST_RUN_INFO = {
+            "mode": "incremental",
+            "db_changed": inserted > 0,
+            "rows_inserted": inserted,
+            "latest_raw_month": latest_raw_month,
+            "db_latest_month": db_latest_month,
+            "current_raw_refreshed_at": current_raw_refreshed_at,
+            "db_raw_refreshed_at": db_raw_refreshed_at,
+        }
+        print(f"\nDone. Database updated: {DB_PATH}  (new rows inserted: {inserted:,})")
+        return
 
     raw_frames = load_raw_csvs()
     combined = combine_datasets(raw_frames)
@@ -949,6 +1235,15 @@ def main() -> None:
     cleaned  = _enforce_not_null(cleaned)
 
     save_to_sqlite(cleaned)
+    LAST_RUN_INFO = {
+        "mode": "full_rebuild",
+        "db_changed": True,
+        "rows_inserted": len(cleaned),
+        "latest_raw_month": str(cleaned["month"].max()),
+        "db_latest_month": db_latest_month,
+        "current_raw_refreshed_at": current_raw_refreshed_at,
+        "db_raw_refreshed_at": db_raw_refreshed_at,
+    }
     print_summary(cleaned)
 
     print(f"\nDone. Database saved to: {DB_PATH}")

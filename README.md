@@ -500,6 +500,11 @@ Use the `scripts/` entry points from the project root whenever possible:
 
 These wrappers call the shared orchestration logic in `scripts/pipeline_orchestration.py` and are easier to run consistently than invoking every lower-level file manually.
 
+For a regular weekly database refresh from data.gov.sg, use `./.venv/bin/python scripts/run_data_preprocessing.py`.
+Use `./.venv/bin/python scripts/retrain_and_deploy.py` only when you also want to retrain and redeploy the ML model.
+When the SQLite DB is already current, the preprocessing pipeline now skips old geocoding/proximity backlog by default; set `HDB_BACKFILL_GEOCODING=1` or `HDB_BACKFILL_PROXIMITY=1` if you want to force those retries.
+The ML pipeline can now fall back to local SQLite if Supabase is unavailable during feature extraction. External Supabase sync steps log warnings instead of aborting by default; set `HDB_STRICT_EXTERNAL_STEPS=1` if you want those steps to fail hard.
+
 ### Manual end-to-end pipeline run
 
 ```bash
@@ -544,6 +549,10 @@ Main purpose:
 
 * download raw source data only
 * no cleaning or transformation
+* reuse cached historical split files on repeat runs
+* refresh the Jan 2017-present split whenever data.gov.sg reports a newer update date or the local cache reaches the weekly refresh window
+
+If you need to force a full refetch of all raw CSVs, run the pipeline with `HDB_FORCE_FETCH=1`.
 
 ---
 

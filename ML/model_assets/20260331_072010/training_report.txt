@@ -1,0 +1,92 @@
+======================================================================
+HDB RESALE PRICE PREDICTION — TRAINING REPORT
+======================================================================
+
+======================================================================
+MODEL RESULTS
+======================================================================
+
+--- XGBOOST ---
+  VAL: RMSE=19,348  MAE=13,409  R2=0.9888  MAPE=4.62%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD      6,093  (n=62)
+    2 Room                MAE=SGD      8,922  (n=1,067)
+    3 Room                MAE=SGD      9,705  (n=28,929)
+    4 Room                MAE=SGD     12,874  (n=36,666)
+    5 Room                MAE=SGD     17,145  (n=20,309)
+    Executive             MAE=SGD     21,091  (n=7,208)
+    Multi-Generation      MAE=SGD     27,189  (n=55)
+  TEST: RMSE=38,286  MAE=27,197  R2=0.9650  MAPE=4.03%
+  TEST flat_type breakdown:
+    1 Room                MAE=SGD     15,413  (n=2)
+    2 Room                MAE=SGD     20,175  (n=129)
+    3 Room                MAE=SGD     20,426  (n=1,010)
+    4 Room                MAE=SGD     26,507  (n=1,933)
+    5 Room                MAE=SGD     32,658  (n=974)
+    Executive             MAE=SGD     40,592  (n=283)
+    Multi-Generation      MAE=SGD     17,308  (n=1)
+
+--- LGBM ---
+  VAL: RMSE=19,025  MAE=13,150  R2=0.9892  MAPE=4.55%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD      6,080  (n=62)
+    2 Room                MAE=SGD      8,737  (n=1,067)
+    3 Room                MAE=SGD      9,557  (n=28,929)
+    4 Room                MAE=SGD     12,625  (n=36,666)
+    5 Room                MAE=SGD     16,691  (n=20,309)
+    Executive             MAE=SGD     20,857  (n=7,208)
+    Multi-Generation      MAE=SGD     29,766  (n=55)
+  TEST: RMSE=36,212  MAE=26,138  R2=0.9687  MAPE=3.92%
+  TEST flat_type breakdown:
+    1 Room                MAE=SGD     18,855  (n=2)
+    2 Room                MAE=SGD     19,986  (n=129)
+    3 Room                MAE=SGD     20,927  (n=1,010)
+    4 Room                MAE=SGD     25,303  (n=1,933)
+    5 Room                MAE=SGD     31,011  (n=974)
+    Executive             MAE=SGD     36,512  (n=283)
+    Multi-Generation      MAE=SGD     29,154  (n=1)
+
+--- RF ---
+  VAL: RMSE=21,515  MAE=14,784  R2=0.9862  MAPE=5.01%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD      6,910  (n=62)
+    2 Room                MAE=SGD      9,727  (n=1,067)
+    3 Room                MAE=SGD     10,638  (n=28,929)
+    4 Room                MAE=SGD     14,052  (n=36,666)
+    5 Room                MAE=SGD     19,242  (n=20,309)
+    Executive             MAE=SGD     23,240  (n=7,208)
+    Multi-Generation      MAE=SGD     36,198  (n=55)
+  TEST: RMSE=45,062  MAE=31,130  R2=0.9515  MAPE=4.57%
+  TEST flat_type breakdown:
+    1 Room                MAE=SGD     17,806  (n=2)
+    2 Room                MAE=SGD     19,919  (n=129)
+    3 Room                MAE=SGD     23,690  (n=1,010)
+    4 Room                MAE=SGD     29,982  (n=1,933)
+    5 Room                MAE=SGD     38,145  (n=974)
+    Executive             MAE=SGD     46,397  (n=283)
+    Multi-Generation      MAE=SGD     85,825  (n=1)
+
+--- ENSEMBLE ---
+  VAL: RMSE=18,894  MAE=13,071  R2=0.9893  MAPE=4.53%
+  VAL flat_type breakdown:
+    1 Room                MAE=SGD      6,163  (n=62)
+    2 Room                MAE=SGD      8,690  (n=1,067)
+    3 Room                MAE=SGD      9,513  (n=28,929)
+    4 Room                MAE=SGD     12,532  (n=36,666)
+    5 Room                MAE=SGD     16,626  (n=20,309)
+    Executive             MAE=SGD     20,662  (n=7,208)
+    Multi-Generation      MAE=SGD     28,906  (n=55)
+  TEST: RMSE=36,580  MAE=26,137  R2=0.9681  MAPE=3.90%
+  TEST flat_type breakdown:
+    1 Room                MAE=SGD     17,760  (n=2)
+    2 Room                MAE=SGD     19,870  (n=129)
+    3 Room                MAE=SGD     20,689  (n=1,010)
+    4 Room                MAE=SGD     25,279  (n=1,933)
+    5 Room                MAE=SGD     31,233  (n=974)
+    Executive             MAE=SGD     36,908  (n=283)
+    Multi-Generation      MAE=SGD      3,085  (n=1)
+
+======================================================================
+WINNER
+======================================================================
+  lgbm achieved the lowest validation RMSE of SGD 19,025. Its locked test metrics are RMSE=36,212, R2=0.9687, MAPE=3.92%. Runner-up on validation: xgboost at SGD 19,348. The ensemble is reported separately and excluded from winner selection because its meta-learner is fit on the validation window. 

@@ -53,6 +53,8 @@ SCALE_COLS = [
     "dist_cbd",
     "dist_primary_school",
     "dist_major_mall",
+    "town_yoy_appreciation_lag1",
+    "town_5yr_cagr_lag1",
 ]
 
 FEATURE_COLS = [
@@ -72,6 +74,8 @@ FEATURE_COLS = [
     "dist_cbd",
     "dist_primary_school",
     "dist_major_mall",
+    "town_yoy_appreciation_lag1",
+    "town_5yr_cagr_lag1",
 ]
 
 TARGET_COL = "log_price"
@@ -206,9 +210,48 @@ def engineer_features(
     # market index estimated from future transactions.
     df[TARGET_COL] = np.log1p(df["resale_price"])
 
+    # Historical trend signals are computed from prior completed years only,
+    # so each row only sees market information that would have been available
+    # at prediction time.
+    yearly_avg = (
+        df.groupby(["town", "year"], as_index=False)["resale_price"]
+        .mean()
+        .rename(columns={"resale_price": "avg_resale_price"})
+    )
+    yearly_avg["prev_avg_1y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(1)
+    yearly_avg["prev_avg_2y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(2)
+    yearly_avg["prev_avg_6y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(6)
+
+    yearly_avg["town_yoy_appreciation_lag1"] = np.where(
+        yearly_avg["prev_avg_2y"].gt(0),
+        (yearly_avg["prev_avg_1y"] - yearly_avg["prev_avg_2y"]) / yearly_avg["prev_avg_2y"],
+        np.nan,
+    )
+    yearly_avg["town_5yr_cagr_lag1"] = np.where(
+        yearly_avg["prev_avg_6y"].gt(0) & yearly_avg["prev_avg_1y"].gt(0),
+        np.power(yearly_avg["prev_avg_1y"] / yearly_avg["prev_avg_6y"], 1 / 5) - 1,
+        np.nan,
+    )
+
+    df = df.merge(
+        yearly_avg[
+            [
+                "town",
+                "year",
+                "town_yoy_appreciation_lag1",
+                "town_5yr_cagr_lag1",
+            ]
+        ],
+        on=["town", "year"],
+        how="left",
+    )
+    df["town_yoy_appreciation_lag1"] = df["town_yoy_appreciation_lag1"].fillna(0.0)
+    df["town_5yr_cagr_lag1"] = df["town_5yr_cagr_lag1"].fillna(0.0)
+
     print(
         "  Features added: flat_age, month_sin, month_cos, "
-        "is_mature_estate, flat_type_ordinal, log_price"
+        "is_mature_estate, flat_type_ordinal, "
+        "town_yoy_appreciation_lag1, town_5yr_cagr_lag1, log_price"
     )
     return df
 

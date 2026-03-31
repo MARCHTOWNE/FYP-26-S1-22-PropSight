@@ -162,6 +162,7 @@ SCALE_COLS = [
     "floor_area_sqm", "storey_midpoint", "flat_age", "remaining_lease",
     "lease_commence_date", "month_sin", "month_cos", "year",
     "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
+    "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
 ]
 
 FEATURE_COLS = [
@@ -170,6 +171,7 @@ FEATURE_COLS = [
     "lease_commence_date", "month_sin", "month_cos", "year",
     "is_mature_estate", "dist_mrt", "dist_cbd",
     "dist_primary_school", "dist_major_mall",
+    "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
 ]
 
 STOREY_RANGES = [str(i) for i in range(1, 52)]
@@ -1250,6 +1252,59 @@ def _get_flat_type_breakdown_data(town, street_name="", block=""):
         return []
 
 
+@_ttl_cache(maxsize=128, ttl=3600)
+def _get_town_appreciation_history(town):
+    town = (town or "").strip()
+    if not town:
+        return []
+    try:
+        rows = _supabase_rpc("rpc_api_price_trend_simple", {"p_town": town}) or []
+    except SupabaseError:
+        return []
+
+    history = []
+    for row in rows:
+        year = _coerce_int(row.get("year"))
+        avg_price = _coerce_float(row.get("avg_price"))
+        if year is None or avg_price is None or avg_price <= 0:
+            continue
+        history.append({"year": year, "avg_price": avg_price})
+    history.sort(key=lambda row: row["year"])
+    return history
+
+
+def _resolve_town_appreciation_features(town, prediction_year):
+    history = _get_town_appreciation_history(town)
+    if not history:
+        return {
+            "town_yoy_appreciation_lag1": 0.0,
+            "town_5yr_cagr_lag1": 0.0,
+        }
+
+    eligible = [row for row in history if row["year"] < int(prediction_year)]
+    if not eligible:
+        eligible = history
+
+    by_year = {row["year"]: row["avg_price"] for row in eligible}
+    anchor_year = max(by_year)
+    anchor_avg = by_year.get(anchor_year)
+    prev_avg = by_year.get(anchor_year - 1)
+    prev_5y_avg = by_year.get(anchor_year - 5)
+
+    yoy = 0.0
+    if anchor_avg and prev_avg and prev_avg > 0:
+        yoy = (anchor_avg - prev_avg) / prev_avg
+
+    cagr = 0.0
+    if anchor_avg and prev_5y_avg and prev_5y_avg > 0:
+        cagr = (anchor_avg / prev_5y_avg) ** (1 / 5) - 1
+
+    return {
+        "town_yoy_appreciation_lag1": float(yoy),
+        "town_5yr_cagr_lag1": float(cagr),
+    }
+
+
 def _get_available_models_data(town, flat_type, street_name="", block=""):
     town = town or ""
     flat_type = flat_type or ""
@@ -1553,6 +1608,8 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         dist_school = dists.get("avg_dist_school", 500)
         dist_mall = dists.get("avg_dist_mall", 1000)
 
+    appreciation = _resolve_town_appreciation_features(town, year)
+
     # Build feature row (pre-scaling)
     raw = {
         "flat_type_ordinal": flat_type_ord,
@@ -1571,6 +1628,8 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         "dist_cbd": dist_cbd,
         "dist_primary_school": dist_school,
         "dist_major_mall": dist_mall,
+        "town_yoy_appreciation_lag1": appreciation["town_yoy_appreciation_lag1"],
+        "town_5yr_cagr_lag1": appreciation["town_5yr_cagr_lag1"],
     }
 
     df = pd.DataFrame([raw])

@@ -2601,6 +2601,12 @@ def _get_popular_predictions(limit=3):
 
 
 @app.route("/")
+def landing():
+    """Public marketing landing page."""
+    return render_template("landing.html")
+
+
+@app.route("/home")
 def home():
     # Total transaction count
     try:
@@ -2640,9 +2646,20 @@ def home():
     except Exception:
         pass
 
-    # Serve the marketing/entry landing page.
-    # Note: `landing.html` currently doesn't require any Jinja variables.
-    return render_template("landing.html")
+    return render_template(
+        "home.html",
+        towns=TOWNS,
+        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        flat_models=FLAT_MODELS,
+        storey_ranges=STOREY_RANGES,
+        total_txns=total_txns,
+        total_txns_display=total_txns_display,
+        artefact_mape=artefact_mape,
+        active_model_performance=performance,
+        popular_predictions=popular_predictions,
+        is_personalized=is_personalized,
+        town_coords=town_coords,
+    )
 
 
 @app.route("/comparison", methods=["GET", "POST"])

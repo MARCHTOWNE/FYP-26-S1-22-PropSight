@@ -103,6 +103,18 @@ N_RF_ESTIMATORS = int(os.environ.get("RF_ESTIMATORS", "300"))
 MODEL_N_JOBS   = int(os.environ.get("MODEL_N_JOBS", "-1"))
 FRESH_TUNING   = _env_flag("FRESH_TUNING", False)
 
+DEFAULT_TRAINING_CONFIG = {
+    "xgb_trials": 25,
+    "lgbm_trials": 25,
+    "xgb_n_estimators": 2000,
+    "lgbm_n_estimators": 2000,
+    "early_stopping_rounds": 50,
+    "tuning_sample_size": 250000,
+    "rf_estimators": 300,
+    "model_n_jobs": -1,
+    "fresh_tuning": False,
+}
+
 # Flat type labels used for error breakdown
 FLAT_TYPES = [
     "1 Room", "2 Room", "3 Room", "4 Room",
@@ -113,6 +125,57 @@ FLAT_TYPES = [
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+def _training_config_snapshot() -> dict[str, int | bool]:
+    """Return the effective training configuration for this run."""
+    return {
+        "xgb_trials": XGB_TRIALS,
+        "lgbm_trials": LGBM_TRIALS,
+        "xgb_n_estimators": XGB_N_ESTIMATORS,
+        "lgbm_n_estimators": LGBM_N_ESTIMATORS,
+        "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
+        "tuning_sample_size": TUNING_SAMPLE_SIZE,
+        "rf_estimators": N_RF_ESTIMATORS,
+        "model_n_jobs": MODEL_N_JOBS,
+        "fresh_tuning": FRESH_TUNING,
+    }
+
+
+def _training_config_notes(config: dict[str, int | bool]) -> list[str]:
+    """Return human-readable notes when a run uses unusually fast settings."""
+    notes: list[str] = []
+
+    if int(config["xgb_trials"]) < DEFAULT_TRAINING_CONFIG["xgb_trials"]:
+        notes.append(
+            f"XGBoost Optuna trials reduced to {config['xgb_trials']} "
+            f"(default {DEFAULT_TRAINING_CONFIG['xgb_trials']})."
+        )
+    if int(config["lgbm_trials"]) < DEFAULT_TRAINING_CONFIG["lgbm_trials"]:
+        notes.append(
+            f"LightGBM Optuna trials reduced to {config['lgbm_trials']} "
+            f"(default {DEFAULT_TRAINING_CONFIG['lgbm_trials']})."
+        )
+    if int(config["xgb_n_estimators"]) < 100:
+        notes.append(
+            f"XGBoost n_estimators is only {config['xgb_n_estimators']}; "
+            "this is suitable for smoke tests, not production tuning."
+        )
+    if int(config["lgbm_n_estimators"]) < 100:
+        notes.append(
+            f"LightGBM n_estimators is only {config['lgbm_n_estimators']}; "
+            "this is suitable for smoke tests, not production tuning."
+        )
+    if int(config["tuning_sample_size"]) < 50000:
+        notes.append(
+            f"Tuning sample size reduced to {int(config['tuning_sample_size']):,}; "
+            "best params may be less stable than a full run."
+        )
+    if int(config["model_n_jobs"]) == 1:
+        notes.append(
+            "MODEL_N_JOBS=1; this often indicates a constrained or verification run."
+        )
+
+    return notes
 
 def _resolve_run_dir() -> str:
     """
@@ -1001,6 +1064,8 @@ def save_outputs(
         lgbm_params:       Best LightGBM hyperparameters.
     """
     print(f"\n  Saving outputs to '{run_dir}/' ...")
+    training_config = _training_config_snapshot()
+    training_config_notes = _training_config_notes(training_config)
 
     # Models
     for name, model in models.items():
@@ -1033,6 +1098,8 @@ def save_outputs(
 
     metrics["model_results"] = serializable_results
     metrics["winner"] = winner
+    metrics["training_config"] = training_config
+    metrics["training_config_notes"] = training_config_notes
     metrics["xgb_best_params"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in xgb_params.items()}
     metrics["lgbm_best_params"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in lgbm_params.items()}
 
@@ -1044,6 +1111,8 @@ def save_outputs(
     comparison_path = os.path.join(run_dir, "model_comparison.json")
     comparison = {
         "winner": winner,
+        "training_config": training_config,
+        "training_config_notes": training_config_notes,
         "all_models": {
             name: {
                 metric_name: metric_value
@@ -1061,11 +1130,43 @@ def save_outputs(
         json.dump(comparison, f, indent=2)
     print("    model_comparison.json")
 
+    manifest_path = os.path.join(run_dir, "run_manifest.json")
+    if os.path.isfile(manifest_path):
+        with open(manifest_path) as f:
+            manifest = json.load(f)
+        manifest["training_config"] = training_config
+        manifest["training_config_notes"] = training_config_notes
+        with open(manifest_path, "w") as f:
+            json.dump(manifest, f, indent=2)
+
     # Training report
     report_lines = []
     report_lines.append("=" * 70)
     report_lines.append("HDB RESALE PRICE PREDICTION — TRAINING REPORT")
     report_lines.append("=" * 70)
+    report_lines.append("")
+    report_lines.append("=" * 70)
+    report_lines.append("TRAINING CONFIG")
+    report_lines.append("=" * 70)
+    report_lines.append(
+        "  "
+        + ", ".join(
+            [
+                f"XGB_TRIALS={training_config['xgb_trials']}",
+                f"LGBM_TRIALS={training_config['lgbm_trials']}",
+                f"XGB_N_ESTIMATORS={training_config['xgb_n_estimators']}",
+                f"LGBM_N_ESTIMATORS={training_config['lgbm_n_estimators']}",
+                f"TUNING_SAMPLE_SIZE={int(training_config['tuning_sample_size']):,}",
+                f"RF_ESTIMATORS={training_config['rf_estimators']}",
+                f"MODEL_N_JOBS={training_config['model_n_jobs']}",
+                f"FRESH_TUNING={training_config['fresh_tuning']}",
+            ]
+        )
+    )
+    if training_config_notes:
+        report_lines.append("  Notes:")
+        for note in training_config_notes:
+            report_lines.append(f"    - {note}")
     report_lines.append("")
     report_lines.append("=" * 70)
     report_lines.append("MODEL RESULTS")
@@ -1176,6 +1277,9 @@ def main() -> None:
         f"RF_ESTIMATORS={N_RF_ESTIMATORS}, "
         f"FRESH_TUNING={int(FRESH_TUNING)}"
     )
+    config_notes = _training_config_notes(_training_config_snapshot())
+    for note in config_notes:
+        print(f"  WARNING: {note}")
     X_tune, y_tune_log = _build_tuning_subset(X_train, y_train_log)
 
     # Load flat type labels for error breakdown

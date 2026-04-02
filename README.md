@@ -94,7 +94,6 @@ hdb_resale/
 │
 ├── webapp/
 │   ├── app.py                   # Flask app, auth, APIs, predictions
-│   ├── model_assets/            # Copied serving artefacts for the web app
 │   ├── templates/               # Jinja2 templates
 │   └── static/                  # CSS and images
 │
@@ -145,7 +144,6 @@ The Flask app in `webapp/app.py` loads `.env` from the project root, reads train
 At startup, the app resolves model artefacts from:
 
 - `MODEL_ASSETS_DIR` if set
-- `./model_assets`
 - `./ML/model_assets`
 
 The active run is chosen from `latest.txt` when present, otherwise the newest run directory under the artefact root.
@@ -502,6 +500,11 @@ Use the `scripts/` entry points from the project root whenever possible:
 
 These wrappers call the shared orchestration logic in `scripts/pipeline_orchestration.py` and are easier to run consistently than invoking every lower-level file manually.
 
+For a regular weekly database refresh from data.gov.sg, use `./.venv/bin/python scripts/run_data_preprocessing.py`.
+Use `./.venv/bin/python scripts/retrain_and_deploy.py` only when you also want to retrain and redeploy the ML model.
+When the SQLite DB is already current, the preprocessing pipeline now skips old geocoding/proximity backlog by default; set `HDB_BACKFILL_GEOCODING=1` or `HDB_BACKFILL_PROXIMITY=1` if you want to force those retries.
+The ML pipeline can now fall back to local SQLite if Supabase is unavailable during feature extraction. External Supabase sync steps log warnings instead of aborting by default; set `HDB_STRICT_EXTERNAL_STEPS=1` if you want those steps to fail hard.
+
 ### Manual end-to-end pipeline run
 
 ```bash
@@ -546,6 +549,10 @@ Main purpose:
 
 * download raw source data only
 * no cleaning or transformation
+* reuse cached historical split files on repeat runs
+* refresh the Jan 2017-present split whenever data.gov.sg reports a newer update date or the local cache reaches the weekly refresh window
+
+If you need to force a full refetch of all raw CSVs, run the pipeline with `HDB_FORCE_FETCH=1`.
 
 ---
 
@@ -763,7 +770,7 @@ Validation is handled in `validate_data()` in `data_pipeline.py`.
 
 ## Processed Assets Structure
 
-The checked-in artefacts currently live under `ML/model_assets/`. The scripts themselves write to a relative `model_assets/` directory based on the working directory used to run them.
+The checked-in artefacts currently live under `ML/model_assets/`. The ML scripts default to writing there as well, because they run from the `ML/` directory unless `MODEL_ASSETS_DIR` overrides that path.
 
 ```text
 model_assets/

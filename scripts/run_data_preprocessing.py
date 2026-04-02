@@ -8,6 +8,8 @@ Run only the data preparation steps:
   4. Compute proximity features
   5. Sync processed data to Supabase
 
+This is the recommended entry point for a regular weekly data refresh.
+
 Usage:
     python scripts/run_data_preprocessing.py
 """

@@ -176,6 +176,100 @@
                 </div>
             </div>
 
+            {% if explanation %}
+            <div class="card mb-4 shap-card">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
+                        <div>
+                            <div class="kicker mb-2">Premium Explainability</div>
+                            <h5 class="mb-1">What Drives Your Flat's Value</h5>
+                            <p class="text-muted mb-0">
+                                Full SHAP breakdown from the {{ explanation.model_label }} model. Each bar shows how much a factor pulls this estimate above or below the baseline.
+                            </p>
+                        </div>
+                        <span class="badge shap-premium-badge">Full SHAP &middot; {{ explanation.feature_count }} factors</span>
+                    </div>
+
+                    <div class="shap-summary-grid mb-4">
+                        <div class="shap-summary-pill">
+                            <span>Baseline price</span>
+                            <strong>${{ "{:,}".format(explanation.baseline_price) }}</strong>
+                        </div>
+                        <div class="shap-summary-pill {% if explanation.delta_from_baseline >= 0 %}is-positive{% else %}is-negative{% endif %}">
+                            <span>Difference vs baseline</span>
+                            <strong>
+                                {% if explanation.delta_from_baseline >= 0 %}+{% endif %}${{ "{:,}".format(explanation.delta_from_baseline|abs) }}
+                            </strong>
+                        </div>
+                    </div>
+
+                    <div class="shap-chart-shell mb-4">
+                        <canvas id="shapChart"></canvas>
+                    </div>
+
+                    <div class="shap-narrative">
+                        <div class="shap-section-pill">Plain-English Summary</div>
+                        <p class="mb-0">{{ explanation.narrative }}</p>
+                    </div>
+
+                    <details class="shap-disclaimer mt-3">
+                        <summary>What the model doesn't see</summary>
+                        <p class="mb-0">
+                            This estimate does not directly capture renovation quality, interior condition, facing, noise, corridor privacy, unit layout quirks,
+                            ethnic quota timing, en-bloc potential, or sudden policy changes. Use the SHAP breakdown as model transparency, not as a full
+                            substitute for on-site judgment.
+                        </p>
+                    </details>
+                </div>
+            </div>
+            <script id="predict-shap-data" type="application/json">{{ explanation | tojson }}</script>
+            {% elif is_premium %}
+            <div class="card mb-4 shap-card shap-card-unavailable">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="kicker mb-2">Premium Explainability</div>
+                            <h5 class="mb-1">SHAP Explainability Is Temporarily Unavailable</h5>
+                            <p class="text-muted mb-0">
+                                This Premium insight is ready for supported tree models, but it could not be generated for the current setup.
+                            </p>
+                        </div>
+                        <span class="badge text-bg-secondary">Unavailable</span>
+                    </div>
+                    <p class="mb-0 text-muted">
+                        The valuation still uses the active production model normally. Once the current environment and serving model support explainability,
+                        the full feature contribution chart will appear here automatically.
+                    </p>
+                </div>
+            </div>
+            {% else %}
+            <div class="card mb-4 shap-lock-card">
+                <div class="card-body">
+                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
+                        <div>
+                            <div class="kicker mb-2">Premium Explainability</div>
+                            <h5 class="mb-1">Unlock the Full SHAP Breakdown</h5>
+                            <p class="text-muted mb-0">
+                                Premium users can see every feature contribution behind this valuation, plus a plain-English summary and model caveats.
+                            </p>
+                        </div>
+                        <span class="badge text-bg-warning">Premium only</span>
+                    </div>
+
+                    <div class="shap-lock-preview mb-3">
+                        <div class="shap-lock-chip is-positive">Floor area contribution</div>
+                        <div class="shap-lock-chip is-positive">MRT proximity effect</div>
+                        <div class="shap-lock-chip is-negative">Lease and age drag</div>
+                        <div class="shap-lock-chip">All feature impacts</div>
+                    </div>
+
+                    <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-sm">
+                        <i class="bi bi-gem me-1"></i>Upgrade to Premium
+                    </a>
+                </div>
+            </div>
+            {% endif %}
+
             <!-- Context cards -->
             <div class="row g-3 mb-4">
                 <div class="col-md-4">
@@ -923,6 +1017,97 @@ predictFlatTypeSelect.addEventListener('change', async function() {
                 y: {
                     ticks: {
                         callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; }
+                    }
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% if explanation %}
+<script>
+(function() {
+    var canvas = document.getElementById('shapChart');
+    var payloadEl = document.getElementById('predict-shap-data');
+    if (!canvas || !payloadEl) return;
+
+    var explanation = JSON.parse(payloadEl.textContent || '{}');
+    var features = Array.isArray(explanation.features) ? explanation.features : [];
+    if (!features.length) return;
+
+    var labels = features.map(function(feature) { return feature.label; });
+    var values = features.map(function(feature) { return feature.dollar_impact; });
+    var colors = features.map(function(feature) {
+        return feature.dollar_impact >= 0 ? '#22c55e' : '#f97316';
+    });
+
+    var currencyShort = new Intl.NumberFormat('en-SG', {
+        style: 'currency',
+        currency: 'SGD',
+        maximumFractionDigits: 0,
+        notation: 'compact'
+    });
+    var currencyFull = new Intl.NumberFormat('en-SG', {
+        style: 'currency',
+        currency: 'SGD',
+        maximumFractionDigits: 0
+    });
+
+    canvas.height = Math.max(420, features.length * 34);
+    new Chart(canvas, {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'SHAP contribution',
+                data: values,
+                backgroundColor: colors,
+                borderRadius: 6,
+                borderSkipped: false,
+                barThickness: 22
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            maintainAspectRatio: false,
+            responsive: true,
+            layout: {
+                padding: { right: 12 }
+            },
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            var value = Number(ctx.raw || 0);
+                            var prefix = value >= 0 ? '+' : '-';
+                            return prefix + currencyFull.format(Math.abs(value));
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        color: 'rgba(15, 34, 58, 0.08)'
+                    },
+                    ticks: {
+                        callback: function(value) {
+                            var numeric = Number(value || 0);
+                            var prefix = numeric >= 0 ? '+' : '-';
+                            return prefix + currencyShort.format(Math.abs(numeric)).replace('SGD', '').trim();
+                        }
+                    }
+                },
+                y: {
+                    grid: { display: false },
+                    ticks: {
+                        color: '#0f223a',
+                        font: {
+                            size: 11,
+                            weight: '600'
+                        }
                     }
                 }
             }

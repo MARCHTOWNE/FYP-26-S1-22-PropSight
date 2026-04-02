@@ -16,7 +16,6 @@ from __future__ import annotations
 import importlib
 import json
 import os
-import shutil
 import sqlite3
 import sys
 import time
@@ -31,14 +30,11 @@ DATA_PREPROCESSING_DIR = os.path.join(PROJECT_ROOT, "Data Preprocessing")
 ML_DIR = os.path.join(PROJECT_ROOT, "ML")
 DATABASE_DIR = os.path.join(PROJECT_ROOT, "Database")
 MODEL_ASSETS_DIR = os.environ.get("MODEL_ASSETS_DIR", os.path.join(ML_DIR, "model_assets"))
-WEBAPP_MODEL_DIR = os.environ.get(
-    "WEBAPP_MODEL_DIR",
-    os.path.join(PROJECT_ROOT, "webapp", "model_assets"),
-)
 LOCAL_DB_PATH = os.environ.get(
     "HDB_SQLITE_PATH",
     os.path.join(DATA_PREPROCESSING_DIR, "hdb_resale.db"),
 )
+PIPELINE_RUNTIME_STATE: dict[str, dict[str, object]] = {}
 
 
 def step_banner(step_num: int, total: int, description: str) -> None:
@@ -60,11 +56,20 @@ def _ensure_import_path(path: str) -> None:
         sys.path.insert(0, path)
 
 
-def _run_module_main(module_dir: str, module_name: str) -> None:
+def _env_flag(name: str) -> bool:
+    """Return True when an environment variable is set to a truthy value."""
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_module(module_dir: str, module_name: str):
     os.chdir(module_dir)
     _ensure_import_path(module_dir)
     importlib.invalidate_caches()
-    module = importlib.import_module(module_name)
+    return importlib.import_module(module_name)
+
+
+def _run_module_main(module_dir: str, module_name: str) -> None:
+    module = _load_module(module_dir, module_name)
     if not hasattr(module, "main"):
         raise AttributeError(f"Module '{module_name}' has no main() function.")
     module.main()
@@ -75,10 +80,30 @@ def run_api_fetcher() -> None:
 
 
 def run_data_pipeline() -> None:
-    _run_module_main(DATA_PREPROCESSING_DIR, "data_pipeline")
+    module = _load_module(DATA_PREPROCESSING_DIR, "data_pipeline")
+    if not hasattr(module, "main"):
+        raise AttributeError("Module 'data_pipeline' has no main() function.")
+    module.main()
+
+    run_info = getattr(module, "LAST_RUN_INFO", {}) or {}
+    PIPELINE_RUNTIME_STATE["data_pipeline"] = dict(run_info)
+
+
+def _data_pipeline_changed() -> bool | None:
+    """Return whether the current run changed SQLite rows, if known."""
+    run_info = PIPELINE_RUNTIME_STATE.get("data_pipeline", {})
+    changed = run_info.get("db_changed")
+    if isinstance(changed, bool):
+        return changed
+    return None
 
 
 def run_geocoding() -> None:
+    if _data_pipeline_changed() is False and not _env_flag("HDB_BACKFILL_GEOCODING"):
+        print("  Data pipeline reported no DB changes — skipping backlog geocoding.")
+        print("  Set HDB_BACKFILL_GEOCODING=1 to force retries for unresolved addresses.")
+        return
+
     os.chdir(DATA_PREPROCESSING_DIR)
     _ensure_import_path(DATA_PREPROCESSING_DIR)
 
@@ -99,6 +124,11 @@ def run_geocoding() -> None:
 
 
 def run_proximity_features() -> None:
+    if _data_pipeline_changed() is False and not _env_flag("HDB_BACKFILL_PROXIMITY"):
+        print("  Data pipeline reported no DB changes — skipping backlog proximity features.")
+        print("  Set HDB_BACKFILL_PROXIMITY=1 to force recomputation for pending rows.")
+        return
+
     os.chdir(DATA_PREPROCESSING_DIR)
     _ensure_import_path(DATA_PREPROCESSING_DIR)
 
@@ -156,7 +186,12 @@ def run_supabase_data_sync() -> None:
 
     import migrate_to_supabase
 
-    migrate_to_supabase.migrate()
+    try:
+        migrate_to_supabase.migrate()
+    except Exception as exc:
+        if _env_flag("HDB_STRICT_EXTERNAL_STEPS"):
+            raise
+        print(f"  WARNING: Supabase data sync skipped after external error: {exc}")
 
 
 def run_supabase_model_version_sync(
@@ -192,53 +227,36 @@ def run_supabase_model_version_sync(
     test_rmse = winner.get("test_rmse")
     test_r2 = winner.get("test_r2")
 
-    pg_conn = psycopg2.connect(supabase_db_url)
-    pg_cur = pg_conn.cursor()
+    try:
+        pg_conn = psycopg2.connect(supabase_db_url)
+        pg_cur = pg_conn.cursor()
 
-    pg_cur.execute("UPDATE model_versions SET is_active = FALSE WHERE is_active = TRUE")
-    pg_cur.execute(
-        """
-        INSERT INTO model_versions (version, run_dir, test_mape, test_rmse, test_r2, notes, is_active)
-        VALUES (%s, %s, %s, %s, %s, %s, TRUE)
-        """,
-        (
-            winner_name,
-            os.path.basename(run_dir),
-            test_mape,
-            test_rmse,
-            test_r2,
-            f"Deployed via {trigger_label} at {datetime.now(timezone.utc).isoformat()}",
-        ),
-    )
-    pg_conn.commit()
-    pg_cur.close()
-    pg_conn.close()
-    print(f"  model_versions updated: {winner_name} (active)")
-
-
-def run_copy_artefacts() -> None:
-    run_dir = get_latest_run_dir()
-    if run_dir is None:
-        raise RuntimeError("Could not find latest ML run directory.")
-
-    os.makedirs(WEBAPP_MODEL_DIR, exist_ok=True)
-
-    dest_run_dir = os.path.join(WEBAPP_MODEL_DIR, os.path.basename(run_dir))
-    if os.path.exists(dest_run_dir):
-        shutil.rmtree(dest_run_dir)
-    shutil.copytree(run_dir, dest_run_dir)
-    print(f"  Copied {run_dir} → {dest_run_dir}")
-
-    latest_target = os.path.basename(dest_run_dir)
-    latest_path = os.path.join(WEBAPP_MODEL_DIR, "latest.txt")
-    with open(latest_path, "w") as f:
-        f.write(latest_target)
-    print(f"  Updated {latest_path} → {latest_target}")
-
-    copied_files: list[str] = []
-    for _, _, files in os.walk(dest_run_dir):
-        copied_files.extend(files)
-    print(f"  {len(copied_files)} files copied: {', '.join(sorted(copied_files))}")
+        pg_cur.execute("UPDATE model_versions SET is_active = FALSE WHERE is_active = TRUE")
+        pg_cur.execute(
+            """
+            INSERT INTO model_versions (version, run_dir, test_mape, test_rmse, test_r2, notes, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            """,
+            (
+                winner_name,
+                os.path.basename(run_dir),
+                test_mape,
+                test_rmse,
+                test_r2,
+                f"Deployed via {trigger_label} at {datetime.now(timezone.utc).isoformat()}",
+            ),
+        )
+        pg_conn.commit()
+        print(f"  model_versions updated: {winner_name} (active)")
+    except Exception as exc:
+        if _env_flag("HDB_STRICT_EXTERNAL_STEPS"):
+            raise
+        print(f"  WARNING: model_versions update skipped after external error: {exc}")
+    finally:
+        if "pg_cur" in locals():
+            pg_cur.close()
+        if "pg_conn" in locals():
+            pg_conn.close()
 
 
 def get_latest_run_dir() -> str | None:
@@ -374,7 +392,6 @@ PREPROCESSING_STEPS = [
 ML_STEPS = [
     ("Feature engineering", run_feature_engineering),
     ("Model training", run_model_training),
-    ("Copying model artefacts to webapp/model_assets/", run_copy_artefacts),
 ]
 
 
@@ -383,6 +400,7 @@ def run_pipeline(
     steps: list[tuple[str, Callable[[], None]]],
     summary_callback: Callable[[], None] | None = None,
 ) -> int:
+    PIPELINE_RUNTIME_STATE.clear()
     _project_banner(title)
     t_start = time.time()
 

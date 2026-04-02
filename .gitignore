@@ -6,6 +6,7 @@
 # Generated data files
 processed_data/
 eda_plots/
+Data Preprocessing/raw/*.csv
 
 # Python
 __pycache__/
@@ -27,5 +28,6 @@ venv/
 .claude/
 .vscode/
 
-model_assets/latest.txt
-model_assets/*/
+ML/model_assets/latest.txt
+ML/model_assets/*/
+webapp/model_assets/

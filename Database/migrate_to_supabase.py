@@ -90,7 +90,7 @@ def migrate():
     sqlite_conn = sqlite3.connect(SQLITE_PATH)
     sqlite_conn.row_factory = sqlite3.Row
 
-    pg_conn = psycopg2.connect(SUPABASE_DB_URL)
+    pg_conn = psycopg2.connect(SUPABASE_DB_URL, connect_timeout=10)
     pg_cur = pg_conn.cursor()
 
     print("Connected to SQLite and Supabase PostgreSQL.")
@@ -149,6 +149,7 @@ def migrate():
 
     # ── 4. Blocks ─────────────────────────────────────────────────
     print("Step 4/5: Migrating blocks (unique addresses)...")
+    print("  Querying SQLite for unique blocks...")
     rows = sqlite_conn.execute("""
         SELECT
             block, street_name, town, full_address,
@@ -161,6 +162,7 @@ def migrate():
         FROM resale_prices
         GROUP BY block, street_name, town
     """).fetchall()
+    print(f"  Fetched {len(rows)} unique blocks from SQLite.")
 
     data = [
         (
@@ -173,45 +175,66 @@ def migrate():
         )
         for r in rows
     ]
-    returned_blocks = psycopg2.extras.execute_values(
-        pg_cur,
-        """
-        INSERT INTO blocks
-            (block, street_name, town_id, full_address, latitude, longitude,
-             dist_mrt, dist_cbd, dist_primary_school, dist_major_mall)
-        VALUES %s
-        ON CONFLICT (block, street_name) DO UPDATE SET
-        town_id = EXCLUDED.town_id,
-        full_address = EXCLUDED.full_address,
-        latitude = EXCLUDED.latitude,
-        longitude = EXCLUDED.longitude,
-        dist_mrt = EXCLUDED.dist_mrt,
-        dist_cbd = EXCLUDED.dist_cbd,
-        dist_primary_school = EXCLUDED.dist_primary_school,
-        dist_major_mall = EXCLUDED.dist_major_mall
-        RETURNING id, block, street_name
-        """,
-        data,
-        page_size=1000,
-        fetch=True,
-    )
-    pg_conn.commit()
-    print(f"  Done — {len(data)} blocks.\n")
+    print("  Inserting blocks into Supabase...")
+    returned_blocks = []
+    block_batch = 500
+    for i in range(0, len(data), block_batch):
+        batch = data[i : i + block_batch]
+        result = psycopg2.extras.execute_values(
+            pg_cur,
+            """
+            INSERT INTO blocks
+                (block, street_name, town_id, full_address, latitude, longitude,
+                 dist_mrt, dist_cbd, dist_primary_school, dist_major_mall)
+            VALUES %s
+            ON CONFLICT (block, street_name) DO UPDATE SET
+            town_id = EXCLUDED.town_id,
+            full_address = EXCLUDED.full_address,
+            latitude = EXCLUDED.latitude,
+            longitude = EXCLUDED.longitude,
+            dist_mrt = EXCLUDED.dist_mrt,
+            dist_cbd = EXCLUDED.dist_cbd,
+            dist_primary_school = EXCLUDED.dist_primary_school,
+            dist_major_mall = EXCLUDED.dist_major_mall
+            RETURNING id, block, street_name
+            """,
+            batch,
+            page_size=1000,
+            fetch=True,
+        )
+        pg_conn.commit()
+        returned_blocks.extend(result)
+        print(f"  {min(i + block_batch, len(data)):,}/{len(data):,} blocks", end="\r")
+    print(f"\n  Done — {len(data)} blocks.\n")
 
     block_id_map = {(block, street_name): id_ for id_, block, street_name in returned_blocks}
 
-    # ── 5. Transactions ───────────────────────────────────────────
-    print("  Truncating existing transactions...")
-    pg_cur.execute("TRUNCATE TABLE transactions RESTART IDENTITY")
-    pg_conn.commit()
-    total = sqlite_conn.execute("SELECT COUNT(*) FROM resale_prices").fetchone()[0]
+    # ── 5. Transactions (incremental sync) ─────────────────────────
+    pg_cur.execute("SELECT MAX(month) FROM transactions")
+    max_month = pg_cur.fetchone()[0]  # e.g. '2026-02' or None
+
+    if max_month:
+        # Delete the latest month (may be partial from interrupted sync)
+        pg_cur.execute("DELETE FROM transactions WHERE month >= %s", (max_month,))
+        pg_conn.commit()
+        print(f"  Incremental sync: re-syncing from month {max_month} onwards.")
+        where_clause = "AND month >= ?"
+        where_params = (max_month,)
+    else:
+        print("  Full initial sync (no existing transactions found).")
+        where_clause = ""
+        where_params = ()
+
+    total = sqlite_conn.execute(
+        f"SELECT COUNT(*) FROM resale_prices WHERE 1=1 {where_clause}", where_params
+    ).fetchone()[0]
     print(f"Step 5/5: Migrating {total:,} transactions (batch size={BATCH_SIZE})...")
 
     last_rowid = 0
     inserted = 0
 
     while True:
-        rows = sqlite_conn.execute("""
+        rows = sqlite_conn.execute(f"""
             SELECT
                 rowid,
                 block, street_name, flat_type, flat_model,
@@ -220,9 +243,10 @@ def migrate():
                 resale_price, month, month_num, year
             FROM resale_prices
             WHERE rowid > ?
+            {where_clause}
             ORDER BY rowid
             LIMIT ?
-        """, (last_rowid, BATCH_SIZE)).fetchall()
+        """, (last_rowid, *where_params, BATCH_SIZE)).fetchall()
 
         if not rows:
             break

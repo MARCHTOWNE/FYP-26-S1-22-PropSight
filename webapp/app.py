@@ -490,6 +490,34 @@ def _resolve_run_dir():
     return run_dir
 
 
+def _resolve_serving_feature_cols(artefacts, run_dir):
+    """Feature order/names for the loaded model (may differ from app defaults)."""
+    manifest = artefacts.get("manifest") or {}
+    cols = manifest.get("feature_cols")
+    if isinstance(cols, list) and cols:
+        return list(cols)
+    path = os.path.join(run_dir, "feature_cols.txt")
+    if os.path.isfile(path):
+        with open(path, encoding="utf-8") as f:
+            lines = [ln.strip() for ln in f if ln.strip()]
+        if lines:
+            return lines
+    return list(FEATURE_COLS)
+
+
+def _resolve_serving_scale_cols(artefacts, run_dir):
+    """Columns the fitted StandardScaler expects (may omit newer engineered fields)."""
+    manifest = artefacts.get("manifest") or {}
+    cols = manifest.get("scale_cols")
+    if isinstance(cols, list) and cols:
+        return list(cols)
+    scaler = artefacts.get("scaler")
+    fn = getattr(scaler, "feature_names_in_", None)
+    if fn is not None and len(fn) > 0:
+        return [str(x) for x in fn]
+    return list(SCALE_COLS)
+
+
 def _load_artefacts():
     run_dir = _resolve_run_dir()
     artefacts = {}
@@ -553,10 +581,30 @@ def _load_artefacts():
         serving_model_key,
     )
 
+    artefacts["run_dir"] = run_dir
+    artefacts["serving_feature_cols"] = _resolve_serving_feature_cols(artefacts, run_dir)
+    artefacts["serving_scale_cols"] = _resolve_serving_scale_cols(artefacts, run_dir)
+
     return artefacts
 
 
 ARTEFACTS = _load_artefacts()
+
+
+def _serving_feature_cols():
+    cols = ARTEFACTS.get("serving_feature_cols")
+    if isinstance(cols, list) and cols:
+        return cols
+    return FEATURE_COLS
+
+
+def _serving_scale_cols():
+    cols = ARTEFACTS.get("serving_scale_cols")
+    if isinstance(cols, list) and cols:
+        return cols
+    return SCALE_COLS
+
+
 SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "rf"}
 _SHAP_EXPLAINER = None
 _SHAP_IMPORT_ERROR = None
@@ -1642,7 +1690,8 @@ def _compute_feature_contributions(feature_frame):
         if hasattr(booster, "predict"):
             try:
                 import xgboost as xgb
-                contrib_source = xgb.DMatrix(feature_frame, feature_names=FEATURE_COLS)
+                cols = list(feature_frame.columns)
+                contrib_source = xgb.DMatrix(feature_frame, feature_names=cols)
             except Exception:
                 contrib_source = feature_frame
         contribs = booster.predict(contrib_source, pred_contribs=True)
@@ -1704,12 +1753,14 @@ def _predict_log_price_from_scaled_df(df):
     if ARTEFACTS["model_key"] == "ensemble":
         base_models = ARTEFACTS["base_models"]
         meta_model = ARTEFACTS["meta_model"]
+        fc = _serving_feature_cols()
         meta_features = np.column_stack([
-            base_models[name].predict(df[FEATURE_COLS])
+            base_models[name].predict(df[fc])
             for name in meta_model.base_learner_order_
         ])
         return float(meta_model.predict(meta_features)[0])
-    return float(model.predict(df[FEATURE_COLS])[0])
+    fc = _serving_feature_cols()
+    return float(model.predict(df[fc])[0])
 
 
 def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_range,
@@ -1751,7 +1802,21 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         dist_school = dists.get("avg_dist_school", 500)
         dist_mall = dists.get("avg_dist_mall", 1000)
 
-    appreciation = _resolve_town_appreciation_features(town, year)
+    scale_cols = _serving_scale_cols()
+    feat_cols = _serving_feature_cols()
+    need_appreciation = (
+        "town_yoy_appreciation_lag1" in scale_cols
+        or "town_yoy_appreciation_lag1" in feat_cols
+        or "town_5yr_cagr_lag1" in scale_cols
+        or "town_5yr_cagr_lag1" in feat_cols
+    )
+    if need_appreciation:
+        appreciation = _resolve_town_appreciation_features(town, year)
+    else:
+        appreciation = {
+            "town_yoy_appreciation_lag1": 0.0,
+            "town_5yr_cagr_lag1": 0.0,
+        }
 
     raw = {
         "flat_type_ordinal": flat_type_ord,
@@ -1770,12 +1835,13 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "dist_cbd": dist_cbd,
         "dist_primary_school": dist_school,
         "dist_major_mall": dist_mall,
-        "town_yoy_appreciation_lag1": appreciation["town_yoy_appreciation_lag1"],
-        "town_5yr_cagr_lag1": appreciation["town_5yr_cagr_lag1"],
     }
+    if need_appreciation:
+        raw["town_yoy_appreciation_lag1"] = appreciation["town_yoy_appreciation_lag1"]
+        raw["town_5yr_cagr_lag1"] = appreciation["town_5yr_cagr_lag1"]
 
     df = pd.DataFrame([raw])
-    df[SCALE_COLS] = scaler.transform(df[SCALE_COLS])
+    df[scale_cols] = scaler.transform(df[scale_cols])
 
     raw_values = dict(raw)
     raw_values.update({
@@ -1968,7 +2034,8 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         override_year=override_year,
         override_distances=override_distances,
     )
-    feature_frame = df[FEATURE_COLS]
+    fc = _serving_feature_cols()
+    feature_frame = df[fc]
     shap_values, baseline_log = _compute_feature_contributions(feature_frame)
     if shap_values is None:
         return None
@@ -1988,7 +2055,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
     )
 
     raw_impacts = []
-    for feature_name, shap_value in zip(FEATURE_COLS, shap_values):
+    for feature_name, shap_value in zip(fc, shap_values):
         counterfactual_price = _inverse_target_prediction(
             pred_log - float(shap_value),
             prediction_year,

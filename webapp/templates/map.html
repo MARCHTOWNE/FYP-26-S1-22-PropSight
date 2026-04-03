@@ -271,6 +271,14 @@
         background: #f59e0b;
         border-radius: 3px;
     }
+    .amenity-icon-hawker {
+        background: #ef4444;
+        border-radius: 50% 50% 50% 8%;
+    }
+    .amenity-icon-top-school {
+        background: #14b8a6;
+        border-radius: 4px 12px 4px 12px;
+    }
 
     .form-check-input:checked { background-color: #3b82f6; border-color: #3b82f6; }
     .form-check-input { cursor: pointer; }
@@ -481,6 +489,14 @@
         background: #f59e0b;
         border-radius: 3px;
     }
+    .leaflet-amenity-hawker .leaflet-amenity-badge {
+        background: #ef4444;
+        border-radius: 50% 50% 50% 8%;
+    }
+    .leaflet-amenity-top-school .leaflet-amenity-badge {
+        background: #14b8a6;
+        border-radius: 4px 12px 4px 12px;
+    }
 
     /* ── Responsive ── */
     @media (max-width: 991px) {
@@ -626,12 +642,30 @@
                                 </div>
                             </div>
                             <div class="amenity-item">
+                                <label for="toggleTopSchools">
+                                    <span class="amenity-icon amenity-icon-top-school">T</span>
+                                    Top Primary Schools
+                                </label>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="toggleTopSchools">
+                                </div>
+                            </div>
+                            <div class="amenity-item">
                                 <label for="toggleMalls">
                                     <span class="amenity-icon amenity-icon-mall">M</span>
                                     Shopping Malls
                                 </label>
                                 <div class="form-check form-switch mb-0">
                                     <input class="form-check-input" type="checkbox" id="toggleMalls">
+                                </div>
+                            </div>
+                            <div class="amenity-item">
+                                <label for="toggleHawkers">
+                                    <span class="amenity-icon amenity-icon-hawker">H</span>
+                                    Hawker Centres
+                                </label>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input" type="checkbox" id="toggleHawkers">
                                 </div>
                             </div>
                         </div>
@@ -717,7 +751,9 @@ const shouldStartInPins = (
 // Amenity layers
 let mrtLayer = L.layerGroup();
 let schoolLayer = L.layerGroup();
+let topSchoolLayer = L.layerGroup();
 let mallLayer = L.layerGroup();
+let hawkerLayer = L.layerGroup();
 map.createPane('amenityPane');
 map.getPane('amenityPane').style.zIndex = 650;
 map.getPane('amenityPane').style.pointerEvents = 'auto';
@@ -865,8 +901,14 @@ function updateAmenityLegend() {
     if (activeAmenities.has('school')) {
         html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-school" style="width:14px;height:14px;font-size:7px;">S</span> Primary School</div>';
     }
+    if (activeAmenities.has('top-school')) {
+        html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-top-school" style="width:14px;height:14px;font-size:7px;">T</span> Top Primary School</div>';
+    }
     if (activeAmenities.has('mall')) {
         html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-mall" style="width:14px;height:14px;font-size:7px;">M</span> Shopping Mall</div>';
+    }
+    if (activeAmenities.has('hawker')) {
+        html += '<div class="legend-amenity-row"><span class="amenity-icon amenity-icon-hawker" style="width:14px;height:14px;font-size:7px;">H</span> Hawker Centre</div>';
     }
     el.innerHTML = html;
 }
@@ -1451,11 +1493,18 @@ const SHOPPING_MALLS = [
     {name:"AMK Hub",lat:1.3694,lng:103.8490},{name:"Yew Tee Point",lat:1.3975,lng:103.7480},
 ];
 
+const HAWKER_CENTRES = {{ hawker_centres|tojson }};
+const HIGH_DEMAND_PRIMARY_SCHOOLS = {{ high_demand_primary_schools|tojson }};
+
 // ─── Build Amenity Layers (distinct shapes) ──────────────────────
 function makeAmenityIcon(cls) {
+    let glyph = 'M';
+    if (cls.includes('top-school')) glyph = 'T';
+    else if (cls.includes('school')) glyph = 'S';
+    else if (cls.includes('hawker')) glyph = 'H';
     return L.divIcon({
         className: 'leaflet-amenity-icon ' + cls,
-        html: `<span class="leaflet-amenity-badge"><span class="leaflet-amenity-glyph">${cls.includes('mrt') ? 'M' : cls.includes('school') ? 'S' : 'M'}</span></span>`,
+        html: `<span class="leaflet-amenity-badge"><span class="leaflet-amenity-glyph">${glyph}</span></span>`,
         iconSize: [16, 16],
         iconAnchor: [8, 8],
     });
@@ -1471,10 +1520,20 @@ PRIMARY_SCHOOLS.forEach(s => {
     m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
     schoolLayer.addLayer(m);
 });
+HIGH_DEMAND_PRIMARY_SCHOOLS.forEach(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-top-school'), pane: 'amenityPane' });
+    m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
+    topSchoolLayer.addLayer(m);
+});
 SHOPPING_MALLS.forEach(s => {
     const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-mall'), pane: 'amenityPane' });
     m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
     mallLayer.addLayer(m);
+});
+HAWKER_CENTRES.forEach(s => {
+    const m = L.marker([s.lat, s.lng], { icon: makeAmenityIcon('leaflet-amenity-hawker'), pane: 'amenityPane' });
+    m.bindTooltip(s.name, { direction: 'top', offset: [0, -10] });
+    hawkerLayer.addLayer(m);
 });
 
 document.getElementById('toggleMRT').addEventListener('change', function() {
@@ -1487,9 +1546,19 @@ document.getElementById('toggleSchools').addEventListener('change', function() {
     else { map.removeLayer(schoolLayer); activeAmenities.delete('school'); }
     updateAmenityLegend();
 });
+document.getElementById('toggleTopSchools').addEventListener('change', function() {
+    if (this.checked) { topSchoolLayer.addTo(map); activeAmenities.add('top-school'); }
+    else { map.removeLayer(topSchoolLayer); activeAmenities.delete('top-school'); }
+    updateAmenityLegend();
+});
 document.getElementById('toggleMalls').addEventListener('change', function() {
     if (this.checked) { mallLayer.addTo(map); activeAmenities.add('mall'); }
     else { map.removeLayer(mallLayer); activeAmenities.delete('mall'); }
+    updateAmenityLegend();
+});
+document.getElementById('toggleHawkers').addEventListener('change', function() {
+    if (this.checked) { hawkerLayer.addTo(map); activeAmenities.add('hawker'); }
+    else { map.removeLayer(hawkerLayer); activeAmenities.delete('hawker'); }
     updateAmenityLegend();
 });
 

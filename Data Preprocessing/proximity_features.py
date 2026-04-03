@@ -2,8 +2,9 @@
 proximity_features.py
 =====================
 Single responsibility: compute dist_mrt, dist_cbd, dist_primary_school,
-and dist_major_mall for every geocoded row in resale_prices and write them
-back to hdb_resale.db.
+dist_major_mall, dist_hawker_centre, hawker_count_1km,
+dist_high_demand_primary_school, and high_demand_primary_count_1km for
+every geocoded row in resale_prices and write them back to hdb_resale.db.
 
 Design decisions:
   - Pure-Python haversine formula; no external geospatial libraries required.
@@ -47,16 +48,21 @@ REFERENCE_DATA_DIR = Path(
 
 MRT_STATIONS: list[dict[str, Any]] = []
 PRIMARY_SCHOOLS: list[dict[str, Any]] = []
+HIGH_DEMAND_PRIMARY_SCHOOLS: list[dict[str, Any]] = []
 MAJOR_SHOPPING_MALLS: list[dict[str, Any]] = []
+HAWKER_CENTRES: list[dict[str, Any]] = []
 
 
 def load_reference_data() -> None:
-    """Load MRT, school, and mall reference JSON files into module globals."""
-    global MRT_STATIONS, PRIMARY_SCHOOLS, MAJOR_SHOPPING_MALLS
+    """Load MRT, school, hawker, and mall reference JSON files into globals."""
+    global MRT_STATIONS, PRIMARY_SCHOOLS, HIGH_DEMAND_PRIMARY_SCHOOLS
+    global MAJOR_SHOPPING_MALLS, HAWKER_CENTRES
 
     sources = {
         "mrt_stations.json": "MRT_STATIONS",
         "primary_schools.json": "PRIMARY_SCHOOLS",
+        "high_demand_primary_schools.json": "HIGH_DEMAND_PRIMARY_SCHOOLS",
+        "hawker_centres.json": "HAWKER_CENTRES",
         "major_shopping_malls.json": "MAJOR_SHOPPING_MALLS",
     }
     loaded: dict[str, list[dict[str, Any]]] = {}
@@ -78,6 +84,8 @@ def load_reference_data() -> None:
 
     MRT_STATIONS = loaded["MRT_STATIONS"]
     PRIMARY_SCHOOLS = loaded["PRIMARY_SCHOOLS"]
+    HIGH_DEMAND_PRIMARY_SCHOOLS = loaded["HIGH_DEMAND_PRIMARY_SCHOOLS"]
+    HAWKER_CENTRES = loaded["HAWKER_CENTRES"]
     MAJOR_SHOPPING_MALLS = loaded["MAJOR_SHOPPING_MALLS"]
 
 
@@ -135,13 +143,33 @@ def nearest_distance(
     return round(min_dist, 4)
 
 
+def nearest_distance_and_count(
+    lat: float,
+    lon: float,
+    locations: list[dict[str, Any]],
+    radius_km: float,
+) -> tuple[float, int]:
+    """
+    Return the nearest distance and the number of locations within radius_km.
+    """
+    min_dist = float("inf")
+    count = 0
+    for loc in locations:
+        dist = haversine(lat, lon, loc["lat"], loc["lng"])
+        if dist < min_dist:
+            min_dist = dist
+        if dist <= radius_km:
+            count += 1
+    return round(min_dist, 4), count
+
+
 # ---------------------------------------------------------------------------
 # Feature computation
 # ---------------------------------------------------------------------------
 
 def compute_proximity_features(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Compute all four distance columns for rows with non-null coordinates.
+    Compute all proximity columns for rows with non-null coordinates.
 
     Rows with null latitude or longitude receive NaN for all distance columns.
 
@@ -150,7 +178,8 @@ def compute_proximity_features(df: pd.DataFrame) -> pd.DataFrame:
 
     Returns:
         Input DataFrame with dist_mrt, dist_cbd, dist_primary_school,
-        dist_major_mall
+        dist_major_mall, dist_hawker_centre, hawker_count_1km,
+        dist_high_demand_primary_school, and high_demand_primary_count_1km
         columns added or overwritten.
     """
     # Pre-build CBD tuple for vectorised use
@@ -165,26 +194,68 @@ def compute_proximity_features(df: pd.DataFrame) -> pd.DataFrame:
     df["dist_cbd"]            = float("nan")
     df["dist_primary_school"] = float("nan")
     df["dist_major_mall"]     = float("nan")
+    df["dist_hawker_centre"]  = float("nan")
+    df["dist_high_demand_primary_school"] = float("nan")
+    df["hawker_count_1km"] = pd.Series(
+        pd.array([pd.NA] * len(df), dtype="Int64"),
+        index=df.index,
+    )
+    df["high_demand_primary_count_1km"] = pd.Series(
+        pd.array([pd.NA] * len(df), dtype="Int64"),
+        index=df.index,
+    )
 
     if n_geocoded == 0:
         print("  WARNING: No geocoded rows found. All distance columns remain null.")
         return df
 
-    def _compute_row(row) -> tuple[float, float, float, float]:
+    def _compute_row(row) -> tuple[float, float, float, float, float, int, float, int]:
         lat, lon = row["latitude"], row["longitude"]
+        hawker_dist, hawker_count = nearest_distance_and_count(
+            lat, lon, HAWKER_CENTRES, radius_km=1.0
+        )
+        high_demand_school_dist, high_demand_school_count = nearest_distance_and_count(
+            lat, lon, HIGH_DEMAND_PRIMARY_SCHOOLS, radius_km=1.0
+        )
         return (
             nearest_distance(lat, lon, MRT_STATIONS),
             haversine(lat, lon, cbd_lat, cbd_lng),
             nearest_distance(lat, lon, PRIMARY_SCHOOLS),
             nearest_distance(lat, lon, MAJOR_SHOPPING_MALLS),
+            hawker_dist,
+            hawker_count,
+            high_demand_school_dist,
+            high_demand_school_count,
         )
 
     computed = df.loc[geocoded_mask].apply(_compute_row, axis=1, result_type="expand")
-    computed.columns = ["dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall"]
+    computed.columns = [
+        "dist_mrt",
+        "dist_cbd",
+        "dist_primary_school",
+        "dist_major_mall",
+        "dist_hawker_centre",
+        "hawker_count_1km",
+        "dist_high_demand_primary_school",
+        "high_demand_primary_count_1km",
+    ]
+    computed["hawker_count_1km"] = computed["hawker_count_1km"].astype("Int64")
+    computed["high_demand_primary_count_1km"] = (
+        computed["high_demand_primary_count_1km"].astype("Int64")
+    )
 
     df.loc[
         geocoded_mask,
-        ["dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall"],
+        [
+            "dist_mrt",
+            "dist_cbd",
+            "dist_primary_school",
+            "dist_major_mall",
+            "dist_hawker_centre",
+            "hawker_count_1km",
+            "dist_high_demand_primary_school",
+            "high_demand_primary_count_1km",
+        ],
     ] = computed
     return df
 
@@ -203,16 +274,21 @@ def ensure_proximity_columns(conn: sqlite3.Connection) -> None:
     existing_columns = {
         row[1] for row in conn.execute("PRAGMA table_info(resale_prices)").fetchall()
     }
-    required_columns = [
-        "dist_mrt",
-        "dist_cbd",
-        "dist_primary_school",
-        "dist_major_mall",
-    ]
+    required_columns = {
+        "dist_mrt": "REAL",
+        "dist_cbd": "REAL",
+        "dist_primary_school": "REAL",
+        "dist_major_mall": "REAL",
+        "dist_hawker_centre": "REAL",
+        "hawker_count_1km": "INTEGER",
+        "dist_high_demand_primary_school": "REAL",
+        "high_demand_primary_count_1km": "INTEGER",
+    }
     missing = [column for column in required_columns if column not in existing_columns]
 
     for column in missing:
-        conn.execute(f"ALTER TABLE resale_prices ADD COLUMN {column} REAL")
+        col_type = required_columns[column]
+        conn.execute(f"ALTER TABLE resale_prices ADD COLUMN {column} {col_type}")
         print(f"  Added missing column: {column}")
 
     if missing:
@@ -222,7 +298,7 @@ def ensure_proximity_columns(conn: sqlite3.Connection) -> None:
 def run_proximity_features(db_path: str = DB_PATH) -> None:
     """
     Read geocoded rows from resale_prices, compute distances, and write
-    the four distance columns back to the DB using a temporary table.
+    the proximity columns back to the DB using a temporary table.
 
     Parameters:
         db_path: Path to the SQLite database file.
@@ -262,10 +338,26 @@ def run_proximity_features(db_path: str = DB_PATH) -> None:
             dist_mrt            REAL,
             dist_cbd            REAL,
             dist_primary_school REAL,
-            dist_major_mall     REAL
+            dist_major_mall     REAL,
+            dist_hawker_centre  REAL,
+            hawker_count_1km    INTEGER,
+            dist_high_demand_primary_school REAL,
+            high_demand_primary_count_1km INTEGER
         )
     """)
-    df[["rowid", "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall"]].to_sql(
+    df[
+        [
+            "rowid",
+            "dist_mrt",
+            "dist_cbd",
+            "dist_primary_school",
+            "dist_major_mall",
+            "dist_hawker_centre",
+            "hawker_count_1km",
+            "dist_high_demand_primary_school",
+            "high_demand_primary_count_1km",
+        ]
+    ].to_sql(
         "_prox_tmp", conn, if_exists="append", index=False
     )
 
@@ -275,7 +367,11 @@ def run_proximity_features(db_path: str = DB_PATH) -> None:
             dist_mrt            = t.dist_mrt,
             dist_cbd            = t.dist_cbd,
             dist_primary_school = t.dist_primary_school,
-            dist_major_mall     = t.dist_major_mall
+            dist_major_mall     = t.dist_major_mall,
+            dist_hawker_centre  = t.dist_hawker_centre,
+            hawker_count_1km    = t.hawker_count_1km,
+            dist_high_demand_primary_school = t.dist_high_demand_primary_school,
+            high_demand_primary_count_1km = t.high_demand_primary_count_1km
         FROM _prox_tmp AS t
         WHERE resale_prices.rowid = t.rowid
     """)
@@ -283,15 +379,47 @@ def run_proximity_features(db_path: str = DB_PATH) -> None:
     conn.commit()
 
     # Summary statistics
-    stats = df[["dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall"]].describe()
+    stats = df[
+        [
+            "dist_mrt",
+            "dist_cbd",
+            "dist_primary_school",
+            "dist_major_mall",
+            "dist_hawker_centre",
+            "dist_high_demand_primary_school",
+        ]
+    ].describe()
     print(f"\n  Proximity feature summary (km):")
-    for col in ["dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall"]:
+    for col in [
+        "dist_mrt",
+        "dist_cbd",
+        "dist_primary_school",
+        "dist_major_mall",
+        "dist_hawker_centre",
+        "dist_high_demand_primary_school",
+    ]:
         print(
             f"    {col:<14}  "
             f"min={stats.loc['min', col]:.3f}  "
             f"mean={stats.loc['mean', col]:.3f}  "
             f"max={stats.loc['max', col]:.3f}"
         )
+    hawker_counts = pd.to_numeric(df["hawker_count_1km"], errors="coerce")
+    print(
+        "    hawker_count_1km  "
+        f"min={hawker_counts.min():.0f}  "
+        f"mean={hawker_counts.mean():.2f}  "
+        f"max={hawker_counts.max():.0f}"
+    )
+    high_demand_counts = pd.to_numeric(
+        df["high_demand_primary_count_1km"], errors="coerce"
+    )
+    print(
+        "    high_demand_primary_count_1km  "
+        f"min={high_demand_counts.min():.0f}  "
+        f"mean={high_demand_counts.mean():.2f}  "
+        f"max={high_demand_counts.max():.0f}"
+    )
     print(f"\n  Rows updated: {n_read:,}")
     conn.close()
 

@@ -55,7 +55,11 @@ _SUPABASE_TRAINING_QUERY = """
         b.dist_mrt,
         b.dist_cbd,
         b.dist_primary_school,
-        b.dist_major_mall
+        b.dist_major_mall,
+        b.dist_hawker_centre,
+        b.hawker_count_1km,
+        b.dist_high_demand_primary_school,
+        b.high_demand_primary_count_1km
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns t ON b.town_id = t.id
@@ -398,6 +402,10 @@ def _get_supabase_summary(
                              AND b.dist_cbd IS NOT NULL
                              AND b.dist_primary_school IS NOT NULL
                              AND b.dist_major_mall IS NOT NULL
+                             AND b.dist_hawker_centre IS NOT NULL
+                             AND b.hawker_count_1km IS NOT NULL
+                             AND b.dist_high_demand_primary_school IS NOT NULL
+                             AND b.high_demand_primary_count_1km IS NOT NULL
                             THEN 1 ELSE 0
                         END
                     ) AS proximity_rows

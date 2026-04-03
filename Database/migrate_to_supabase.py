@@ -158,7 +158,11 @@ def migrate():
             AVG(dist_mrt)            AS dist_mrt,
             AVG(dist_cbd)            AS dist_cbd,
             AVG(dist_primary_school) AS dist_primary_school,
-            AVG(dist_major_mall)     AS dist_major_mall
+            AVG(dist_major_mall)     AS dist_major_mall,
+            AVG(dist_hawker_centre)  AS dist_hawker_centre,
+            CAST(ROUND(AVG(hawker_count_1km)) AS INTEGER) AS hawker_count_1km,
+            AVG(dist_high_demand_primary_school) AS dist_high_demand_primary_school,
+            CAST(ROUND(AVG(high_demand_primary_count_1km)) AS INTEGER) AS high_demand_primary_count_1km
         FROM resale_prices
         GROUP BY block, street_name, town
     """).fetchall()
@@ -172,40 +176,41 @@ def migrate():
             r["latitude"], r["longitude"],
             r["dist_mrt"], r["dist_cbd"],
             r["dist_primary_school"], r["dist_major_mall"],
+            r["dist_hawker_centre"], r["hawker_count_1km"],
+            r["dist_high_demand_primary_school"], r["high_demand_primary_count_1km"],
         )
         for r in rows
     ]
-    print("  Inserting blocks into Supabase...")
-    returned_blocks = []
-    block_batch = 500
-    for i in range(0, len(data), block_batch):
-        batch = data[i : i + block_batch]
-        result = psycopg2.extras.execute_values(
-            pg_cur,
-            """
-            INSERT INTO blocks
-                (block, street_name, town_id, full_address, latitude, longitude,
-                 dist_mrt, dist_cbd, dist_primary_school, dist_major_mall)
-            VALUES %s
-            ON CONFLICT (block, street_name) DO UPDATE SET
-            town_id = EXCLUDED.town_id,
-            full_address = EXCLUDED.full_address,
-            latitude = EXCLUDED.latitude,
-            longitude = EXCLUDED.longitude,
-            dist_mrt = EXCLUDED.dist_mrt,
-            dist_cbd = EXCLUDED.dist_cbd,
-            dist_primary_school = EXCLUDED.dist_primary_school,
-            dist_major_mall = EXCLUDED.dist_major_mall
-            RETURNING id, block, street_name
-            """,
-            batch,
-            page_size=1000,
-            fetch=True,
-        )
-        pg_conn.commit()
-        returned_blocks.extend(result)
-        print(f"  {min(i + block_batch, len(data)):,}/{len(data):,} blocks", end="\r")
-    print(f"\n  Done — {len(data)} blocks.\n")
+    returned_blocks = psycopg2.extras.execute_values(
+        pg_cur,
+        """
+        INSERT INTO blocks
+            (block, street_name, town_id, full_address, latitude, longitude,
+             dist_mrt, dist_cbd, dist_primary_school, dist_major_mall,
+             dist_hawker_centre, hawker_count_1km,
+             dist_high_demand_primary_school, high_demand_primary_count_1km)
+        VALUES %s
+        ON CONFLICT (block, street_name) DO UPDATE SET
+        town_id = EXCLUDED.town_id,
+        full_address = EXCLUDED.full_address,
+        latitude = EXCLUDED.latitude,
+        longitude = EXCLUDED.longitude,
+        dist_mrt = EXCLUDED.dist_mrt,
+        dist_cbd = EXCLUDED.dist_cbd,
+        dist_primary_school = EXCLUDED.dist_primary_school,
+        dist_major_mall = EXCLUDED.dist_major_mall,
+        dist_hawker_centre = EXCLUDED.dist_hawker_centre,
+        hawker_count_1km = EXCLUDED.hawker_count_1km,
+        dist_high_demand_primary_school = EXCLUDED.dist_high_demand_primary_school,
+        high_demand_primary_count_1km = EXCLUDED.high_demand_primary_count_1km
+        RETURNING id, block, street_name
+        """,
+        data,
+        page_size=1000,
+        fetch=True,
+    )
+    pg_conn.commit()
+    print(f"  Done — {len(data)} blocks.\n")
 
     block_id_map = {(block, street_name): id_ for id_, block, street_name in returned_blocks}
 

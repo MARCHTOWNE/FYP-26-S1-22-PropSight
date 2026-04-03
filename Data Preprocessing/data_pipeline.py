@@ -11,8 +11,10 @@ Design decisions:
   - Set HDB_FULL_REBUILD=1 to force a full SQLite rebuild from all raw CSVs.
   - full_address is derived here and stored in the DB for use by geocoding.py.
   - Nullable columns (latitude, longitude, dist_mrt, dist_cbd,
-    dist_primary_school, dist_major_mall) are created in this step so
-    downstream scripts can UPDATE them without altering the table schema.
+    dist_primary_school, dist_major_mall, dist_hawker_centre,
+    hawker_count_1km, dist_high_demand_primary_school,
+    high_demand_primary_count_1km) are created in this step so downstream
+    scripts can UPDATE them without altering the table schema.
   - geocode_cache and upload_audit tables are never dropped on re-runs.
   - district_summary is dropped and rebuilt each run for accuracy.
 
@@ -85,6 +87,10 @@ SQLITE_DTYPES = {
     "dist_cbd":               "REAL",              # nullable — filled by proximity_features.py
     "dist_primary_school":    "REAL",              # nullable — filled by proximity_features.py
     "dist_major_mall":        "REAL",              # nullable — filled by proximity_features.py
+    "dist_hawker_centre":     "REAL",              # nullable — filled by proximity_features.py
+    "hawker_count_1km":       "INTEGER",           # nullable — filled by proximity_features.py
+    "dist_high_demand_primary_school": "REAL",     # nullable — filled by proximity_features.py
+    "high_demand_primary_count_1km":   "INTEGER",  # nullable — filled by proximity_features.py
 }
 
 # Canonical flat_type values
@@ -115,6 +121,8 @@ NULLABLE_COLS: set[str] = {
     "full_address",
     "latitude", "longitude",
     "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
+    "dist_hawker_centre", "hawker_count_1km",
+    "dist_high_demand_primary_school", "high_demand_primary_count_1km",
 }
 
 # HDB floor-area sanity bounds (sqm) — used for logging only, rows are kept
@@ -521,6 +529,10 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     df["dist_cbd"]            = None  # filled by proximity_features.py
     df["dist_primary_school"] = None  # filled by proximity_features.py
     df["dist_major_mall"]     = None  # filled by proximity_features.py
+    df["dist_hawker_centre"]  = None  # filled by proximity_features.py
+    df["hawker_count_1km"]    = None  # filled by proximity_features.py
+    df["dist_high_demand_primary_school"] = None  # filled by proximity_features.py
+    df["high_demand_primary_count_1km"] = None  # filled by proximity_features.py
 
     # ------------------------------------------------------------------
     # Final column order (original columns + derived columns)
@@ -535,6 +547,8 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
         "full_address",
         "latitude", "longitude",
         "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
+        "dist_hawker_centre", "hawker_count_1km",
+        "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     ]
     df = df[final_cols]
 

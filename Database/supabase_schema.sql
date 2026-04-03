@@ -36,8 +36,24 @@ CREATE TABLE IF NOT EXISTS blocks (
     dist_cbd            DOUBLE PRECISION,
     dist_primary_school DOUBLE PRECISION,
     dist_major_mall     DOUBLE PRECISION,
+    dist_hawker_centre  DOUBLE PRECISION,
+    hawker_count_1km    INTEGER,
+    dist_high_demand_primary_school DOUBLE PRECISION,
+    high_demand_primary_count_1km INTEGER,
     UNIQUE (block, street_name)
 );
+
+ALTER TABLE blocks
+    ADD COLUMN IF NOT EXISTS dist_hawker_centre DOUBLE PRECISION;
+
+ALTER TABLE blocks
+    ADD COLUMN IF NOT EXISTS hawker_count_1km INTEGER;
+
+ALTER TABLE blocks
+    ADD COLUMN IF NOT EXISTS dist_high_demand_primary_school DOUBLE PRECISION;
+
+ALTER TABLE blocks
+    ADD COLUMN IF NOT EXISTS high_demand_primary_count_1km INTEGER;
 
 CREATE INDEX IF NOT EXISTS idx_blocks_town     ON blocks(town_id);
 CREATE INDEX IF NOT EXISTS idx_blocks_location ON blocks(latitude, longitude);
@@ -153,6 +169,9 @@ CREATE OR REPLACE FUNCTION rpc_get_town_avg_distances()
 RETURNS TABLE(
     town TEXT, avg_dist_mrt DOUBLE PRECISION, avg_dist_cbd DOUBLE PRECISION,
     avg_dist_school DOUBLE PRECISION, avg_dist_mall DOUBLE PRECISION,
+    avg_dist_hawker DOUBLE PRECISION, avg_hawker_count_1km DOUBLE PRECISION,
+    avg_dist_high_demand_school DOUBLE PRECISION,
+    avg_high_demand_primary_count_1km DOUBLE PRECISION,
     avg_lat DOUBLE PRECISION, avg_lng DOUBLE PRECISION
 ) LANGUAGE SQL STABLE AS $$
     SELECT
@@ -161,6 +180,10 @@ RETURNS TABLE(
         AVG(b.dist_cbd),
         AVG(b.dist_primary_school),
         AVG(b.dist_major_mall),
+        AVG(b.dist_hawker_centre),
+        AVG(b.hawker_count_1km),
+        AVG(b.dist_high_demand_primary_school),
+        AVG(b.high_demand_primary_count_1km),
         AVG(b.latitude),
         AVG(b.longitude)
     FROM blocks b
@@ -455,9 +478,20 @@ $$;
 -- Block-level distances for prediction
 CREATE OR REPLACE FUNCTION rpc_block_distances(p_town TEXT, p_street TEXT, p_block TEXT)
 RETURNS TABLE(dist_mrt DOUBLE PRECISION, dist_cbd DOUBLE PRECISION,
-              dist_school DOUBLE PRECISION, dist_mall DOUBLE PRECISION)
+              dist_school DOUBLE PRECISION, dist_mall DOUBLE PRECISION,
+              dist_hawker DOUBLE PRECISION, hawker_count_1km INTEGER,
+              dist_high_demand_school DOUBLE PRECISION,
+              high_demand_primary_count_1km INTEGER)
 LANGUAGE SQL STABLE AS $$
-    SELECT b.dist_mrt, b.dist_cbd, b.dist_primary_school, b.dist_major_mall
+    SELECT
+        b.dist_mrt,
+        b.dist_cbd,
+        b.dist_primary_school,
+        b.dist_major_mall,
+        b.dist_hawker_centre,
+        b.hawker_count_1km,
+        b.dist_high_demand_primary_school,
+        b.high_demand_primary_count_1km
     FROM blocks b JOIN towns t ON b.town_id = t.id
     WHERE t.name = p_town AND b.street_name = p_street AND b.block = p_block
     LIMIT 1;

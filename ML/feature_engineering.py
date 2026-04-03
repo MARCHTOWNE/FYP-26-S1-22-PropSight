@@ -53,6 +53,10 @@ SCALE_COLS = [
     "dist_cbd",
     "dist_primary_school",
     "dist_major_mall",
+    "dist_hawker_centre",
+    "hawker_count_1km",
+    "dist_high_demand_primary_school",
+    "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
 ]
@@ -74,6 +78,10 @@ FEATURE_COLS = [
     "dist_cbd",
     "dist_primary_school",
     "dist_major_mall",
+    "dist_hawker_centre",
+    "hawker_count_1km",
+    "dist_high_demand_primary_school",
+    "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
 ]
@@ -95,6 +103,10 @@ REQUIRED_MODEL_COLS = [
     "dist_cbd",
     "dist_primary_school",
     "dist_major_mall",
+    "dist_hawker_centre",
+    "hawker_count_1km",
+    "dist_high_demand_primary_school",
+    "high_demand_primary_count_1km",
 ]
 
 
@@ -124,6 +136,10 @@ def load_data() -> tuple[pd.DataFrame, str]:
         "dist_cbd",
         "dist_primary_school",
         "dist_major_mall",
+        "dist_hawker_centre",
+        "hawker_count_1km",
+        "dist_high_demand_primary_school",
+        "high_demand_primary_count_1km",
     ]
 
     for col in numeric_cols:
@@ -212,15 +228,16 @@ def engineer_features(
 
     # Historical trend signals are computed from prior completed years only,
     # so each row only sees market information that would have been available
-    # at prediction time.
+    # at prediction time. Use town + flat_type granularity to better capture
+    # segment-specific price momentum.
     yearly_avg = (
-        df.groupby(["town", "year"], as_index=False)["resale_price"]
+        df.groupby(["town", "flat_type", "year"], as_index=False)["resale_price"]
         .mean()
         .rename(columns={"resale_price": "avg_resale_price"})
     )
-    yearly_avg["prev_avg_1y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(1)
-    yearly_avg["prev_avg_2y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(2)
-    yearly_avg["prev_avg_6y"] = yearly_avg.groupby("town")["avg_resale_price"].shift(6)
+    yearly_avg["prev_avg_1y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(1)
+    yearly_avg["prev_avg_2y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(2)
+    yearly_avg["prev_avg_6y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(6)
 
     yearly_avg["town_yoy_appreciation_lag1"] = np.where(
         yearly_avg["prev_avg_2y"].gt(0),
@@ -237,12 +254,13 @@ def engineer_features(
         yearly_avg[
             [
                 "town",
+                "flat_type",
                 "year",
                 "town_yoy_appreciation_lag1",
                 "town_5yr_cagr_lag1",
             ]
         ],
-        on=["town", "year"],
+        on=["town", "flat_type", "year"],
         how="left",
     )
     df["town_yoy_appreciation_lag1"] = df["town_yoy_appreciation_lag1"].fillna(0.0)
@@ -250,7 +268,9 @@ def engineer_features(
 
     print(
         "  Features added: flat_age, month_sin, month_cos, "
-        "is_mature_estate, flat_type_ordinal, "
+        "is_mature_estate, flat_type_ordinal, dist_hawker_centre, "
+        "hawker_count_1km, dist_high_demand_primary_school, "
+        "high_demand_primary_count_1km, "
         "town_yoy_appreciation_lag1, town_5yr_cagr_lag1, log_price"
     )
     return df

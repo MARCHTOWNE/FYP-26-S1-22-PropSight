@@ -1,15 +1,17 @@
 """
 fetch_reference_data.py
 =======================
-Single responsibility: fetch full MRT station, primary school, and major
-shopping mall reference datasets and save them as JSON files under
-/reference_data.
+Single responsibility: fetch full MRT station, primary school, hawker
+centre, and major shopping mall reference datasets and save them as JSON
+files under /reference_data.
 
 Design decisions:
   - MRT stations are fetched from the latest LTA static geospatial TrainStation
     ZIP and converted from SVY21 to WGS84 in pure Python.
   - The MOE school directory is downloaded from data.gov.sg without an API key,
     filtered to primary schools, then geocoded via OneMap.
+  - Hawker centre coordinates are fetched from the official NEA data.gov.sg
+    geojson dataset.
   - Major shopping mall coordinates are built from a fixed curated mall list
     and geocoded via OneMap.
   - JSON output is overwritten on each run to keep the reference files
@@ -25,6 +27,7 @@ Run:
 from __future__ import annotations
 
 import io
+import html
 import json
 import math
 import os
@@ -45,6 +48,9 @@ OUTPUT_DIR = os.environ.get("HDB_REFERENCE_DATA_DIR", str(BASE_DIR / "reference_
 ONEMAP_API_URL = "https://www.onemap.gov.sg/api/common/elastic/search"
 DATA_GOV_API_BASE = "https://api-open.data.gov.sg/v1/public/api/datasets"
 PRIMARY_SCHOOL_DATASET_ID = "d_688b934f82c1059ed0a6993d2a829089"
+HAWKER_CENTRE_DATASET_ID = "d_4a086da0a5553be1d89383cd90d07ecd"
+PRIMARY_SCHOOL_RANKING_URL = "https://www.property2b2c.com/school-ranking/2025-pop"
+HIGH_DEMAND_PRIMARY_TOP_N = 100
 LTA_STATIC_DATA_URL = "https://datamall.lta.gov.sg/content/datamall/en/static-data.html"
 LTA_PAGE_SIZE = 500
 MAX_RETRIES = 5
@@ -85,6 +91,22 @@ MALL_QUERY_ALIASES: dict[str, list[str]] = {
     "Heartland Mall": ["Heartland Mall", "Heartland Mall Kovan", "Kovan Heartland Mall"],
     "Velocity@Novena Square": ["Velocity Novena Square", "Velocity @ Novena Square", "Novena Square Velocity"],
     "Telok Blangah Mall": ["Telok Blangah Mall", "Telok Blangah", "Blk 55 Telok Blangah"],
+}
+
+HIGH_DEMAND_PRIMARY_NAME_ALIASES: dict[str, str] = {
+    "ANGLO-CHINESE": "ANGLO-CHINESE SCHOOL (PRIMARY)",
+    "ANGLO-CHINESE (JUNIOR)": "ANGLO-CHINESE SCHOOL (JUNIOR)",
+    "CHIJ (TOA PAYOH)": "CHIJ PRIMARY (TOA PAYOH)",
+    "CHIJ (KATONG)": "CHIJ (KATONG) PRIMARY",
+    "CHIJ (KELLOCK)": "CHIJ (KELLOCK)",
+}
+
+HIGH_DEMAND_PRIMARY_GEOCODE_ALIASES: dict[str, list[str]] = {
+    "CHIJ St. Nicholas Girls'": ["CHIJ St. Nicholas Girls' School"],
+    "Catholic High": ["Catholic High School (Primary)"],
+    "Maris Stella High": ["Maris Stella High School (Primary)"],
+    "St. Andrew's Junior": ["St Andrew's School (Junior)"],
+    "St. Gabriel's": ["St. Gabriel's Primary School"],
 }
 
 _MIN_ONEMAP_INTERVAL = 1.0 / ONEMAP_RATE_LIMIT_RPS
@@ -474,7 +496,9 @@ def _build_school_queries(school_name: str) -> list[str]:
     """Build OneMap fallback queries for school names with punctuation variants."""
     base = school_name.strip()
     without_parentheses = re.sub(r"\s*\([^)]*\)", "", base).strip()
-    variants = [
+    variants = [base]
+    variants.extend(HIGH_DEMAND_PRIMARY_GEOCODE_ALIASES.get(base, []))
+    variants.extend([
         base,
         without_parentheses,
         base.replace("ST.", "ST"),
@@ -491,7 +515,7 @@ def _build_school_queries(school_name: str) -> list[str]:
         without_parentheses.replace("'", "").replace(".", ""),
         without_parentheses.replace("ST. ", "SAINT ").replace("'", ""),
         without_parentheses.replace("ST. ", "SAINT ").replace("'", "").replace(".", ""),
-    ]
+    ])
 
     deduped: list[str] = []
     seen: set[str] = set()
@@ -625,6 +649,161 @@ def fetch_primary_schools() -> list[dict[str, float | str]]:
     return schools
 
 
+def _normalize_school_name(value: str) -> str:
+    text = html.unescape(value).upper().strip()
+    text = re.sub(r"\s+", " ", text)
+    return text
+
+
+def _normalize_school_lookup_name(value: str) -> str:
+    text = _normalize_school_name(value)
+    text = text.replace("&", " AND ")
+    text = text.replace("ST.", "SAINT ")
+    text = re.sub(r"\bST\b", "SAINT", text)
+    text = re.sub(r"[()'\.-]", " ", text)
+    for token in ["PRIMARY", "SCHOOL", "JUNIOR", "HIGH"]:
+        text = re.sub(rf"\b{token}\b", " ", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _extract_high_demand_primary_school_names(top_n: int = HIGH_DEMAND_PRIMARY_TOP_N) -> list[str]:
+    response = requests.get(PRIMARY_SCHOOL_RANKING_URL, timeout=60)
+    response.raise_for_status()
+    rows = re.findall(
+        r'<tr><td[^>]*>(\d+)</td><td[^>]*><a [^>]+>([^<]+)</a>',
+        response.text,
+    )
+    if len(rows) < top_n:
+        raise RuntimeError(
+            f"Expected at least {top_n} ranked schools from {PRIMARY_SCHOOL_RANKING_URL}, "
+            f"found {len(rows)}."
+        )
+    return [html.unescape(name).strip() for _, name in rows[:top_n]]
+
+
+def fetch_high_demand_primary_schools(
+    primary_schools: list[dict[str, float | str]],
+) -> list[dict[str, float | str | int]]:
+    """
+    Build a top-100 high-demand primary-school reference set.
+
+    Coordinates are reused from the canonical primary school list when possible.
+    Missing schools are geocoded directly from their ranked labels.
+    """
+    ranked_names = _extract_high_demand_primary_school_names()
+    canonical_by_name = {
+        _normalize_school_lookup_name(str(item["name"])): item
+        for item in primary_schools
+    }
+
+    ranked_schools: list[dict[str, float | str | int]] = []
+    failures: list[str] = []
+
+    with requests.Session() as session:
+        for rank, school_name in enumerate(ranked_names, start=1):
+            normalized = _normalize_school_name(school_name)
+            alias = HIGH_DEMAND_PRIMARY_NAME_ALIASES.get(normalized, school_name)
+            canonical_match = canonical_by_name.get(
+                _normalize_school_lookup_name(alias)
+            )
+
+            if canonical_match is not None:
+                ranked_schools.append(
+                    {
+                        "rank": rank,
+                        "name": school_name,
+                        "canonical_name": canonical_match["name"],
+                        "lat": canonical_match["lat"],
+                        "lng": canonical_match["lng"],
+                    }
+                )
+                continue
+
+            print(f"    Geocoding high-demand school {rank}/{len(ranked_names)}: {school_name}")
+            result: tuple[float, float] | None = None
+            for query in _build_school_queries(school_name):
+                result = _geocode_query(session, query)
+                if result is not None:
+                    break
+            if result is None:
+                failures.append(school_name)
+                continue
+
+            lat, lng = result
+            ranked_schools.append(
+                {
+                    "rank": rank,
+                    "name": school_name,
+                    "canonical_name": school_name,
+                    "lat": lat,
+                    "lng": lng,
+                }
+            )
+
+    if failures:
+        raise RuntimeError(
+            f"Failed to geocode {len(failures)} high-demand primary school(s). "
+            f"First few: {failures[:5]}"
+        )
+
+    path = _save_json(ranked_schools, "high_demand_primary_schools.json")
+    print(f"  Saved {len(ranked_schools):,} high-demand primary schools to {path}")
+    return ranked_schools
+
+
+def fetch_hawker_centres() -> list[dict[str, float | str]]:
+    """
+    Fetch hawker centres from data.gov.sg geojson and save them to JSON.
+
+    Returns:
+        A deduplicated list of hawker centre dicts with keys: name, lat, lng.
+    """
+    with requests.Session() as session:
+        response = _request_with_retry(
+            session,
+            f"{DATA_GOV_API_BASE}/{HAWKER_CENTRE_DATASET_ID}/initiate-download",
+            timeout=120,
+        )
+        payload = response.json()
+        download_url = payload.get("data", {}).get("url")
+        if not download_url:
+            raise RuntimeError("Hawker centre dataset did not return a download URL.")
+
+        geojson = _request_with_retry(session, download_url, timeout=300).json()
+
+    features = geojson.get("features")
+    if not isinstance(features, list) or not features:
+        raise RuntimeError("Hawker centre geojson is empty or malformed.")
+
+    hawkers_by_name: dict[str, dict[str, float | str]] = {}
+    for feature in features:
+        geometry = feature.get("geometry") or {}
+        coordinates = geometry.get("coordinates") or []
+        properties = feature.get("properties") or {}
+        if geometry.get("type") != "Point" or len(coordinates) < 2:
+            continue
+
+        name = (
+            str(properties.get("NAME") or properties.get("ADDRESSBUILDINGNAME") or "").strip()
+        )
+        if not name:
+            continue
+
+        try:
+            lng = float(coordinates[0])
+            lat = float(coordinates[1])
+        except (TypeError, ValueError):
+            continue
+
+        hawkers_by_name.setdefault(name, {"name": name, "lat": lat, "lng": lng})
+
+    hawkers = sorted(hawkers_by_name.values(), key=lambda item: str(item["name"]))
+    path = _save_json(hawkers, "hawker_centres.json")
+    print(f"  Saved {len(hawkers):,} hawker centres to {path}")
+    return hawkers
+
+
 def fetch_major_shopping_malls() -> list[dict[str, float | str]]:
     """
     Geocode the configured major shopping mall list via OneMap and save JSON.
@@ -664,7 +843,7 @@ def fetch_major_shopping_malls() -> list[dict[str, float | str]]:
 
 
 def main() -> None:
-    """Fetch all three reference datasets and save them as JSON files."""
+    """Fetch all reference datasets and save them as JSON files."""
     print("=" * 60)
     print("HDB Resale - Reference Data Fetch")
     print("=" * 60)
@@ -672,6 +851,8 @@ def main() -> None:
     try:
         mrt_stations = fetch_mrt_stations()
         primary_schools = fetch_primary_schools()
+        high_demand_primary_schools = fetch_high_demand_primary_schools(primary_schools)
+        hawker_centres = fetch_hawker_centres()
         major_shopping_malls = fetch_major_shopping_malls()
     except Exception as exc:
         raise SystemExit(f"Reference data fetch failed: {exc}") from exc
@@ -679,6 +860,8 @@ def main() -> None:
     print("\nSummary")
     print(f"  MRT stations saved:     {len(mrt_stations):,}")
     print(f"  Primary schools saved:  {len(primary_schools):,}")
+    print(f"  Top primary schools:    {len(high_demand_primary_schools):,}")
+    print(f"  Hawker centres saved:   {len(hawker_centres):,}")
     print(f"  Major malls saved:      {len(major_shopping_malls):,}")
     print(f"  Output folder:          {OUTPUT_DIR}/")
 

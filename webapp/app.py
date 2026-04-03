@@ -72,9 +72,6 @@ if not _secret:
     )
 app.secret_key = _secret
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_DIR = os.path.dirname(BASE_DIR)
-
 
 def _first_existing_path(paths):
     fallback = None
@@ -86,6 +83,37 @@ def _first_existing_path(paths):
         if os.path.exists(p):
             return p
     return fallback or paths[0]
+
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_DIR = os.path.dirname(BASE_DIR)
+REFERENCE_DATA_DIR = _first_existing_path([
+    os.environ.get("HDB_REFERENCE_DATA_DIR", ""),
+    os.path.join(PROJECT_DIR, "Data Preprocessing", "reference_data"),
+])
+
+
+@_ttl_cache(maxsize=8, ttl=3600)
+def _load_reference_points(filename):
+    path = os.path.join(REFERENCE_DATA_DIR, filename)
+    if not path or not os.path.exists(path):
+        return []
+    try:
+        with open(path, encoding="utf-8") as f:
+            records = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return []
+    if not isinstance(records, list):
+        return []
+    return [
+        {
+            "name": record.get("name"),
+            "lat": record.get("lat"),
+            "lng": record.get("lng"),
+        }
+        for record in records
+        if record.get("lat") is not None and record.get("lng") is not None
+    ]
 
 ASSETS_DIR = _first_existing_path([
     os.environ.get("MODEL_ASSETS_DIR", ""),
@@ -161,6 +189,8 @@ SCALE_COLS = [
     "floor_area_sqm", "storey_midpoint", "flat_age", "remaining_lease",
     "lease_commence_date", "month_sin", "month_cos", "year",
     "dist_mrt", "dist_cbd", "dist_primary_school", "dist_major_mall",
+    "dist_hawker_centre", "hawker_count_1km",
+    "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
 ]
 
@@ -170,6 +200,8 @@ FEATURE_COLS = [
     "lease_commence_date", "month_sin", "month_cos", "year",
     "is_mature_estate", "dist_mrt", "dist_cbd",
     "dist_primary_school", "dist_major_mall",
+    "dist_hawker_centre", "hawker_count_1km",
+    "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
 ]
 
@@ -893,7 +925,9 @@ def _build_comparison_analysis(payloads):
         ("flat_age", "Flat Age", "yrs", "min"),
         ("dist_mrt", "Nearest MRT", "dist", "min"),
         ("dist_school", "Nearest School", "dist", "min"),
+        ("dist_high_demand_school", "Top Primary School", "dist", "min"),
         ("dist_mall", "Nearest Mall", "dist", "min"),
+        ("hawker_count_1km", "Hawkers within 1km", "count", "max"),
         ("dist_cbd", "Distance to CBD", "dist", "min"),
         ("is_mature", "Mature Estate", "yesno", None),
     ]
@@ -919,6 +953,8 @@ def _build_comparison_analysis(payloads):
                 display_values.append(_format_distance(v))
             elif fmt == "yesno":
                 display_values.append("Yes" if v else "No")
+            elif fmt == "count":
+                display_values.append(f"{float(v):,.0f}")
             else:
                 display_values.append(str(v))
 
@@ -1004,12 +1040,27 @@ def _generate_comparison_insights(payloads, labels):
             f"while {worst_l} is farthest ({_format_distance(worst_v)})."
         )
 
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_high_demand_school", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is closest to a high-demand primary school "
+            f"({_format_distance(best_v)}), while {worst_l} is farthest "
+            f"({_format_distance(worst_v)})."
+        )
+
     # Mall distance insight
     best_l, best_v, worst_l, worst_v = _best_worst("dist_mall", "min")
     if best_l:
         insights.append(
             f"Prediction {best_l} is closest to a major mall ({_format_distance(best_v)}), "
             f"while {worst_l} is farthest ({_format_distance(worst_v)})."
+        )
+
+    best_l, best_v, worst_l, worst_v = _best_worst("hawker_count_1km", "max")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} has the densest hawker access with {best_v:,.0f} hawker "
+            f"centre(s) within 1 km, while {worst_l} has the least at {worst_v:,.0f}."
         )
 
     # CBD distance insight
@@ -1211,6 +1262,10 @@ def _run_prediction_form(form_data, infer_flat_type=False):
             "dist_cbd": town_dists.get("avg_dist_cbd"),
             "dist_school": town_dists.get("avg_dist_school"),
             "dist_mall": town_dists.get("avg_dist_mall"),
+            "dist_hawker": town_dists.get("avg_dist_hawker"),
+            "hawker_count_1km": town_dists.get("avg_hawker_count_1km"),
+            "dist_high_demand_school": town_dists.get("avg_dist_high_demand_school"),
+            "high_demand_primary_count_1km": town_dists.get("avg_high_demand_primary_count_1km"),
         }
 
     flat_age = datetime.now().year - resolved_form["lease_commence"]
@@ -1223,7 +1278,11 @@ def _run_prediction_form(form_data, infer_flat_type=False):
         "dist_mrt": dists.get("dist_mrt"),
         "dist_cbd": dists.get("dist_cbd"),
         "dist_school": dists.get("dist_school"),
+        "dist_high_demand_school": dists.get("dist_high_demand_school"),
         "dist_mall": dists.get("dist_mall"),
+        "dist_hawker": dists.get("dist_hawker"),
+        "hawker_count_1km": dists.get("hawker_count_1km"),
+        "high_demand_primary_count_1km": dists.get("high_demand_primary_count_1km"),
         "is_mature": town in MATURE_ESTATES,
         "flat_age": flat_age,
         "remaining_lease": remaining_lease,
@@ -1268,6 +1327,10 @@ def _get_town_avg_distances():
                 "avg_dist_cbd": r["avg_dist_cbd"],
                 "avg_dist_school": r["avg_dist_school"],
                 "avg_dist_mall": r["avg_dist_mall"],
+                "avg_dist_hawker": r.get("avg_dist_hawker"),
+                "avg_hawker_count_1km": r.get("avg_hawker_count_1km"),
+                "avg_dist_high_demand_school": r.get("avg_dist_high_demand_school"),
+                "avg_high_demand_primary_count_1km": r.get("avg_high_demand_primary_count_1km"),
                 "avg_lat": r["avg_lat"],
                 "avg_lng": r["avg_lng"],
             }
@@ -1344,13 +1407,22 @@ def _get_flat_type_breakdown_data(town, street_name="", block=""):
         return []
 
 
-@_ttl_cache(maxsize=128, ttl=3600)
-def _get_town_appreciation_history(town):
+@_ttl_cache(maxsize=256, ttl=3600)
+def _get_town_flat_type_appreciation_history(town, flat_type):
     town = (town or "").strip()
-    if not town:
+    flat_type = (flat_type or "").strip()
+    if not town or not flat_type:
         return []
     try:
-        rows = _supabase_rpc("rpc_api_price_trend_simple", {"p_town": town}) or []
+        rows = _supabase_rpc(
+            "rpc_api_price_trend_simple",
+            {
+                "p_town": town,
+                "p_flat_type": flat_type,
+                "p_street_name": None,
+                "p_block": None,
+            },
+        ) or []
     except SupabaseError:
         return []
 
@@ -1365,8 +1437,8 @@ def _get_town_appreciation_history(town):
     return history
 
 
-def _resolve_town_appreciation_features(town, prediction_year):
-    history = _get_town_appreciation_history(town)
+def _resolve_town_flat_type_appreciation_features(town, flat_type, prediction_year):
+    history = _get_town_flat_type_appreciation_history(town, flat_type)
     if not history:
         return {
             "town_yoy_appreciation_lag1": 0.0,
@@ -1795,12 +1867,24 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         dist_cbd = override_distances.get("dist_cbd", 10000)
         dist_school = override_distances.get("dist_school", 500)
         dist_mall = override_distances.get("dist_mall", 1000)
+        dist_hawker = override_distances.get("dist_hawker", 1.0)
+        hawker_count_1km = override_distances.get("hawker_count_1km", 0)
+        dist_high_demand_school = override_distances.get("dist_high_demand_school", 500)
+        high_demand_primary_count_1km = override_distances.get(
+            "high_demand_primary_count_1km", 0
+        )
     else:
         dists = TOWN_DISTANCES.get(town, {})
         dist_mrt = dists.get("avg_dist_mrt", 500)
         dist_cbd = dists.get("avg_dist_cbd", 10000)
         dist_school = dists.get("avg_dist_school", 500)
         dist_mall = dists.get("avg_dist_mall", 1000)
+        dist_hawker = dists.get("avg_dist_hawker", 1.0)
+        hawker_count_1km = dists.get("avg_hawker_count_1km", 0)
+        dist_high_demand_school = dists.get("avg_dist_high_demand_school", 500)
+        high_demand_primary_count_1km = dists.get(
+            "avg_high_demand_primary_count_1km", 0
+        )
 
     scale_cols = _serving_scale_cols()
     feat_cols = _serving_feature_cols()
@@ -1811,7 +1895,7 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         or "town_5yr_cagr_lag1" in feat_cols
     )
     if need_appreciation:
-        appreciation = _resolve_town_appreciation_features(town, year)
+        appreciation = _resolve_town_flat_type_appreciation_features(town, flat_type, year)
     else:
         appreciation = {
             "town_yoy_appreciation_lag1": 0.0,
@@ -1835,10 +1919,13 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "dist_cbd": dist_cbd,
         "dist_primary_school": dist_school,
         "dist_major_mall": dist_mall,
+        "dist_hawker_centre": dist_hawker,
+        "hawker_count_1km": hawker_count_1km,
+        "dist_high_demand_primary_school": dist_high_demand_school,
+        "high_demand_primary_count_1km": high_demand_primary_count_1km,
+        "town_yoy_appreciation_lag1": appreciation["town_yoy_appreciation_lag1"],
+        "town_5yr_cagr_lag1": appreciation["town_5yr_cagr_lag1"],
     }
-    if need_appreciation:
-        raw["town_yoy_appreciation_lag1"] = appreciation["town_yoy_appreciation_lag1"]
-        raw["town_5yr_cagr_lag1"] = appreciation["town_5yr_cagr_lag1"]
 
     df = pd.DataFrame([raw])
     df[scale_cols] = scaler.transform(df[scale_cols])
@@ -2201,6 +2288,10 @@ def _get_block_distances(town, street_name, block):
                 "dist_cbd": r.get("dist_cbd"),
                 "dist_school": r.get("dist_school"),
                 "dist_mall": r.get("dist_mall"),
+                "dist_hawker": r.get("dist_hawker"),
+                "hawker_count_1km": r.get("hawker_count_1km"),
+                "dist_high_demand_school": r.get("dist_high_demand_school"),
+                "high_demand_primary_count_1km": r.get("high_demand_primary_count_1km"),
             }
     except SupabaseError:
         return None
@@ -2264,12 +2355,30 @@ def _resolve_prediction_inputs(
     return floor_area, lease_commence, assumptions
 
 
+def _default_flat_model_for_type(flat_type):
+    candidates = list(FLAT_MODELS_BY_TYPE.get(flat_type, []))
+    if not candidates:
+        return FLAT_MODELS[0] if FLAT_MODELS else "Model A"
+
+    preferred_order = [
+        "Model A",
+        "Improved",
+        "New Generation",
+        "Apartment",
+        "Standard",
+        "Premium Apartment",
+    ]
+    candidate_lookup = {str(model).strip().upper(): model for model in candidates}
+    for preferred in preferred_order:
+        match = candidate_lookup.get(preferred.upper())
+        if match:
+            return match
+    return candidates[0]
+
+
 def _resolve_prediction_flat_model(town, flat_type, flat_model=""):
     requested_model = str(flat_model or "").strip()
-    available_models = (
-        _get_available_models_data(town, flat_type)
-        or _get_available_models_data(town, "")
-    )
+    available_models = _get_available_models_data(town, flat_type)
 
     if requested_model:
         matched_model = next(
@@ -2292,7 +2401,7 @@ def _resolve_prediction_flat_model(town, flat_type, flat_model=""):
             ]
         return resolved_model, [f"Used representative flat model: {resolved_model}"]
 
-    fallback_model = requested_model or (FLAT_MODELS[0] if FLAT_MODELS else "Model A")
+    fallback_model = requested_model or _default_flat_model_for_type(flat_type)
     if requested_model:
         return fallback_model, []
     return fallback_model, [f"Used fallback flat model: {fallback_model}"]
@@ -3108,6 +3217,8 @@ def map_view():
         storey_ranges=STOREY_RANGES,
         map_storey_ranges=MAP_STOREY_RANGE_OPTIONS,
         map_transaction_start_year=MAP_TRANSACTION_START_YEAR,
+        hawker_centres=_load_reference_points("hawker_centres.json"),
+        high_demand_primary_schools=_load_reference_points("high_demand_primary_schools.json"),
     )
 
 

@@ -478,7 +478,8 @@
 
 {% block extra_scripts %}
 <script>
-const IS_GUEST = {{ 'true' if not g.user else 'false' }};
+// Render Jinja boolean as a JS-safe string for editor/linter parsing.
+const IS_GUEST = "{{ 'true' if not g.user else 'false' }}" === "true";
 
 // Reveal animations
 const revealItems = document.querySelectorAll('[data-reveal]');

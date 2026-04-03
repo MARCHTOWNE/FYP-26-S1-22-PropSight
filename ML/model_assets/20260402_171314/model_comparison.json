@@ -1,0 +1,45 @@
+{
+  "winner": {
+    "winner": "xgboost",
+    "selection_metric": "val_rmse",
+    "val_rmse": 19112.84,
+    "test_rmse": 37565.18,
+    "test_r2": 0.966313,
+    "test_mape": 3.958,
+    "justification": "xgboost achieved the lowest validation RMSE of SGD 19,113. Its locked test metrics are RMSE=37,565, R2=0.9663, MAPE=3.96%. Runner-up on validation: lgbm at SGD 19,258. The ensemble is reported separately and excluded from winner selection because its meta-learner is fit on the validation window. "
+  },
+  "all_models": {
+    "xgboost": {
+      "val_rmse": 19112.84,
+      "val_r2": 0.988982,
+      "val_mape": 4.5426,
+      "test_rmse": 37565.18,
+      "test_r2": 0.966313,
+      "test_mape": 3.958
+    },
+    "lgbm": {
+      "val_rmse": 19257.96,
+      "val_r2": 0.988814,
+      "val_mape": 4.5546,
+      "test_rmse": 37246.73,
+      "test_r2": 0.966881,
+      "test_mape": 3.8697
+    },
+    "rf": {
+      "val_rmse": 21683.37,
+      "val_r2": 0.985819,
+      "val_mape": 4.9629,
+      "test_rmse": 43026.76,
+      "test_r2": 0.955805,
+      "test_mape": 4.4201
+    },
+    "ensemble": {
+      "val_rmse": 18910.4,
+      "val_r2": 0.989214,
+      "val_mape": 4.4956,
+      "test_rmse": 36619.29,
+      "test_r2": 0.967988,
+      "test_mape": 3.819
+    }
+  }
+}

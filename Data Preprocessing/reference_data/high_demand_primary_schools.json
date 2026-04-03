@@ -1,0 +1,702 @@
+[
+  {
+    "rank": 1,
+    "name": "Tao Nan",
+    "canonical_name": "TAO NAN SCHOOL",
+    "lat": 1.294332105249307,
+    "lng": 103.8490261578219
+  },
+  {
+    "rank": 2,
+    "name": "Ai Tong",
+    "canonical_name": "AI TONG SCHOOL",
+    "lat": 1.360583433890406,
+    "lng": 103.8330203339857
+  },
+  {
+    "rank": 3,
+    "name": "Nanyang",
+    "canonical_name": "NANYANG PRIMARY SCHOOL",
+    "lat": 1.320847499045325,
+    "lng": 103.807750155296
+  },
+  {
+    "rank": 4,
+    "name": "Pei Hwa Presbyterian",
+    "canonical_name": "PEI HWA PRESBYTERIAN PRIMARY SCHOOL",
+    "lat": 1.338056346130476,
+    "lng": 103.7761064486133
+  },
+  {
+    "rank": 5,
+    "name": "Methodist Girls'",
+    "canonical_name": "METHODIST GIRLS' SCHOOL (PRIMARY)",
+    "lat": 1.349472762683966,
+    "lng": 103.8849713431423
+  },
+  {
+    "rank": 6,
+    "name": "Nan Chiau",
+    "canonical_name": "NAN CHIAU PRIMARY SCHOOL",
+    "lat": 1.392211499065922,
+    "lng": 103.8911809281855
+  },
+  {
+    "rank": 7,
+    "name": "CHIJ St. Nicholas Girls'",
+    "canonical_name": "CHIJ St. Nicholas Girls'",
+    "lat": 1.37347687878916,
+    "lng": 103.834253269436
+  },
+  {
+    "rank": 8,
+    "name": "CHIJ (Toa Payoh)",
+    "canonical_name": "CHIJ PRIMARY (TOA PAYOH)",
+    "lat": 1.332752647115879,
+    "lng": 103.8418472637856
+  },
+  {
+    "rank": 9,
+    "name": "Red Swastika",
+    "canonical_name": "RED SWASTIKA SCHOOL",
+    "lat": 1.334056595808593,
+    "lng": 103.9343175284833
+  },
+  {
+    "rank": 10,
+    "name": "Kong Hwa",
+    "canonical_name": "KONG HWA SCHOOL",
+    "lat": 1.310996740091935,
+    "lng": 103.8883520290672
+  },
+  {
+    "rank": 11,
+    "name": "Anglo-Chinese (Junior)",
+    "canonical_name": "ANGLO-CHINESE SCHOOL (PRIMARY)",
+    "lat": 1.31837054523522,
+    "lng": 103.8356097323541
+  },
+  {
+    "rank": 12,
+    "name": "Maha Bodhi",
+    "canonical_name": "MAHA BODHI SCHOOL",
+    "lat": 1.328580238735551,
+    "lng": 103.9013069041567
+  },
+  {
+    "rank": 13,
+    "name": "Holy Innocents'",
+    "canonical_name": "HOLY INNOCENTS' PRIMARY SCHOOL",
+    "lat": 1.366938308773486,
+    "lng": 103.8941148997942
+  },
+  {
+    "rank": 14,
+    "name": "St. Joseph's Institution Junior",
+    "canonical_name": "ST. JOSEPH'S INSTITUTION JUNIOR",
+    "lat": 1.317728609869134,
+    "lng": 103.8456119352347
+  },
+  {
+    "rank": 15,
+    "name": "Chongfu",
+    "canonical_name": "CHONGFU SCHOOL",
+    "lat": 1.438395628970071,
+    "lng": 103.8393091738164
+  },
+  {
+    "rank": 16,
+    "name": "Nan Hua",
+    "canonical_name": "NAN HUA PRIMARY SCHOOL",
+    "lat": 1.319201599563877,
+    "lng": 103.7610950657604
+  },
+  {
+    "rank": 17,
+    "name": "Anglo-Chinese",
+    "canonical_name": "ANGLO-CHINESE SCHOOL (PRIMARY)",
+    "lat": 1.31837054523522,
+    "lng": 103.8356097323541
+  },
+  {
+    "rank": 18,
+    "name": "Catholic High",
+    "canonical_name": "Catholic High",
+    "lat": 1.35452517065756,
+    "lng": 103.844900804804
+  },
+  {
+    "rank": 19,
+    "name": "Maris Stella High",
+    "canonical_name": "Maris Stella High",
+    "lat": 1.34139473323668,
+    "lng": 103.877852484435
+  },
+  {
+    "rank": 20,
+    "name": "Rosyth",
+    "canonical_name": "ROSYTH SCHOOL",
+    "lat": 1.372890674990646,
+    "lng": 103.8750015491733
+  },
+  {
+    "rank": 21,
+    "name": "Pei Chun Public",
+    "canonical_name": "PEI CHUN PUBLIC SCHOOL",
+    "lat": 1.33737358725953,
+    "lng": 103.8555855780611
+  },
+  {
+    "rank": 22,
+    "name": "Fairfield Methodist",
+    "canonical_name": "FAIRFIELD METHODIST SCHOOL (PRIMARY)",
+    "lat": 1.301004419167346,
+    "lng": 103.785455606827
+  },
+  {
+    "rank": 23,
+    "name": "Rulang",
+    "canonical_name": "RULANG PRIMARY SCHOOL",
+    "lat": 1.346738688890966,
+    "lng": 103.7184579554868
+  },
+  {
+    "rank": 24,
+    "name": "Northland",
+    "canonical_name": "NORTHLAND PRIMARY SCHOOL",
+    "lat": 1.420969899189534,
+    "lng": 103.8409284249291
+  },
+  {
+    "rank": 25,
+    "name": "St. Hilda's",
+    "canonical_name": "ST. HILDA'S PRIMARY SCHOOL",
+    "lat": 1.349385650363364,
+    "lng": 103.9370071336614
+  },
+  {
+    "rank": 26,
+    "name": "Princess Elizabeth",
+    "canonical_name": "PRINCESS ELIZABETH PRIMARY SCHOOL",
+    "lat": 1.349203512653009,
+    "lng": 103.7410196447094
+  },
+  {
+    "rank": 27,
+    "name": "Singapore Chinese Girls'",
+    "canonical_name": "SINGAPORE CHINESE GIRLS' PRIMARY SCHOOL",
+    "lat": 1.320807252359937,
+    "lng": 103.8277447495481
+  },
+  {
+    "rank": 28,
+    "name": "South View",
+    "canonical_name": "SOUTH VIEW PRIMARY SCHOOL",
+    "lat": 1.381666643897507,
+    "lng": 103.7462758460104
+  },
+  {
+    "rank": 29,
+    "name": "Frontier",
+    "canonical_name": "FRONTIER PRIMARY SCHOOL",
+    "lat": 1.336412987432344,
+    "lng": 103.6997017393095
+  },
+  {
+    "rank": 30,
+    "name": "Kuo Chuan Presbyterian",
+    "canonical_name": "KUO CHUAN PRESBYTERIAN PRIMARY SCHOOL",
+    "lat": 1.349398136695366,
+    "lng": 103.8550182333104
+  },
+  {
+    "rank": 31,
+    "name": "Wellington",
+    "canonical_name": "WELLINGTON PRIMARY SCHOOL",
+    "lat": 1.451920191554766,
+    "lng": 103.8223037190938
+  },
+  {
+    "rank": 32,
+    "name": "Paya Lebar Methodist Girls'",
+    "canonical_name": "PAYA LEBAR METHODIST GIRLS' SCHOOL (PRIMARY)",
+    "lat": 1.349472762683966,
+    "lng": 103.8849713431423
+  },
+  {
+    "rank": 33,
+    "name": "Admiralty",
+    "canonical_name": "ADMIRALTY PRIMARY SCHOOL",
+    "lat": 1.442634790331114,
+    "lng": 103.800040119743
+  },
+  {
+    "rank": 34,
+    "name": "Henry Park",
+    "canonical_name": "HENRY PARK PRIMARY SCHOOL",
+    "lat": 1.316676461783479,
+    "lng": 103.7842962277468
+  },
+  {
+    "rank": 35,
+    "name": "Shuqun",
+    "canonical_name": "SHUQUN PRIMARY SCHOOL",
+    "lat": 1.347653114316325,
+    "lng": 103.7215237133784
+  },
+  {
+    "rank": 36,
+    "name": "Radin Mas",
+    "canonical_name": "RADIN MAS PRIMARY SCHOOL",
+    "lat": 1.274958236226361,
+    "lng": 103.8241882703726
+  },
+  {
+    "rank": 37,
+    "name": "Pasir Ris",
+    "canonical_name": "PASIR RIS PRIMARY SCHOOL",
+    "lat": 1.372418702455316,
+    "lng": 103.9628072121161
+  },
+  {
+    "rank": 38,
+    "name": "Poi Ching",
+    "canonical_name": "POI CHING SCHOOL",
+    "lat": 1.35765122315688,
+    "lng": 103.9352464771987
+  },
+  {
+    "rank": 39,
+    "name": "St. Anthony's",
+    "canonical_name": "ST. ANTHONY'S PRIMARY SCHOOL",
+    "lat": 1.364119484758337,
+    "lng": 103.7492519190488
+  },
+  {
+    "rank": 40,
+    "name": "Anderson",
+    "canonical_name": "ANDERSON PRIMARY SCHOOL",
+    "lat": 1.384264294367363,
+    "lng": 103.8413920811184
+  },
+  {
+    "rank": 41,
+    "name": "Gongshang",
+    "canonical_name": "GONGSHANG PRIMARY SCHOOL",
+    "lat": 1.357116067902936,
+    "lng": 103.9491447972771
+  },
+  {
+    "rank": 42,
+    "name": "St. Andrew's Junior",
+    "canonical_name": "ST ANDREW'S SCHOOL (JUNIOR)",
+    "lat": 1.331402553088687,
+    "lng": 103.8651171343844
+  },
+  {
+    "rank": 43,
+    "name": "Hong Wen",
+    "canonical_name": "HONG WEN SCHOOL",
+    "lat": 1.321759999645534,
+    "lng": 103.8576284688807
+  },
+  {
+    "rank": 44,
+    "name": "Yu Neng",
+    "canonical_name": "YU NENG PRIMARY SCHOOL",
+    "lat": 1.333889303440688,
+    "lng": 103.9321448573552
+  },
+  {
+    "rank": 45,
+    "name": "Xinmin",
+    "canonical_name": "XINMIN PRIMARY SCHOOL",
+    "lat": 1.371395489419313,
+    "lng": 103.883080767491
+  },
+  {
+    "rank": 46,
+    "name": "Bukit Panjang",
+    "canonical_name": "BUKIT PANJANG PRIMARY SCHOOL",
+    "lat": 1.373621793024374,
+    "lng": 103.7693749040251
+  },
+  {
+    "rank": 47,
+    "name": "Sengkang Green",
+    "canonical_name": "SENGKANG GREEN PRIMARY SCHOOL",
+    "lat": 1.39284606680478,
+    "lng": 103.8752176664857
+  },
+  {
+    "rank": 48,
+    "name": "CHIJ Our Lady of the Nativity",
+    "canonical_name": "CHIJ OUR LADY OF THE NATIVITY",
+    "lat": 1.373302971401289,
+    "lng": 103.8975757283031
+  },
+  {
+    "rank": 49,
+    "name": "Mee Toh",
+    "canonical_name": "MEE TOH SCHOOL",
+    "lat": 1.394618453859209,
+    "lng": 103.9085894942275
+  },
+  {
+    "rank": 50,
+    "name": "Yangzheng",
+    "canonical_name": "YANGZHENG PRIMARY SCHOOL",
+    "lat": 1.348645758409243,
+    "lng": 103.8685955270421
+  },
+  {
+    "rank": 51,
+    "name": "Keming",
+    "canonical_name": "KEMING PRIMARY SCHOOL",
+    "lat": 1.345528499608757,
+    "lng": 103.7564493993506
+  },
+  {
+    "rank": 52,
+    "name": "Raffles Girls'",
+    "canonical_name": "RAFFLES GIRLS' PRIMARY SCHOOL",
+    "lat": 1.329404260001214,
+    "lng": 103.806442915912
+  },
+  {
+    "rank": 53,
+    "name": "Canossa Catholic",
+    "canonical_name": "CANOSSA CATHOLIC PRIMARY SCHOOL",
+    "lat": 1.326644245448396,
+    "lng": 103.8822279648518
+  },
+  {
+    "rank": 54,
+    "name": "Horizon",
+    "canonical_name": "HORIZON PRIMARY SCHOOL",
+    "lat": 1.399550034492005,
+    "lng": 103.9134048556651
+  },
+  {
+    "rank": 55,
+    "name": "St. Gabriel's",
+    "canonical_name": "ST. GABRIEL'S PRIMARY SCHOOL",
+    "lat": 1.349471926538616,
+    "lng": 103.8625610377067
+  },
+  {
+    "rank": 56,
+    "name": "Chua Chu Kang",
+    "canonical_name": "CHUA CHU KANG PRIMARY SCHOOL",
+    "lat": 1.377758900933685,
+    "lng": 103.7418329174204
+  },
+  {
+    "rank": 57,
+    "name": "Canberra",
+    "canonical_name": "CANBERRA PRIMARY SCHOOL",
+    "lat": 1.451250243715436,
+    "lng": 103.8158588589283
+  },
+  {
+    "rank": 58,
+    "name": "Haig Girls'",
+    "canonical_name": "HAIG GIRLS' SCHOOL",
+    "lat": 1.311943442713839,
+    "lng": 103.9029025571947
+  },
+  {
+    "rank": 59,
+    "name": "Compassvale",
+    "canonical_name": "COMPASSVALE PRIMARY SCHOOL",
+    "lat": 1.394445296365664,
+    "lng": 103.8978122299046
+  },
+  {
+    "rank": 60,
+    "name": "Temasek",
+    "canonical_name": "TEMASEK PRIMARY SCHOOL",
+    "lat": 1.317706775513332,
+    "lng": 103.9455906691627
+  },
+  {
+    "rank": 61,
+    "name": "Tanjong Katong",
+    "canonical_name": "TANJONG KATONG PRIMARY SCHOOL",
+    "lat": 1.304984890448227,
+    "lng": 103.8999999654065
+  },
+  {
+    "rank": 62,
+    "name": "Rivervale",
+    "canonical_name": "RIVERVALE PRIMARY SCHOOL",
+    "lat": 1.393409977677617,
+    "lng": 103.9045595119971
+  },
+  {
+    "rank": 63,
+    "name": "Hougang",
+    "canonical_name": "HOUGANG PRIMARY SCHOOL",
+    "lat": 1.377382452314626,
+    "lng": 103.8808052745566
+  },
+  {
+    "rank": 64,
+    "name": "River Valley",
+    "canonical_name": "RIVER VALLEY PRIMARY SCHOOL",
+    "lat": 1.294183478428372,
+    "lng": 103.8360189415711
+  },
+  {
+    "rank": 65,
+    "name": "St. Margaret's",
+    "canonical_name": "ST. MARGARET'S SCHOOL (PRIMARY)",
+    "lat": 1.32439150290683,
+    "lng": 103.8816248373724
+  },
+  {
+    "rank": 66,
+    "name": "Westwood",
+    "canonical_name": "WESTWOOD PRIMARY SCHOOL",
+    "lat": 1.347184566063761,
+    "lng": 103.7005342097801
+  },
+  {
+    "rank": 67,
+    "name": "CHIJ (Katong)",
+    "canonical_name": "CHIJ (KATONG) PRIMARY",
+    "lat": 1.306485352770875,
+    "lng": 103.9111056204962
+  },
+  {
+    "rank": 68,
+    "name": "Riverside",
+    "canonical_name": "RIVERSIDE PRIMARY SCHOOL",
+    "lat": 1.447004264937856,
+    "lng": 103.8018890313332
+  },
+  {
+    "rank": 69,
+    "name": "CHIJ Our Lady of Good Counsel",
+    "canonical_name": "CHIJ OUR LADY OF GOOD COUNSEL",
+    "lat": 1.357429522696155,
+    "lng": 103.8640093973725
+  },
+  {
+    "rank": 70,
+    "name": "Qifa",
+    "canonical_name": "QIFA PRIMARY SCHOOL",
+    "lat": 1.313265832680701,
+    "lng": 103.7566291018106
+  },
+  {
+    "rank": 71,
+    "name": "Woodlands",
+    "canonical_name": "WOODLANDS PRIMARY SCHOOL",
+    "lat": 1.432736207250495,
+    "lng": 103.7902303139194
+  },
+  {
+    "rank": 72,
+    "name": "De La Salle",
+    "canonical_name": "DE LA SALLE SCHOOL",
+    "lat": 1.394707829639912,
+    "lng": 103.7432018128305
+  },
+  {
+    "rank": 73,
+    "name": "Chongzheng",
+    "canonical_name": "CHONGZHENG PRIMARY SCHOOL",
+    "lat": 1.350707392377436,
+    "lng": 103.951399541868
+  },
+  {
+    "rank": 74,
+    "name": "Alexandra",
+    "canonical_name": "ALEXANDRA PRIMARY SCHOOL",
+    "lat": 1.291334391613348,
+    "lng": 103.8244246805311
+  },
+  {
+    "rank": 75,
+    "name": "St. Stephen's",
+    "canonical_name": "ST. STEPHEN'S SCHOOL",
+    "lat": 1.318789972951361,
+    "lng": 103.9172581295975
+  },
+  {
+    "rank": 76,
+    "name": "CHIJ Our Lady Queen of Peace",
+    "canonical_name": "CHIJ OUR LADY QUEEN OF PEACE",
+    "lat": 1.366603668560997,
+    "lng": 103.7674122046017
+  },
+  {
+    "rank": 77,
+    "name": "Punggol Green",
+    "canonical_name": "PUNGGOL GREEN PRIMARY SCHOOL",
+    "lat": 1.401872206432952,
+    "lng": 103.8988013303018
+  },
+  {
+    "rank": 78,
+    "name": "Punggol",
+    "canonical_name": "PUNGGOL PRIMARY SCHOOL",
+    "lat": 1.378200625476397,
+    "lng": 103.8946671595121
+  },
+  {
+    "rank": 79,
+    "name": "Valour",
+    "canonical_name": "VALOUR PRIMARY SCHOOL",
+    "lat": 1.406835702153197,
+    "lng": 103.899078139493
+  },
+  {
+    "rank": 80,
+    "name": "Woodgrove",
+    "canonical_name": "WOODGROVE PRIMARY SCHOOL",
+    "lat": 1.432736207250495,
+    "lng": 103.7902303139194
+  },
+  {
+    "rank": 81,
+    "name": "CHIJ (Kellock)",
+    "canonical_name": "CHIJ (KELLOCK)",
+    "lat": 1.275022722964019,
+    "lng": 103.8281575648959
+  },
+  {
+    "rank": 82,
+    "name": "Montfort Junior",
+    "canonical_name": "MONTFORT JUNIOR SCHOOL",
+    "lat": 1.373824440759788,
+    "lng": 103.889307782925
+  },
+  {
+    "rank": 83,
+    "name": "Innova",
+    "canonical_name": "INNOVA PRIMARY SCHOOL",
+    "lat": 1.42896700684852,
+    "lng": 103.7906075391852
+  },
+  {
+    "rank": 84,
+    "name": "Huamin",
+    "canonical_name": "HUAMIN PRIMARY SCHOOL",
+    "lat": 1.426972845129362,
+    "lng": 103.8442402265639
+  },
+  {
+    "rank": 85,
+    "name": "Geylang Methodist",
+    "canonical_name": "GEYLANG METHODIST SCHOOL (PRIMARY)",
+    "lat": 1.317591267572844,
+    "lng": 103.883845744916
+  },
+  {
+    "rank": 86,
+    "name": "Teck Ghee",
+    "canonical_name": "TECK GHEE PRIMARY SCHOOL",
+    "lat": 1.365587820759683,
+    "lng": 103.8509571269816
+  },
+  {
+    "rank": 87,
+    "name": "White Sands",
+    "canonical_name": "WHITE SANDS PRIMARY SCHOOL",
+    "lat": 1.365557146685551,
+    "lng": 103.9609188693188
+  },
+  {
+    "rank": 88,
+    "name": "St. Anthony's Canossian",
+    "canonical_name": "ST. ANTHONY'S CANOSSIAN PRIMARY SCHOOL",
+    "lat": 1.33472537301891,
+    "lng": 103.9412348682017
+  },
+  {
+    "rank": 89,
+    "name": "Pioneer",
+    "canonical_name": "PIONEER PRIMARY SCHOOL",
+    "lat": 1.3390226466759,
+    "lng": 103.6877696239824
+  },
+  {
+    "rank": 90,
+    "name": "Angsana",
+    "canonical_name": "ANGSANA PRIMARY SCHOOL",
+    "lat": 1.363605905883133,
+    "lng": 103.9389409003993
+  },
+  {
+    "rank": 91,
+    "name": "Jurong West",
+    "canonical_name": "JURONG WEST PRIMARY SCHOOL",
+    "lat": 1.33917519796104,
+    "lng": 103.6988037322437
+  },
+  {
+    "rank": 92,
+    "name": "Naval Base",
+    "canonical_name": "NAVAL BASE PRIMARY SCHOOL",
+    "lat": 1.416306631593873,
+    "lng": 103.8387940772327
+  },
+  {
+    "rank": 93,
+    "name": "North View",
+    "canonical_name": "NORTH VIEW PRIMARY SCHOOL",
+    "lat": 1.427523271937279,
+    "lng": 103.8481907878688
+  },
+  {
+    "rank": 94,
+    "name": "Ngee Ann",
+    "canonical_name": "NGEE ANN PRIMARY SCHOOL",
+    "lat": 1.305525059104983,
+    "lng": 103.9174630174967
+  },
+  {
+    "rank": 95,
+    "name": "West Spring",
+    "canonical_name": "WEST SPRING PRIMARY SCHOOL",
+    "lat": 1.389441458989443,
+    "lng": 103.7661957118344
+  },
+  {
+    "rank": 96,
+    "name": "Tampines",
+    "canonical_name": "TAMPINES PRIMARY SCHOOL",
+    "lat": 1.350486394669401,
+    "lng": 103.9435730985091
+  },
+  {
+    "rank": 97,
+    "name": "Marymount Convent",
+    "canonical_name": "MARYMOUNT CONVENT SCHOOL",
+    "lat": 1.340366769873745,
+    "lng": 103.8400210644257
+  },
+  {
+    "rank": 98,
+    "name": "Concord",
+    "canonical_name": "CONCORD PRIMARY SCHOOL",
+    "lat": 1.380008061972414,
+    "lng": 103.7362254407264
+  },
+  {
+    "rank": 99,
+    "name": "Greenridge",
+    "canonical_name": "GREENRIDGE PRIMARY SCHOOL",
+    "lat": 1.385889219369218,
+    "lng": 103.7677944692579
+  },
+  {
+    "rank": 100,
+    "name": "Northshore",
+    "canonical_name": "NORTHSHORE PRIMARY SCHOOL",
+    "lat": 1.418138033366677,
+    "lng": 103.9044169097418
+  }
+]

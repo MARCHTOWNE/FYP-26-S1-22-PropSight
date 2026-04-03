@@ -1,0 +1,346 @@
+{
+  "q10_test_mae": null,
+  "q50_test_mae": null,
+  "q90_test_mae": null,
+  "model_results": {
+    "xgboost": {
+      "val": {
+        "rmse": 19112.8426,
+        "mae": 13181.4785,
+        "r2": 0.989,
+        "mape": 4.5426,
+        "flat_type_breakdown": {
+          "4 Room": {
+            "mae": 12674.82,
+            "count": 36666
+          },
+          "3 Room": {
+            "mae": 9642.89,
+            "count": 28929
+          },
+          "Executive": {
+            "mae": 20890.6,
+            "count": 7208
+          },
+          "5 Room": {
+            "mae": 16591.48,
+            "count": 20309
+          },
+          "1 Room": {
+            "mae": 7065.63,
+            "count": 62
+          },
+          "2 Room": {
+            "mae": 8680.25,
+            "count": 1067
+          },
+          "Multi-Generation": {
+            "mae": 36925.0,
+            "count": 55
+          }
+        }
+      },
+      "test": {
+        "rmse": 37565.1813,
+        "mae": 26525.5155,
+        "r2": 0.9663,
+        "mape": 3.958,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 19061.88,
+            "count": 129
+          },
+          "3 Room": {
+            "mae": 20612.16,
+            "count": 1010
+          },
+          "4 Room": {
+            "mae": 25965.92,
+            "count": 1933
+          },
+          "5 Room": {
+            "mae": 31805.42,
+            "count": 974
+          },
+          "Executive": {
+            "mae": 36806.33,
+            "count": 283
+          },
+          "1 Room": {
+            "mae": 17280.64,
+            "count": 2
+          },
+          "Multi-Generation": {
+            "mae": 9915.12,
+            "count": 1
+          }
+        }
+      }
+    },
+    "lgbm": {
+      "val": {
+        "rmse": 19257.9567,
+        "mae": 13260.8434,
+        "r2": 0.9888,
+        "mape": 4.5546,
+        "flat_type_breakdown": {
+          "4 Room": {
+            "mae": 12738.08,
+            "count": 36666
+          },
+          "3 Room": {
+            "mae": 9707.61,
+            "count": 28929
+          },
+          "Executive": {
+            "mae": 21137.18,
+            "count": 7208
+          },
+          "5 Room": {
+            "mae": 16669.43,
+            "count": 20309
+          },
+          "1 Room": {
+            "mae": 6729.66,
+            "count": 62
+          },
+          "2 Room": {
+            "mae": 8726.36,
+            "count": 1067
+          },
+          "Multi-Generation": {
+            "mae": 35166.99,
+            "count": 55
+          }
+        }
+      },
+      "test": {
+        "rmse": 37246.7265,
+        "mae": 26024.8503,
+        "r2": 0.9669,
+        "mape": 3.8697,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 18966.82,
+            "count": 129
+          },
+          "3 Room": {
+            "mae": 20213.84,
+            "count": 1010
+          },
+          "4 Room": {
+            "mae": 25010.03,
+            "count": 1933
+          },
+          "5 Room": {
+            "mae": 32176.5,
+            "count": 974
+          },
+          "Executive": {
+            "mae": 35845.26,
+            "count": 283
+          },
+          "1 Room": {
+            "mae": 17281.47,
+            "count": 2
+          },
+          "Multi-Generation": {
+            "mae": 13886.63,
+            "count": 1
+          }
+        }
+      }
+    },
+    "rf": {
+      "val": {
+        "rmse": 21683.3739,
+        "mae": 14733.0775,
+        "r2": 0.9858,
+        "mape": 4.9629,
+        "flat_type_breakdown": {
+          "4 Room": {
+            "mae": 14018.9,
+            "count": 36666
+          },
+          "3 Room": {
+            "mae": 10634.03,
+            "count": 28929
+          },
+          "Executive": {
+            "mae": 23416.78,
+            "count": 7208
+          },
+          "5 Room": {
+            "mae": 19005.02,
+            "count": 20309
+          },
+          "1 Room": {
+            "mae": 7429.27,
+            "count": 62
+          },
+          "2 Room": {
+            "mae": 9523.31,
+            "count": 1067
+          },
+          "Multi-Generation": {
+            "mae": 40701.31,
+            "count": 55
+          }
+        }
+      },
+      "test": {
+        "rmse": 43026.7588,
+        "mae": 29865.1072,
+        "r2": 0.9558,
+        "mape": 4.4201,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 18241.31,
+            "count": 129
+          },
+          "3 Room": {
+            "mae": 23244.17,
+            "count": 1010
+          },
+          "4 Room": {
+            "mae": 28132.47,
+            "count": 1933
+          },
+          "5 Room": {
+            "mae": 37624.81,
+            "count": 974
+          },
+          "Executive": {
+            "mae": 43628.87,
+            "count": 283
+          },
+          "1 Room": {
+            "mae": 17601.74,
+            "count": 2
+          },
+          "Multi-Generation": {
+            "mae": 137090.72,
+            "count": 1
+          }
+        }
+      }
+    },
+    "ensemble": {
+      "val": {
+        "rmse": 18910.4009,
+        "mae": 13020.125,
+        "r2": 0.9892,
+        "mape": 4.4956,
+        "flat_type_breakdown": {
+          "4 Room": {
+            "mae": 12491.87,
+            "count": 36666
+          },
+          "3 Room": {
+            "mae": 9557.61,
+            "count": 28929
+          },
+          "Executive": {
+            "mae": 20708.37,
+            "count": 7208
+          },
+          "5 Room": {
+            "mae": 16372.6,
+            "count": 20309
+          },
+          "1 Room": {
+            "mae": 6826.56,
+            "count": 62
+          },
+          "2 Room": {
+            "mae": 8537.62,
+            "count": 1067
+          },
+          "Multi-Generation": {
+            "mae": 34854.67,
+            "count": 55
+          }
+        }
+      },
+      "test": {
+        "rmse": 36619.2907,
+        "mae": 25624.2432,
+        "r2": 0.968,
+        "mape": 3.819,
+        "flat_type_breakdown": {
+          "2 Room": {
+            "mae": 18621.38,
+            "count": 129
+          },
+          "3 Room": {
+            "mae": 20143.1,
+            "count": 1010
+          },
+          "4 Room": {
+            "mae": 24710.6,
+            "count": 1933
+          },
+          "5 Room": {
+            "mae": 31313.65,
+            "count": 974
+          },
+          "Executive": {
+            "mae": 35130.5,
+            "count": 283
+          },
+          "1 Room": {
+            "mae": 16257.84,
+            "count": 2
+          },
+          "Multi-Generation": {
+            "mae": 18002.63,
+            "count": 1
+          }
+        }
+      }
+    }
+  },
+  "winner": {
+    "winner": "xgboost",
+    "selection_metric": "val_rmse",
+    "val_rmse": 19112.84,
+    "test_rmse": 37565.18,
+    "test_r2": 0.966313,
+    "test_mape": 3.958,
+    "justification": "xgboost achieved the lowest validation RMSE of SGD 19,113. Its locked test metrics are RMSE=37,565, R2=0.9663, MAPE=3.96%. Runner-up on validation: lgbm at SGD 19,258. The ensemble is reported separately and excluded from winner selection because its meta-learner is fit on the validation window. "
+  },
+  "xgb_best_params": {
+    "learning_rate": 0.060017,
+    "max_depth": 8,
+    "min_child_weight": 5,
+    "subsample": 0.958747,
+    "colsample_bytree": 0.906709,
+    "reg_alpha": 0.000104,
+    "reg_lambda": 6.997066,
+    "gamma": 2e-06,
+    "n_estimators": 2000,
+    "objective": "reg:squarederror",
+    "eval_metric": "rmse",
+    "verbosity": 0,
+    "n_jobs": -1,
+    "random_state": 42,
+    "tree_method": "hist",
+    "early_stopping_rounds": 50
+  },
+  "lgbm_best_params": {
+    "learning_rate": 0.052235,
+    "num_leaves": 125,
+    "max_depth": 9,
+    "min_child_samples": 88,
+    "subsample": 0.873845,
+    "colsample_bytree": 0.966892,
+    "reg_alpha": 9e-05,
+    "reg_lambda": 7.82019,
+    "n_estimators": 2000,
+    "subsample_freq": 1,
+    "force_col_wise": true,
+    "n_jobs": -1,
+    "random_state": 42,
+    "verbose": -1
+  }
+}

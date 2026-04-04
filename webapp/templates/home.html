@@ -5,7 +5,7 @@
 <section class="hero-editorial">
     <div class="hero-overlay"></div>
     <div class="container-fluid px-lg-5">
-        <div class="hero-inner">
+        <div class="hero-inner glass-hero-panel">
             <p class="section-eyebrow text-light">AI-Driven Proptech Platform</p>
             <h1>Predict Singapore HDB resale values with spatial intelligence and market analytics.</h1>
             <p class="hero-lead">
@@ -47,7 +47,7 @@
                     Input core property attributes and produce an AI-estimated resale range, supported by trend context and benchmarks.
                 </p>
             </div>
-            <div class="panel-card prediction-preview">
+            <div class="panel-card ps-glass-card prediction-preview">
                 <form method="POST" action="{{ url_for('predict') }}" class="row g-2" id="homeForm">
                     <div class="col-12">
                         <label class="form-label small">Town</label>
@@ -144,7 +144,7 @@
         <div class="popular-grid">
             {% for pred in popular_predictions %}
             <a href="{{ url_for('predict', town=pred.town, flat_type=pred.flat_type, flat_model=pred.get('flat_model', ''), floor_area=pred.get('floor_area', ''), storey_range=pred.get('storey_range', ''), lease_commence=pred.get('lease_commence', ''), street_name=pred.get('street_name', ''), block=pred.get('block', '')) }}" class="popular-card-link">
-                <div class="panel-card popular-card">
+                <div class="panel-card ps-glass-card popular-card">
                     <div class="card-map" id="popMap{{ loop.index }}"
                          data-lat="{{ town_coords.get(pred.town, {}).get('lat', 1.3521) }}"
                          data-lng="{{ town_coords.get(pred.town, {}).get('lng', 103.8198) }}"></div>
@@ -182,7 +182,7 @@
 <section id="map-section" class="story-section bg-soft accent-map" data-reveal>
     <div class="container">
         <div class="split-grid align-items-center mb-4">
-            <div class="panel-card map-showcase" style="position:relative;">
+            <div class="panel-card ps-glass-card map-showcase" style="position:relative;">
                 <div id="homeMap" class="home-map"></div>
                 {% if g.user %}
                 <a href="{{ url_for('map_view') }}" class="map-preview-link" aria-label="Open the live interactive map">

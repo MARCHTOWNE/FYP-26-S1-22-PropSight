@@ -689,6 +689,27 @@ def save_artefacts(
         pickle.dump(target_encoders, f)
     print("  target_encoders.pkl")
 
+    # Rolling stats snapshot — keyed by (town, flat_type) for serving-time lookup.
+    # Use val+test splits (most recent data) so the snapshot reflects current market.
+    rolling_cols = [
+        "town_flattype_median_3m", "town_flattype_median_6m", "town_flattype_psf_3m",
+        "town_median_3m", "town_txn_volume_3m", "price_momentum_3m", "national_median_psf_3m",
+    ]
+    recent_parts = [splits[k] for k in ("val", "test", "future_holdout") if k in splits]
+    if recent_parts:
+        recent_df = pd.concat(recent_parts, ignore_index=True)
+        snap_df = (
+            recent_df.groupby(["town", "flat_type"])[rolling_cols].median()
+        )
+        rolling_snapshot = {}
+        for (town, flat_type), row in snap_df.iterrows():
+            rolling_snapshot[(town, flat_type)] = {col: float(row[col]) for col in rolling_cols}
+        global_defaults = recent_df[rolling_cols].median().to_dict()
+        rolling_snapshot["_global_defaults"] = {col: float(v) for col, v in global_defaults.items()}
+        with open(os.path.join(run_dir, "rolling_stats_snapshot.pkl"), "wb") as f:
+            pickle.dump(rolling_snapshot, f)
+        print("  rolling_stats_snapshot.pkl")
+
     # Save a no-op placeholder for backward compatibility; tree models don't need scaling.
     with open(os.path.join(run_dir, "scaler.pkl"), "wb") as f:
         pickle.dump(None, f)

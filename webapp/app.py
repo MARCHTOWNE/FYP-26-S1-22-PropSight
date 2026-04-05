@@ -621,6 +621,13 @@ def _load_artefacts():
     artefacts["serving_feature_cols"] = _resolve_serving_feature_cols(artefacts, run_dir)
     artefacts["serving_scale_cols"] = _resolve_serving_scale_cols(artefacts, run_dir)
 
+    rolling_snapshot_path = os.path.join(run_dir, "rolling_stats_snapshot.pkl")
+    if os.path.exists(rolling_snapshot_path):
+        with open(rolling_snapshot_path, "rb") as f:
+            artefacts["rolling_stats"] = pickle.load(f)
+    else:
+        artefacts["rolling_stats"] = {}
+
     return artefacts
 
 
@@ -1903,6 +1910,13 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
             "town_5yr_cagr_lag1": 0.0,
         }
 
+    rolling_snap = ARTEFACTS.get("rolling_stats", {})
+    rolling = (
+        rolling_snap.get((town, flat_type))
+        or rolling_snap.get("_global_defaults")
+        or {}
+    )
+
     raw = {
         "flat_type_ordinal": flat_type_ord,
         "town_enc": town_enc,
@@ -1926,6 +1940,13 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "high_demand_primary_count_1km": high_demand_primary_count_1km,
         "town_yoy_appreciation_lag1": appreciation["town_yoy_appreciation_lag1"],
         "town_5yr_cagr_lag1": appreciation["town_5yr_cagr_lag1"],
+        "town_flattype_median_3m": rolling.get("town_flattype_median_3m", 0.0),
+        "town_flattype_median_6m": rolling.get("town_flattype_median_6m", 0.0),
+        "town_flattype_psf_3m": rolling.get("town_flattype_psf_3m", 0.0),
+        "town_median_3m": rolling.get("town_median_3m", 0.0),
+        "town_txn_volume_3m": rolling.get("town_txn_volume_3m", 0.0),
+        "price_momentum_3m": rolling.get("price_momentum_3m", 0.0),
+        "national_median_psf_3m": rolling.get("national_median_psf_3m", 0.0),
     }
 
     df = pd.DataFrame([raw])

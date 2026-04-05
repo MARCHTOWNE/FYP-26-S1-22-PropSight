@@ -181,6 +181,7 @@ FLAT_MODELS_BY_TYPE = {
 MODEL_LABELS = {
     "xgboost": "XGBoost",
     "lgbm": "LightGBM",
+    "catboost": "CatBoost",
     "rf": "Random Forest",
 }
 
@@ -379,7 +380,7 @@ def _resolve_serving_model_key(run_dir, metrics):
     candidates = []
     if preferred:
         candidates.append(preferred)
-    candidates.extend(["xgboost", "lgbm", "rf"])
+    candidates.extend(["xgboost", "lgbm", "catboost", "rf"])
 
     seen = set()
     for model_key in candidates:
@@ -600,7 +601,7 @@ def _serving_scale_cols():
     return SCALE_COLS
 
 
-SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "rf"}
+SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "catboost", "rf"}
 _SHAP_EXPLAINER = None
 _SHAP_IMPORT_ERROR = None
 
@@ -2168,7 +2169,7 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
                   lease_commence, override_year=None, override_distances=None):
     """
     Run the full feature engineering + prediction pipeline for a single property.
-    Returns dict with predicted_price, price_low, price_high.
+    Returns dict with predicted_price and model_label.
     """
     df, raw_values = _build_scaled_feature_df(
         town,
@@ -2187,21 +2188,10 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
         raw_values["prediction_month"],
     )
 
-    # Confidence range based on the serving model's recorded test MAPE.
     performance = ARTEFACTS.get("performance", {})
-    mape_pct = performance.get("test_mape")
-    if mape_pct is None:
-        winner = ARTEFACTS.get("metrics", {}).get("winner", {})
-        mape_pct = _safe_metric(winner.get("test_mape")) or 10.0
-    mape = mape_pct / 100
-    price_low = predicted_price * (1 - mape)
-    price_high = predicted_price * (1 + mape)
 
     return {
         "predicted_price": round(predicted_price),
-        "price_low": round(price_low),
-        "price_high": round(price_high),
-        "mape": round(mape * 100, 1),
         "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
     }
 
@@ -3014,8 +3004,6 @@ def predict():
         timeline = [{
             "year": current_year,
             "predicted_price": result["predicted_price"],
-            "price_low": result["price_low"],
-            "price_high": result["price_high"],
             "remaining_lease": max(0, 99 - (current_year - form_data["lease_commence"])),
         }]
         for y_offset in range(1, 6):
@@ -3103,8 +3091,6 @@ def save_prediction():
         "storey_range": request.form["storey_range"],
         "lease_commence": int(request.form["lease_commence"]),
         "predicted_price": float(request.form["predicted_price"]),
-        "price_low": float(request.form["price_low"]),
-        "price_high": float(request.form["price_high"]),
         "street_name": request.form.get("street_name", "").strip(),
         "block": request.form.get("block", "").strip(),
     }
@@ -3294,8 +3280,6 @@ def api_predicted_heatmap():
             )
             pred = {
                 "predicted_price": round(fallback_estimate),
-                "price_low": round(fallback_estimate),
-                "price_high": round(fallback_estimate),
             }
 
         comparison_values = [
@@ -3310,8 +3294,6 @@ def api_predicted_heatmap():
             "lat": d["lat"],
             "lng": d["lng"],
             "predicted_price": pred["predicted_price"],
-            "price_low": pred["price_low"],
-            "price_high": pred["price_high"],
             "avg_price": round(historical_avg) if historical_avg is not None else 0,
             "recent_avg": round(recent_avg) if recent_avg is not None else 0,
             "latest_avg": round(latest_avg) if latest_avg is not None else 0,
@@ -3630,7 +3612,6 @@ def api_future_prediction():
         return jsonify({"error": "Prediction failed"}), 500
 
     timeline = [{"year": current_year, "predicted_price": result["predicted_price"],
-                 "price_low": result["price_low"], "price_high": result["price_high"],
                  "remaining_lease": max(0, 99 - (current_year - lease_commence))}]
     for y_offset in range(1, 6):
         future_year = current_year + y_offset
@@ -3641,7 +3622,7 @@ def api_future_prediction():
                 override_distances=block_distances,
             )
         except Exception:
-            fp = {"predicted_price": 0, "price_low": 0, "price_high": 0}
+            fp = {"predicted_price": 0}
         fp["year"] = future_year
         fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
         timeline.append(fp)

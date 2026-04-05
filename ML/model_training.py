@@ -11,14 +11,16 @@ Design decisions:
   - New feature runs use log1p(resale_price) as the target to avoid
     holdout leakage from a target normalization index computed on the
     transaction table. Legacy runs with price_index are still supported.
-  - Three models: XGBoost, LightGBM, Random Forest.
-  - Optuna tunes XGBoost and LightGBM on val RMSE using a deterministic
-    training subset for speed, then retrains the best params on the full
-    train split. Trial counts and sample sizes are configurable via env vars.
+  - Four models: XGBoost, LightGBM, CatBoost, Random Forest.
+  - Optuna tunes XGBoost, LightGBM, and CatBoost on val RMSE using a
+    deterministic training subset for speed, then retrains the best params
+    on the full train split. Trial counts and sample sizes are configurable
+    via env vars.
+  - CatBoost uses cat_features for flat_type_ordinal and is_mature_estate.
   - Random Forest uses a sensible fixed configuration (no tuning).
   - Train set is for fitting; val set is for tuning and early stopping.
-  - Winner selection uses validation RMSE on XGBoost vs LightGBM only,
-    keeping the test set locked for final reporting.
+  - Winner selection uses validation RMSE across XGBoost, LightGBM, and
+    CatBoost, keeping the test set locked for final reporting.
   - All random states are seeded to 42 for reproducibility.
   - Runs a data quality diagnostic before training and includes the
     findings in the training report.
@@ -57,6 +59,10 @@ try:
 except ImportError:
     _MISSING.append("lightgbm")
 try:
+    import catboost as cb
+except ImportError:
+    _MISSING.append("catboost")
+try:
     import optuna
 except ImportError:
     _MISSING.append("optuna")
@@ -91,8 +97,10 @@ def _env_flag(name: str, default: bool = False) -> bool:
 
 XGB_TRIALS     = int(os.environ.get("XGB_TRIALS", "25"))
 LGBM_TRIALS    = int(os.environ.get("LGBM_TRIALS", "25"))
+CATBOOST_TRIALS = int(os.environ.get("CATBOOST_TRIALS", "25"))
 XGB_N_ESTIMATORS = int(os.environ.get("XGB_N_ESTIMATORS", "2000"))
 LGBM_N_ESTIMATORS = int(os.environ.get("LGBM_N_ESTIMATORS", "2000"))
+CATBOOST_N_ESTIMATORS = int(os.environ.get("CATBOOST_N_ESTIMATORS", "2000"))
 EARLY_STOPPING_ROUNDS = int(os.environ.get("GBM_EARLY_STOPPING_ROUNDS", "50"))
 TUNING_SAMPLE_SIZE = int(os.environ.get("TUNING_SAMPLE_SIZE", "250000"))
 N_RF_ESTIMATORS = int(os.environ.get("RF_ESTIMATORS", "300"))
@@ -103,8 +111,10 @@ DECAY_RATE     = float(os.environ.get("DECAY_RATE", "0.003"))
 DEFAULT_TRAINING_CONFIG = {
     "xgb_trials": 25,
     "lgbm_trials": 25,
+    "catboost_trials": 25,
     "xgb_n_estimators": 2000,
     "lgbm_n_estimators": 2000,
+    "catboost_n_estimators": 2000,
     "early_stopping_rounds": 50,
     "tuning_sample_size": 250000,
     "rf_estimators": 300,
@@ -128,8 +138,10 @@ def _training_config_snapshot() -> dict[str, int | bool]:
     return {
         "xgb_trials": XGB_TRIALS,
         "lgbm_trials": LGBM_TRIALS,
+        "catboost_trials": CATBOOST_TRIALS,
         "xgb_n_estimators": XGB_N_ESTIMATORS,
         "lgbm_n_estimators": LGBM_N_ESTIMATORS,
+        "catboost_n_estimators": CATBOOST_N_ESTIMATORS,
         "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
         "tuning_sample_size": TUNING_SAMPLE_SIZE,
         "rf_estimators": N_RF_ESTIMATORS,
@@ -152,6 +164,11 @@ def _training_config_notes(config: dict[str, int | bool]) -> list[str]:
             f"LightGBM Optuna trials reduced to {config['lgbm_trials']} "
             f"(default {DEFAULT_TRAINING_CONFIG['lgbm_trials']})."
         )
+    if int(config["catboost_trials"]) < DEFAULT_TRAINING_CONFIG["catboost_trials"]:
+        notes.append(
+            f"CatBoost Optuna trials reduced to {config['catboost_trials']} "
+            f"(default {DEFAULT_TRAINING_CONFIG['catboost_trials']})."
+        )
     if int(config["xgb_n_estimators"]) < 100:
         notes.append(
             f"XGBoost n_estimators is only {config['xgb_n_estimators']}; "
@@ -160,6 +177,11 @@ def _training_config_notes(config: dict[str, int | bool]) -> list[str]:
     if int(config["lgbm_n_estimators"]) < 100:
         notes.append(
             f"LightGBM n_estimators is only {config['lgbm_n_estimators']}; "
+            "this is suitable for smoke tests, not production tuning."
+        )
+    if int(config["catboost_n_estimators"]) < 100:
+        notes.append(
+            f"CatBoost iterations is only {config['catboost_n_estimators']}; "
             "this is suitable for smoke tests, not production tuning."
         )
     if int(config["tuning_sample_size"]) < 50000:
@@ -879,6 +901,107 @@ def train_lightgbm(
 
 
 # ---------------------------------------------------------------------------
+# Model training: CatBoost with Optuna
+# ---------------------------------------------------------------------------
+
+def train_catboost(
+    X_train: pd.DataFrame,
+    y_train: np.ndarray,
+    X_tune: pd.DataFrame,
+    y_tune: np.ndarray,
+    X_val: pd.DataFrame,
+    y_val: np.ndarray,
+    y_val_sgd: np.ndarray,
+    y_val_pi: np.ndarray | None,
+    run_dir: str,
+    sample_weight: np.ndarray | None = None,
+    current_meta: dict | None = None,
+) -> tuple:
+    """
+    Train CatBoost with Optuna hyperparameter tuning.
+    Early stopping on val set prevents overfitting.
+    flat_type_ordinal and is_mature_estate are passed as cat_features.
+
+    Parameters:
+        X_train:       Full training features used for final refit.
+        y_train:       Full training target on the model log scale.
+        X_tune:        Sampled training features used during Optuna search.
+        y_tune:        Sampled training target used during Optuna search.
+        X_val:         Validation features.
+        y_val:         Validation target on the model log scale.
+        y_val_sgd:     Validation actual prices in SGD (for RMSE optimisation).
+        y_val_pi:      Optional validation price index values for legacy runs.
+        run_dir:       Directory to save the Optuna study.
+        sample_weight: Optional per-row weights for the final refit (time-decay).
+        current_meta:  Study invalidation metadata for auto-discard logic.
+
+    Returns:
+        Tuple of (trained model, best params dict).
+    """
+    print("\n  Tuning CatBoost with Optuna ...")
+    study_path = os.path.join(run_dir, "optuna_study_catboost.pkl")
+
+    cat_features = [
+        i for i, col in enumerate(X_train.columns)
+        if col in {"flat_type_ordinal", "is_mature_estate"}
+    ]
+
+    def objective(trial):
+        params = {
+            "iterations": CATBOOST_N_ESTIMATORS,
+            "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.3, log=True),
+            "depth": trial.suggest_int("depth", 4, 10),
+            "l2_leaf_reg": trial.suggest_float("l2_leaf_reg", 1.0, 10.0),
+            "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 1.0),
+            "cat_features": cat_features,
+            "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
+            "random_seed": SEED,
+            "verbose": 0,
+        }
+        model = cb.CatBoostRegressor(**params)
+        model.fit(X_tune, y_tune, eval_set=(X_val, y_val))
+        pred_log = model.predict(X_val)
+        pred_sgd = _inv_transform(pred_log, y_val_pi)
+        rmse = float(np.sqrt(mean_squared_error(y_val_sgd, pred_sgd)))
+        return rmse
+
+    study, _ = _load_or_create_study(study_path, "CatBoost", CATBOOST_TRIALS, current_meta=current_meta)
+    best_trial, interrupted = _optimize_study(
+        study,
+        objective,
+        total_trials=CATBOOST_TRIALS,
+        study_path=study_path,
+        label="CatBoost",
+        meta=current_meta,
+    )
+
+    # Retrain best model
+    best = dict(best_trial.params)
+    best.update({
+        "iterations": CATBOOST_N_ESTIMATORS,
+        "cat_features": cat_features,
+        "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
+        "random_seed": SEED,
+        "verbose": 0,
+    })
+    if interrupted:
+        print(
+            f"  Continuing with best completed CatBoost trial at val RMSE SGD "
+            f"{float(best_trial.value):,.0f}."
+        )
+    else:
+        print(f"  Best val RMSE: SGD {float(best_trial.value):,.0f}")
+
+    model = cb.CatBoostRegressor(**best)
+    model.fit(
+        X_train, y_train,
+        eval_set=(X_val, y_val),
+        sample_weight=sample_weight,
+    )
+    return model, best
+
+
+# ---------------------------------------------------------------------------
 # Model training: Random Forest (baseline)
 # ---------------------------------------------------------------------------
 
@@ -994,11 +1117,11 @@ def determine_winner(results: dict) -> dict:
         Dict with winner name, selection metrics, and test metrics.
     """
     eligible_models = [
-        name for name in ("xgboost", "lgbm")
+        name for name in ("xgboost", "lgbm", "catboost")
         if name in results
     ]
     if not eligible_models:
-        raise ValueError("Neither xgboost nor lgbm found in results for winner selection.")
+        raise ValueError("No tuned model (xgboost, lgbm, catboost) found in results for winner selection.")
 
     ranked = sorted(
         ((name, results[name]["val"]["rmse"]) for name in eligible_models),
@@ -1048,23 +1171,25 @@ def save_outputs(
     winner: dict,
     xgb_params: dict,
     lgbm_params: dict,
+    catboost_params: dict | None = None,
 ) -> None:
     """
     Save all training artefacts to the run directory.
 
     Parameters:
-        run_dir:    Feature engineering run directory path.
-        models:     Dict of trained models.
-        results:    Full evaluation results dict.
-        winner:     Winner declaration dict.
-        xgb_params: Best XGBoost hyperparameters.
-        lgbm_params: Best LightGBM hyperparameters.
+        run_dir:          Feature engineering run directory path.
+        models:           Dict of trained base models.
+        results:          Full evaluation results dict.
+        winner:           Winner declaration dict.
+        xgb_params:       Best XGBoost hyperparameters.
+        lgbm_params:      Best LightGBM hyperparameters.
+        catboost_params:  Best CatBoost hyperparameters (optional).
     """
     print(f"\n  Saving outputs to '{run_dir}/' ...")
     training_config = _training_config_snapshot()
     training_config_notes = _training_config_notes(training_config)
 
-    # Models
+    # Base models
     for name, model in models.items():
         path = os.path.join(run_dir, f"{name}_model.pkl")
         with open(path, "wb") as f:
@@ -1095,6 +1220,12 @@ def save_outputs(
     metrics["training_config_notes"] = training_config_notes
     metrics["xgb_best_params"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in xgb_params.items()}
     metrics["lgbm_best_params"] = {k: (round(v, 6) if isinstance(v, float) else v) for k, v in lgbm_params.items()}
+    if catboost_params is not None:
+        metrics["catboost_best_params"] = {
+            k: (round(v, 6) if isinstance(v, float) else v)
+            for k, v in catboost_params.items()
+            if k != "cat_features"  # list of ints, not JSON-unsafe but noisy
+        }
 
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
@@ -1147,8 +1278,10 @@ def save_outputs(
             [
                 f"XGB_TRIALS={training_config['xgb_trials']}",
                 f"LGBM_TRIALS={training_config['lgbm_trials']}",
+                f"CATBOOST_TRIALS={training_config['catboost_trials']}",
                 f"XGB_N_ESTIMATORS={training_config['xgb_n_estimators']}",
                 f"LGBM_N_ESTIMATORS={training_config['lgbm_n_estimators']}",
+                f"CATBOOST_N_ESTIMATORS={training_config['catboost_n_estimators']}",
                 f"TUNING_SAMPLE_SIZE={int(training_config['tuning_sample_size']):,}",
                 f"RF_ESTIMATORS={training_config['rf_estimators']}",
                 f"MODEL_N_JOBS={training_config['model_n_jobs']}",
@@ -1233,7 +1366,7 @@ def _load_flat_type_series(
 
 def main() -> None:
     """
-    Run the full training pipeline: diagnostic, train 3 models, evaluate,
+    Run the full training pipeline: diagnostic, train 4 models, evaluate,
     determine winner, and save all outputs.
     """
     print("=" * 70)
@@ -1264,9 +1397,11 @@ def main() -> None:
         print(f"  X_future_holdout: {X_future_holdout.shape}")
     print(
         f"  Tuning config: XGB_TRIALS={XGB_TRIALS}, LGBM_TRIALS={LGBM_TRIALS}, "
+        f"CATBOOST_TRIALS={CATBOOST_TRIALS}, "
         f"TUNING_SAMPLE_SIZE={TUNING_SAMPLE_SIZE:,}, "
         f"XGB_N_ESTIMATORS={XGB_N_ESTIMATORS}, "
         f"LGBM_N_ESTIMATORS={LGBM_N_ESTIMATORS}, "
+        f"CATBOOST_N_ESTIMATORS={CATBOOST_N_ESTIMATORS}, "
         f"RF_ESTIMATORS={N_RF_ESTIMATORS}, "
         f"FRESH_TUNING={int(FRESH_TUNING)}, "
         f"DECAY_RATE={DECAY_RATE}"
@@ -1328,16 +1463,25 @@ def main() -> None:
     )
     print(f"  LightGBM training time: {time.time() - t0:.1f}s")
 
-    # Step 3: Train Random Forest
-    print("\n--- STEP 3: RANDOM FOREST ---")
+    # Step 3: Train CatBoost
+    print("\n--- STEP 3: CATBOOST ---")
+    t0 = time.time()
+    catboost_model, catboost_params = train_catboost(
+        X_train, y_train_log, X_tune, y_tune_log, X_val, y_val_log, y_val_sgd, y_val_pi, run_dir,
+        sample_weight=sample_weight, current_meta=current_meta,
+    )
+    print(f"  CatBoost training time: {time.time() - t0:.1f}s")
+
+    # Step 4: Train Random Forest
+    print("\n--- STEP 4: RANDOM FOREST ---")
     t0 = time.time()
     rf_model = train_random_forest(X_train, y_train_log)
     print(f"  Random Forest training time: {time.time() - t0:.1f}s")
 
-    base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "rf": rf_model}
+    base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "catboost": catboost_model, "rf": rf_model}
 
-    # Step 4: Evaluate all
-    print("\n--- STEP 4: EVALUATION ---")
+    # Step 5: Evaluate all
+    print("\n--- STEP 5: EVALUATION ---")
     evaluation_splits = {
         "val": {
             "X": X_val,
@@ -1366,14 +1510,16 @@ def main() -> None:
         }
     results = evaluate_all(base_models, evaluation_splits)
 
-    # Step 5: Determine winner
+    # Step 6: Determine winner
     winner = determine_winner(results)
     print(f"\n  WINNER: {winner['winner'].upper()}")
     print(f"  {winner['justification']}")
 
-    # Step 6: Save outputs
-    print("\n--- STEP 6: SAVING OUTPUTS ---")
-    save_outputs(run_dir, base_models, results, winner, xgb_params, lgbm_params)
+    # Step 7: Save outputs
+    print("\n--- STEP 7: SAVING OUTPUTS ---")
+    save_outputs(
+        run_dir, base_models, results, winner, xgb_params, lgbm_params, catboost_params,
+    )
 
     # Final comparison table
     print("\n" + "=" * 70)

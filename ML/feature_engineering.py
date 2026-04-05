@@ -541,9 +541,6 @@ def save_artefacts(
     print("  run_manifest.json")
 
     metrics_stub = {
-        "q10_test_mae": None,
-        "q50_test_mae": None,
-        "q90_test_mae": None,
         "note": "Populate with actual model metrics after training.",
     }
 

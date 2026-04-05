@@ -182,7 +182,6 @@ MODEL_LABELS = {
     "xgboost": "XGBoost",
     "lgbm": "LightGBM",
     "rf": "Random Forest",
-    "ensemble": "Ensemble",
 }
 
 SCALE_COLS = [
@@ -380,8 +379,7 @@ def _resolve_serving_model_key(run_dir, metrics):
     candidates = []
     if preferred:
         candidates.append(preferred)
-    # Prefer the declared winner, then fall back to ensemble or base models.
-    candidates.extend(["ensemble", "xgboost", "lgbm", "rf"])
+    candidates.extend(["xgboost", "lgbm", "rf"])
 
     seen = set()
     for model_key in candidates:
@@ -391,26 +389,6 @@ def _resolve_serving_model_key(run_dir, metrics):
         model_path = os.path.join(run_dir, f"{model_key}_model.pkl")
         if not os.path.exists(model_path):
             continue
-
-        if model_key == "ensemble":
-            try:
-                with open(model_path, "rb") as f:
-                    ensemble_data = pickle.load(f)
-                meta_model = ensemble_data.get("meta_model")
-                base_model_order = getattr(meta_model, "base_learner_order_", None) or []
-            except (AttributeError, EOFError, OSError, pickle.PickleError):
-                continue
-
-            if not base_model_order:
-                continue
-
-            missing_base_models = [
-                name for name in base_model_order
-                if not os.path.exists(os.path.join(run_dir, f"{name}_model.pkl"))
-            ]
-            if missing_base_models:
-                continue
-
         return model_key, model_path
 
     raise FileNotFoundError(
@@ -575,23 +553,8 @@ def _load_artefacts():
         artefacts["metrics"],
     )
 
-    if serving_model_key == "ensemble":
-        # Load ensemble: meta-learner + all base models
-        with open(serving_model_path, "rb") as f:
-            ensemble_data = pickle.load(f)
-        artefacts["meta_model"] = ensemble_data["meta_model"]
-        base_models = {}
-        for base_name in artefacts["meta_model"].base_learner_order_:
-            base_path = os.path.join(run_dir, f"{base_name}_model.pkl")
-            with open(base_path, "rb") as f:
-                base_models[base_name] = pickle.load(f)
-        artefacts["base_models"] = base_models
-        artefacts["model"] = None  # ensemble uses base_models + meta_model
-    else:
-        with open(serving_model_path, "rb") as f:
-            artefacts["model"] = pickle.load(f)
-        artefacts["base_models"] = None
-        artefacts["meta_model"] = None
+    with open(serving_model_path, "rb") as f:
+        artefacts["model"] = pickle.load(f)
 
     artefacts["model_key"] = serving_model_key
     artefacts["model_label"] = _format_model_label(serving_model_key)
@@ -1821,18 +1784,8 @@ def _inverse_target_prediction(pred_log, year, month_num):
 
 
 def _predict_log_price_from_scaled_df(df):
-    model = ARTEFACTS["model"]
-    if ARTEFACTS["model_key"] == "ensemble":
-        base_models = ARTEFACTS["base_models"]
-        meta_model = ARTEFACTS["meta_model"]
-        fc = _serving_feature_cols()
-        meta_features = np.column_stack([
-            base_models[name].predict(df[fc])
-            for name in meta_model.base_learner_order_
-        ])
-        return float(meta_model.predict(meta_features)[0])
     fc = _serving_feature_cols()
-    return float(model.predict(df[fc])[0])
+    return float(ARTEFACTS["model"].predict(df[fc])[0])
 
 
 def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_range,
@@ -1928,7 +1881,8 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
     }
 
     df = pd.DataFrame([raw])
-    df[scale_cols] = scaler.transform(df[scale_cols])
+    if ARTEFACTS["manifest"].get("scaling_enabled", True):
+        df[scale_cols] = ARTEFACTS["scaler"].transform(df[scale_cols])
 
     raw_values = dict(raw)
     raw_values.update({

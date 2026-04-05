@@ -11,17 +11,14 @@ Design decisions:
   - New feature runs use log1p(resale_price) as the target to avoid
     holdout leakage from a target normalization index computed on the
     transaction table. Legacy runs with price_index are still supported.
-  - Four models: XGBoost, LightGBM, Random Forest, and a stacked
-    ensemble (XGB + LGBM + RF base learners, Ridge meta-learner).
+  - Three models: XGBoost, LightGBM, Random Forest.
   - Optuna tunes XGBoost and LightGBM on val RMSE using a deterministic
     training subset for speed, then retrains the best params on the full
     train split. Trial counts and sample sizes are configurable via env vars.
   - Random Forest uses a sensible fixed configuration (no tuning).
   - Train set is for fitting; val set is for tuning and early stopping.
-  - Production winner selection uses validation RMSE across the base
-    models only, keeping the test set locked for final reporting.
-  - The stacked ensemble is still reported, but excluded from winner
-    selection because its meta-learner is fit on validation predictions.
+  - Winner selection uses validation RMSE on XGBoost vs LightGBM only,
+    keeping the test set locked for final reporting.
   - All random states are seeded to 42 for reproducibility.
   - Runs a data quality diagnostic before training and includes the
     findings in the training report.
@@ -65,7 +62,6 @@ except ImportError:
     _MISSING.append("optuna")
 
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 
 if _MISSING:
@@ -102,6 +98,7 @@ TUNING_SAMPLE_SIZE = int(os.environ.get("TUNING_SAMPLE_SIZE", "250000"))
 N_RF_ESTIMATORS = int(os.environ.get("RF_ESTIMATORS", "300"))
 MODEL_N_JOBS   = int(os.environ.get("MODEL_N_JOBS", "-1"))
 FRESH_TUNING   = _env_flag("FRESH_TUNING", False)
+DECAY_RATE     = float(os.environ.get("DECAY_RATE", "0.003"))
 
 DEFAULT_TRAINING_CONFIG = {
     "xgb_trials": 25,
@@ -240,28 +237,44 @@ def _format_year_window(start_year: int | None, end_year: int | None) -> str:
 def _build_tuning_subset(
     X_train: pd.DataFrame,
     y_train: np.ndarray,
+    y_train_df: pd.DataFrame | None = None,
 ) -> tuple[pd.DataFrame, np.ndarray]:
     """
-    Build a deterministic training subset for hyperparameter tuning.
+    Build a training subset for hyperparameter tuning using the most recent rows.
 
-    Tuning on a representative subset keeps Optuna responsive while we still
-    retrain the final best params on the full train split.
+    Tuning on the most-recent data keeps Optuna focused on the current market
+    regime while staying responsive. Final best params are retrained on the
+    full train split.
     """
     if TUNING_SAMPLE_SIZE <= 0 or len(X_train) <= TUNING_SAMPLE_SIZE:
         print(f"  Tuning subset: using full training set ({len(X_train):,} rows).")
         return X_train, y_train
 
-    rng = np.random.default_rng(SEED)
-    sample_idx = np.sort(
-        rng.choice(len(X_train), size=TUNING_SAMPLE_SIZE, replace=False)
-    )
+    if y_train_df is not None and "year_month_raw" in y_train_df.columns:
+        sorted_idx = np.argsort(y_train_df["year_month_raw"].values)
+        sample_idx = sorted_idx[-TUNING_SAMPLE_SIZE:]
+        ym_vals = y_train_df["year_month_raw"].values[sample_idx]
+        ym_min, ym_max = int(ym_vals.min()), int(ym_vals.max())
+        date_range = (
+            f"{ym_min // 100}-{ym_min % 100:02d} – "
+            f"{ym_max // 100}-{ym_max % 100:02d}"
+        )
+        print(
+            f"  Tuning subset: {TUNING_SAMPLE_SIZE:,}/{len(X_train):,} rows "
+            f"(most recent: {date_range})."
+        )
+    else:
+        rng = np.random.default_rng(SEED)
+        sample_idx = np.sort(
+            rng.choice(len(X_train), size=TUNING_SAMPLE_SIZE, replace=False)
+        )
+        print(
+            f"  Tuning subset: {TUNING_SAMPLE_SIZE:,}/{len(X_train):,} rows "
+            f"(random — year_month_raw not available)."
+        )
+
     X_tune = X_train.iloc[sample_idx].copy()
     y_tune = y_train[sample_idx].copy()
-    pct = len(X_tune) / len(X_train) * 100
-    print(
-        f"  Tuning subset: {len(X_tune):,}/{len(X_train):,} rows "
-        f"({pct:.1f}%) sampled from train."
-    )
     return X_tune, y_tune
 
 
@@ -293,19 +306,49 @@ def _compute_metrics(y_true_sgd: np.ndarray, y_pred_sgd: np.ndarray) -> dict:
     return {"rmse": rmse, "mae": mae, "r2": r2, "mape": mape}
 
 
-def _save_optuna_study(study: "optuna.study.Study", study_path: str) -> None:
-    """Persist an Optuna study snapshot to disk."""
+def _save_optuna_study(
+    study: "optuna.study.Study",
+    study_path: str,
+    meta: dict | None = None,
+) -> None:
+    """Persist an Optuna study snapshot to disk, with optional sidecar meta JSON."""
     with open(study_path, "wb") as f:
         pickle.dump(study, f)
+    if meta is not None:
+        meta_path = study_path.replace(".pkl", "_meta.json")
+        with open(meta_path, "w") as f:
+            json.dump(meta, f, indent=2)
+
+
+def _check_study_meta_invalidation(saved: dict, current: dict) -> str | None:
+    """Return a reason string if the cached study should be discarded, else None."""
+    if saved.get("split_strategy") != current.get("split_strategy"):
+        return (
+            f"split_strategy changed "
+            f"({saved.get('split_strategy')} → {current.get('split_strategy')})"
+        )
+    if saved.get("feature_cols") != current.get("feature_cols"):
+        return "feature_cols list changed"
+    saved_n = saved.get("n_train_rows", 0)
+    current_n = current.get("n_train_rows", 0)
+    if saved_n > 0 and abs(current_n - saved_n) / saved_n > 0.05:
+        return f"n_train_rows changed >5% ({saved_n:,} → {current_n:,})"
+    return None
 
 
 def _load_or_create_study(
     study_path: str,
     label: str,
     total_trials: int,
+    current_meta: dict | None = None,
 ) -> tuple["optuna.study.Study", bool]:
     """
     Load a previously saved Optuna study when available, otherwise create one.
+
+    If current_meta is provided and a sidecar _meta.json exists, the saved
+    metadata is compared against current_meta. Mismatches in split_strategy,
+    feature_cols, or n_train_rows (>5% change) trigger auto-discard so stale
+    hyperparameters are not reused.  FRESH_TUNING=1 is still a manual override.
 
     Returns:
         Tuple of (study, resumed_existing_study).
@@ -327,6 +370,24 @@ def _load_or_create_study(
         return study, False
 
     if os.path.exists(study_path):
+        # Check sidecar meta for auto-invalidation before loading the study.
+        if current_meta is not None:
+            meta_path = study_path.replace(".pkl", "_meta.json")
+            if os.path.exists(meta_path):
+                with open(meta_path) as f:
+                    saved_meta = json.load(f)
+                reason = _check_study_meta_invalidation(saved_meta, current_meta)
+                if reason:
+                    print(
+                        f"  {label}: discarding cached study — {reason}. "
+                        f"Starting a new {total_trials}-trial search."
+                    )
+                    study = optuna.create_study(
+                        direction="minimize",
+                        sampler=optuna.samplers.TPESampler(seed=SEED),
+                    )
+                    return study, False
+
         with open(study_path, "rb") as f:
             study = pickle.load(f)
         completed = len(
@@ -363,6 +424,7 @@ def _optimize_study(
     total_trials: int,
     study_path: str,
     label: str,
+    meta: dict | None = None,
 ) -> tuple["optuna.trial.FrozenTrial", bool]:
     """
     Run or resume Optuna optimization, saving progress on success or interrupt.
@@ -381,7 +443,7 @@ def _optimize_study(
             f"already meet or exceed the requested {total_trials:,}."
         )
         best_trial = _best_completed_trial(study)
-        _save_optuna_study(study, study_path)
+        _save_optuna_study(study, study_path, meta=meta)
         return best_trial, False
 
     print(
@@ -399,7 +461,7 @@ def _optimize_study(
             "Saving partial study and using the best completed trial so far."
         )
     finally:
-        _save_optuna_study(study, study_path)
+        _save_optuna_study(study, study_path, meta=meta)
 
     completed_after = len(
         [trial for trial in study.trials if trial.state == optuna.trial.TrialState.COMPLETE]
@@ -606,21 +668,25 @@ def train_xgboost(
     y_val_sgd: np.ndarray,
     y_val_pi: np.ndarray | None,
     run_dir: str,
+    sample_weight: np.ndarray | None = None,
+    current_meta: dict | None = None,
 ) -> tuple:
     """
     Train XGBoost with Optuna hyperparameter tuning.
     Early stopping on val set prevents overfitting.
 
     Parameters:
-        X_train:   Full training features used for final refit.
-        y_train:   Full training target on the model log scale.
-        X_tune:    Sampled training features used during Optuna search.
-        y_tune:    Sampled training target used during Optuna search.
-        X_val:     Validation features.
-        y_val:     Validation target on the model log scale.
-        y_val_sgd: Validation actual prices in SGD (for RMSE optimisation).
-        y_val_pi:  Optional validation price index values for legacy runs.
-        run_dir:   Directory to save the Optuna study.
+        X_train:       Full training features used for final refit.
+        y_train:       Full training target on the model log scale.
+        X_tune:        Sampled training features used during Optuna search.
+        y_tune:        Sampled training target used during Optuna search.
+        X_val:         Validation features.
+        y_val:         Validation target on the model log scale.
+        y_val_sgd:     Validation actual prices in SGD (for RMSE optimisation).
+        y_val_pi:      Optional validation price index values for legacy runs.
+        run_dir:       Directory to save the Optuna study.
+        sample_weight: Optional per-row weights for the final refit (time-decay).
+        current_meta:  Study invalidation metadata for auto-discard logic.
 
     Returns:
         Tuple of (trained model, best params dict).
@@ -658,13 +724,14 @@ def train_xgboost(
         rmse = float(np.sqrt(mean_squared_error(y_val_sgd, pred_sgd)))
         return rmse
 
-    study, _ = _load_or_create_study(study_path, "XGBoost", XGB_TRIALS)
+    study, _ = _load_or_create_study(study_path, "XGBoost", XGB_TRIALS, current_meta=current_meta)
     best_trial, interrupted = _optimize_study(
         study,
         objective,
         total_trials=XGB_TRIALS,
         study_path=study_path,
         label="XGBoost",
+        meta=current_meta,
     )
 
     # Retrain best model
@@ -692,6 +759,7 @@ def train_xgboost(
         X_train, y_train,
         eval_set=[(X_val, y_val)],
         verbose=False,
+        sample_weight=sample_weight,
     )
     return model, best
 
@@ -710,21 +778,25 @@ def train_lightgbm(
     y_val_sgd: np.ndarray,
     y_val_pi: np.ndarray | None,
     run_dir: str,
+    sample_weight: np.ndarray | None = None,
+    current_meta: dict | None = None,
 ) -> tuple:
     """
     Train LightGBM with Optuna hyperparameter tuning.
     Early stopping on val set prevents overfitting.
 
     Parameters:
-        X_train:   Full training features used for final refit.
-        y_train:   Full training target on the model log scale.
-        X_tune:    Sampled training features used during Optuna search.
-        y_tune:    Sampled training target used during Optuna search.
-        X_val:     Validation features.
-        y_val:     Validation target on the model log scale.
-        y_val_sgd: Validation actual prices in SGD (for RMSE optimisation).
-        y_val_pi:  Optional validation price index values for legacy runs.
-        run_dir:   Directory to save the Optuna study.
+        X_train:       Full training features used for final refit.
+        y_train:       Full training target on the model log scale.
+        X_tune:        Sampled training features used during Optuna search.
+        y_tune:        Sampled training target used during Optuna search.
+        X_val:         Validation features.
+        y_val:         Validation target on the model log scale.
+        y_val_sgd:     Validation actual prices in SGD (for RMSE optimisation).
+        y_val_pi:      Optional validation price index values for legacy runs.
+        run_dir:       Directory to save the Optuna study.
+        sample_weight: Optional per-row weights for the final refit (time-decay).
+        current_meta:  Study invalidation metadata for auto-discard logic.
 
     Returns:
         Tuple of (trained model, best params dict).
@@ -764,13 +836,14 @@ def train_lightgbm(
         rmse = float(np.sqrt(mean_squared_error(y_val_sgd, pred_sgd)))
         return rmse
 
-    study, _ = _load_or_create_study(study_path, "LightGBM", LGBM_TRIALS)
+    study, _ = _load_or_create_study(study_path, "LightGBM", LGBM_TRIALS, current_meta=current_meta)
     best_trial, interrupted = _optimize_study(
         study,
         objective,
         total_trials=LGBM_TRIALS,
         study_path=study_path,
         label="LightGBM",
+        meta=current_meta,
     )
 
     # Retrain best model
@@ -800,6 +873,7 @@ def train_lightgbm(
         X_train, y_train,
         eval_set=[(X_val, y_val)],
         callbacks=callbacks,
+        sample_weight=sample_weight,
     )
     return model, best
 
@@ -836,76 +910,11 @@ def train_random_forest(
 
 
 # ---------------------------------------------------------------------------
-# Stacked ensemble
-# ---------------------------------------------------------------------------
-
-def train_ensemble(
-    models: dict,
-    X_val: pd.DataFrame,
-    y_val: np.ndarray,
-    X_train: pd.DataFrame,
-    y_train: np.ndarray,
-) -> Ridge:
-    """
-    Build a stacked ensemble: XGBoost + LightGBM + Random Forest as base
-    learners, with Ridge regression as the meta-learner trained on val set
-    predictions.
-
-    Parameters:
-        models:  Dict of {name: trained_model} for base learners.
-        X_val:   Validation features for generating meta-features.
-        y_val:   Validation target (log1p scale) for fitting meta-learner.
-        X_train: Training features (unused, kept for interface consistency).
-        y_train: Training target (unused, kept for interface consistency).
-
-    Returns:
-        Trained Ridge meta-learner.
-    """
-    print("\n  Building stacked ensemble (Ridge meta-learner on val predictions) ...")
-
-    # Generate meta-features from val predictions
-    meta_features = np.column_stack([
-        models[name].predict(X_val) for name in sorted(models.keys())
-    ])
-
-    meta_model = Ridge(alpha=1.0, random_state=SEED)
-    meta_model.fit(meta_features, y_val)
-
-    # Store base learner order for consistent prediction
-    meta_model.base_learner_order_ = sorted(models.keys())
-    return meta_model
-
-
-def _ensemble_predict(
-    models: dict,
-    meta_model: Ridge,
-    X: pd.DataFrame,
-) -> np.ndarray:
-    """
-    Generate ensemble predictions by stacking base learner outputs and
-    passing them through the Ridge meta-learner.
-
-    Parameters:
-        models:     Dict of {name: trained_model} for base learners.
-        meta_model: Trained Ridge meta-learner.
-        X:          Features to predict on.
-
-    Returns:
-        Predicted log1p(resale_price) values.
-    """
-    meta_features = np.column_stack([
-        models[name].predict(X) for name in meta_model.base_learner_order_
-    ])
-    return meta_model.predict(meta_features)
-
-
-# ---------------------------------------------------------------------------
 # Evaluation
 # ---------------------------------------------------------------------------
 
 def evaluate_all(
     models: dict,
-    meta_model: Ridge,
     evaluation_splits: dict[str, dict[str, object]],
 ) -> dict:
     """
@@ -914,8 +923,7 @@ def evaluate_all(
     plus flat_type error breakdowns.
 
     Parameters:
-        models:         Dict of {name: trained_model} for base learners.
-        meta_model:     Trained Ridge meta-learner.
+        models:            Dict of {name: trained_model}.
         evaluation_splits: Dict keyed by split name with X, y_sgd, optional
             price_index, and flat_type_series values.
 
@@ -927,9 +935,8 @@ def evaluate_all(
     print("=" * 70)
 
     all_results = {}
-    all_names = list(models.keys()) + ["ensemble"]
 
-    for name in all_names:
+    for name in models:
         results = {}
 
         for split_name, split_data in evaluation_splits.items():
@@ -937,10 +944,7 @@ def evaluate_all(
             y_sgd = split_data["y_sgd"]
             pi = split_data["price_index"]
             ft_series = split_data["flat_type_series"]
-            if name == "ensemble":
-                pred_log = _ensemble_predict(models, meta_model, X)
-            else:
-                pred_log = models[name].predict(X)
+            pred_log = models[name].predict(X)
 
             pred_sgd = _inv_transform(pred_log, pi)
             metrics = _compute_metrics(y_sgd, pred_sgd)
@@ -990,11 +994,11 @@ def determine_winner(results: dict) -> dict:
         Dict with winner name, selection metrics, and test metrics.
     """
     eligible_models = [
-        name for name in ("xgboost", "lgbm", "rf")
+        name for name in ("xgboost", "lgbm")
         if name in results
     ]
     if not eligible_models:
-        raise ValueError("No base models available for winner selection.")
+        raise ValueError("Neither xgboost nor lgbm found in results for winner selection.")
 
     ranked = sorted(
         ((name, results[name]["val"]["rmse"]) for name in eligible_models),
@@ -1013,11 +1017,6 @@ def determine_winner(results: dict) -> dict:
         runner_up_name, runner_up_rmse = ranked[1]
         justification += (
             f"Runner-up on validation: {runner_up_name} at SGD {runner_up_rmse:,.0f}. "
-        )
-    if "ensemble" in results:
-        justification += (
-            "The ensemble is reported separately and excluded from winner "
-            "selection because its meta-learner is fit on the validation window. "
         )
     if "future_holdout" in results[best_name]:
         future_metrics = results[best_name]["future_holdout"]
@@ -1045,7 +1044,6 @@ def determine_winner(results: dict) -> dict:
 def save_outputs(
     run_dir: str,
     models: dict,
-    meta_model: Ridge,
     results: dict,
     winner: dict,
     xgb_params: dict,
@@ -1055,13 +1053,12 @@ def save_outputs(
     Save all training artefacts to the run directory.
 
     Parameters:
-        run_dir:           Feature engineering run directory path.
-        models:            Dict of trained base learner models.
-        meta_model:        Trained Ridge meta-learner.
-        results:           Full evaluation results dict.
-        winner:            Winner declaration dict.
-        xgb_params:        Best XGBoost hyperparameters.
-        lgbm_params:       Best LightGBM hyperparameters.
+        run_dir:    Feature engineering run directory path.
+        models:     Dict of trained models.
+        results:    Full evaluation results dict.
+        winner:     Winner declaration dict.
+        xgb_params: Best XGBoost hyperparameters.
+        lgbm_params: Best LightGBM hyperparameters.
     """
     print(f"\n  Saving outputs to '{run_dir}/' ...")
     training_config = _training_config_snapshot()
@@ -1073,10 +1070,6 @@ def save_outputs(
         with open(path, "wb") as f:
             pickle.dump(model, f)
         print(f"    {name}_model.pkl")
-
-    with open(os.path.join(run_dir, "ensemble_model.pkl"), "wb") as f:
-        pickle.dump({"base_models": {n: None for n in models}, "meta_model": meta_model}, f)
-    print("    ensemble_model.pkl")
 
     # Metrics — update existing metrics.json
     metrics_path = os.path.join(run_dir, "metrics.json")
@@ -1240,7 +1233,7 @@ def _load_flat_type_series(
 
 def main() -> None:
     """
-    Run the full training pipeline: diagnostic, train 4 models, evaluate,
+    Run the full training pipeline: diagnostic, train 3 models, evaluate,
     determine winner, and save all outputs.
     """
     print("=" * 70)
@@ -1275,12 +1268,43 @@ def main() -> None:
         f"XGB_N_ESTIMATORS={XGB_N_ESTIMATORS}, "
         f"LGBM_N_ESTIMATORS={LGBM_N_ESTIMATORS}, "
         f"RF_ESTIMATORS={N_RF_ESTIMATORS}, "
-        f"FRESH_TUNING={int(FRESH_TUNING)}"
+        f"FRESH_TUNING={int(FRESH_TUNING)}, "
+        f"DECAY_RATE={DECAY_RATE}"
     )
     config_notes = _training_config_notes(_training_config_snapshot())
     for note in config_notes:
         print(f"  WARNING: {note}")
-    X_tune, y_tune_log = _build_tuning_subset(X_train, y_train_log)
+
+    # Build study invalidation metadata from current run.
+    manifest_path = os.path.join(run_dir, "run_manifest.json")
+    split_strategy = "rolling_temporal_holdout"
+    if os.path.exists(manifest_path):
+        with open(manifest_path) as f:
+            _manifest = json.load(f)
+        split_strategy = (
+            _manifest.get("split_metadata", {}).get("split_strategy", split_strategy)
+        )
+    current_meta = {
+        "split_strategy": split_strategy,
+        "feature_cols": sorted(X_train.columns),
+        "n_train_rows": len(X_train),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    }
+
+    # Compute time-decay sample weights (recent transactions weighted higher).
+    sample_weight: np.ndarray | None = None
+    if "year_month_raw" in y_train_df.columns:
+        ym = y_train_df["year_month_raw"].values
+        max_months = int((ym.max() // 100) * 12 + (ym.max() % 100))
+        months_array = (ym // 100).astype(int) * 12 + (ym % 100).astype(int)
+        months_from_latest = max_months - months_array
+        sample_weight = np.exp(-DECAY_RATE * months_from_latest)
+        print(
+            f"  Sample weighting: DECAY_RATE={DECAY_RATE}, "
+            f"weight range [{sample_weight.min():.4f}, {sample_weight.max():.4f}]."
+        )
+
+    X_tune, y_tune_log = _build_tuning_subset(X_train, y_train_log, y_train_df)
 
     # Load flat type labels for error breakdown
     eval_split_names = [name for name in ("val", "test", "future_holdout") if name in split_frames]
@@ -1291,6 +1315,7 @@ def main() -> None:
     t0 = time.time()
     xgb_model, xgb_params = train_xgboost(
         X_train, y_train_log, X_tune, y_tune_log, X_val, y_val_log, y_val_sgd, y_val_pi, run_dir,
+        sample_weight=sample_weight, current_meta=current_meta,
     )
     print(f"  XGBoost training time: {time.time() - t0:.1f}s")
 
@@ -1299,6 +1324,7 @@ def main() -> None:
     t0 = time.time()
     lgbm_model, lgbm_params = train_lightgbm(
         X_train, y_train_log, X_tune, y_tune_log, X_val, y_val_log, y_val_sgd, y_val_pi, run_dir,
+        sample_weight=sample_weight, current_meta=current_meta,
     )
     print(f"  LightGBM training time: {time.time() - t0:.1f}s")
 
@@ -1308,15 +1334,10 @@ def main() -> None:
     rf_model = train_random_forest(X_train, y_train_log)
     print(f"  Random Forest training time: {time.time() - t0:.1f}s")
 
-    # Step 4: Build ensemble
-    print("\n--- STEP 4: STACKED ENSEMBLE ---")
     base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "rf": rf_model}
-    meta_model = train_ensemble(
-        base_models, X_val, y_val_log, X_train, y_train_log,
-    )
 
-    # Step 5: Evaluate all
-    print("\n--- STEP 5: EVALUATION ---")
+    # Step 4: Evaluate all
+    print("\n--- STEP 4: EVALUATION ---")
     evaluation_splits = {
         "val": {
             "X": X_val,
@@ -1343,22 +1364,16 @@ def main() -> None:
             ),
             "flat_type_series": flat_type_by_split["future_holdout"],
         }
-    results = evaluate_all(
-        base_models, meta_model,
-        evaluation_splits,
-    )
+    results = evaluate_all(base_models, evaluation_splits)
 
-    # Step 6: Determine winner
+    # Step 5: Determine winner
     winner = determine_winner(results)
     print(f"\n  WINNER: {winner['winner'].upper()}")
     print(f"  {winner['justification']}")
 
-    # Step 7: Save outputs
-    print("\n--- STEP 7: SAVING OUTPUTS ---")
-    save_outputs(
-        run_dir, base_models, meta_model, results, winner,
-        xgb_params, lgbm_params,
-    )
+    # Step 6: Save outputs
+    print("\n--- STEP 6: SAVING OUTPUTS ---")
+    save_outputs(run_dir, base_models, results, winner, xgb_params, lgbm_params)
 
     # Final comparison table
     print("\n" + "=" * 70)

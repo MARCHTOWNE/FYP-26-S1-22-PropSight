@@ -6,7 +6,6 @@ from datetime import datetime, UTC
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
 from training_data_source import load_training_dataframe
@@ -295,73 +294,85 @@ def drop_missing_model_rows(df: pd.DataFrame) -> pd.DataFrame:
 # Temporal split
 # ---------------------------------------------------------------------------
 
-def stratified_split(df: pd.DataFrame, test_months: int = 3) -> dict[str, pd.DataFrame]:
+def stratified_split(
+    df: pd.DataFrame,
+    test_months: int = 3,
+    val_months: int = 3,
+) -> dict[str, pd.DataFrame]:
     """
-    Split data using a hybrid strategy:
-    - Test set: most recent `test_months` months of data (rolling holdout)
-    - Train/Val: remaining data split 90/10 via stratified random sampling
-      on flat_type for representative coverage.
+    Split data using a fully temporal strategy:
+    - Test set:  most recent `test_months` months
+    - Val set:   `val_months` months immediately before the test cutoff
+    - Train set: everything before the val cutoff
+    No random sampling anywhere; all boundaries are date-based.
     """
-    # Build a year-month column for recency-based test holdout
     df["_ym"] = df["year"] * 100 + df["month_num"]
     unique_ym = sorted(df["_ym"].dropna().unique())
 
-    if len(unique_ym) <= test_months:
-        cutoff_ym = unique_ym[0]
-    else:
-        cutoff_ym = unique_ym[-test_months]
+    if len(unique_ym) <= test_months + val_months:
+        raise ValueError(
+            f"Not enough distinct months ({len(unique_ym)}) to carve out "
+            f"test ({test_months}) + val ({val_months}) windows."
+        )
 
-    test = df[df["_ym"] >= cutoff_ym].copy()
-    remaining = df[df["_ym"] < cutoff_ym].copy()
+    test_cutoff_ym = unique_ym[-test_months]
+    val_cutoff_ym  = unique_ym[-(test_months + val_months)]
 
-    # Stratified random split of remaining data into train (90%) and val (10%)
-    train, val = train_test_split(
-        remaining,
-        test_size=0.10,
-        random_state=42,
-        stratify=remaining["flat_type"],
-    )
-    train = train.copy()
-    val = val.copy()
+    test  = df[df["_ym"] >= test_cutoff_ym].copy()
+    val   = df[(df["_ym"] >= val_cutoff_ym) & (df["_ym"] < test_cutoff_ym)].copy()
+    train = df[df["_ym"] < val_cutoff_ym].copy()
 
-    # Clean up temp column
     for split in (train, val, test):
         split.drop(columns=["_ym"], inplace=True)
     df.drop(columns=["_ym"], inplace=True)
 
-    splits = {
-        "train": train,
-        "val": val,
-        "test": test,
-    }
+    def ym_str(ym: int) -> str:
+        return f"{ym // 100}-{ym % 100:02d}"
 
-    total = len(df)
-    test_start = f"{int(cutoff_ym // 100)}-{int(cutoff_ym % 100):02d}"
-    print(f"\nStratified split with {test_months}-month rolling holdout (total {total:,} rows):")
-    print(f"  Train (random 90%) : {len(train):>8,}  ({len(train) / total * 100:.1f}%)")
-    print(f"  Val   (random 10%) : {len(val):>8,}  ({len(val) / total * 100:.1f}%)")
-    print(f"  Test  (>= {test_start}): {len(test):>8,}  ({len(test) / total * 100:.1f}%)")
+    total     = len(df)
+    train_end = unique_ym[-(test_months + val_months) - 1]
+    val_end   = unique_ym[-test_months - 1]
+    test_end  = unique_ym[-1]
 
-    return splits
+    print(f"\nFully temporal split (total {total:,} rows):")
+    print(f"  Train : {len(train):>8,}  ({len(train)/total*100:.1f}%)  {ym_str(unique_ym[0])} – {ym_str(train_end)}")
+    print(f"  Val   : {len(val):>8,}  ({len(val)/total*100:.1f}%)  {ym_str(val_cutoff_ym)} – {ym_str(val_end)}")
+    print(f"  Test  : {len(test):>8,}  ({len(test)/total*100:.1f}%)  {ym_str(test_cutoff_ym)} – {ym_str(test_end)}")
+
+    return {"train": train, "val": val, "test": test}
 
 
 def build_split_metadata(
     splits: dict[str, pd.DataFrame],
-) -> dict[str, int | None]:
+) -> dict[str, int | str | None]:
     train = splits["train"]
-    val = splits["val"]
-    test = splits["test"]
+    val   = splits["val"]
+    test  = splits["test"]
+
+    def ym_range(split: pd.DataFrame) -> tuple[int | None, int | None]:
+        if split.empty:
+            return None, None
+        ym = split["year"] * 100 + split["month_num"]
+        return int(ym.min()), int(ym.max())
+
+    train_ym_min, train_ym_max = ym_range(train)
+    val_ym_min,   val_ym_max   = ym_range(val)
+    test_ym_min,  test_ym_max  = ym_range(test)
+
     return {
         "train_rows": len(train),
         "train_min_year": int(train["year"].min()) if not train.empty else None,
         "train_max_year": int(train["year"].max()) if not train.empty else None,
+        "train_ym_range": [train_ym_min, train_ym_max],
         "val_rows": len(val),
         "val_min_year": int(val["year"].min()) if not val.empty else None,
         "val_max_year": int(val["year"].max()) if not val.empty else None,
+        "val_ym_range": [val_ym_min, val_ym_max],
         "test_rows": len(test),
         "test_min_year": int(test["year"].min()) if not test.empty else None,
         "test_max_year": int(test["year"].max()) if not test.empty else None,
-        "split_strategy": "stratified_random_with_rolling_holdout",
+        "test_ym_range": [test_ym_min, test_ym_max],
+        "split_strategy": "rolling_temporal_holdout",
     }
 
 
@@ -372,25 +383,70 @@ def build_split_metadata(
 def target_encode(
     splits: dict[str, pd.DataFrame],
 ) -> tuple[dict[str, pd.DataFrame], dict]:
-    print("\nTarget encoding town and flat_model ...")
+    """
+    Time-aware target encoding for town and flat_model.
 
-    train = splits["train"]
-    global_mean = train[TARGET_COL].mean()
+    Train rows: each row's encoding is the expanding mean of log_price for
+    that category using only chronologically prior rows (groupby + expanding
+    + shift(1)).  This prevents a 2005 row from absorbing 2020 price levels.
+
+    Val / test rows: encoded with the snapshot map built from the entire
+    training period (mean of all train rows per category), which is what
+    would be known at the train cutoff date.
+
+    NaN handling (first occurrence of a category in train):
+      1. Fall back to the global expanding mean at that point in time.
+      2. If that is also NaN (very first row overall), fall back to the
+         overall training mean.
+    """
+    print("\nTarget encoding town and flat_model (time-aware expanding mean) ...")
+
+    # Sort train chronologically so expanding() operates in time order.
+    train = splits["train"].sort_values(["year", "month_num"]).copy()
+
+    global_mean = float(train[TARGET_COL].mean())
+
+    # Global expanding mean shifted by 1: used as fallback for group-NaNs.
+    global_expanding = train[TARGET_COL].expanding().mean().shift(1)
+
     encoders = {}
 
     for col in ["town", "flat_model"]:
-        means = train.groupby(col)[TARGET_COL].mean()
+        enc_col = f"{col}_enc"
+
+        # Within each category, compute the expanding mean of all prior rows.
+        # sort=False preserves the temporal order established above.
+        group_expanding = (
+            train.groupby(col, sort=False)[TARGET_COL]
+            .transform(lambda x: x.expanding().mean().shift(1))
+        )
+
+        # Fill NaN in order of priority:
+        #   1st occurrence of a category → use global expanding at that point.
+        #   Very first row overall        → fall back to whole-train global mean.
+        train[enc_col] = (
+            group_expanding
+            .fillna(global_expanding)
+            .fillna(global_mean)
+        )
+
+        # Snapshot map for val / test: mean of all training rows per category.
+        # This is the encoding any new row would receive after training ends.
+        final_map = train.groupby(col)[TARGET_COL].mean()
         encoders[col] = {
-            "means": means,
+            "means": final_map,
             "global_mean": global_mean,
         }
 
-        enc_col = f"{col}_enc"
-        for split in splits.values():
-            split[enc_col] = split[col].map(means).fillna(global_mean)
+        for split_name, split in splits.items():
+            if split_name == "train":
+                continue
+            split[enc_col] = split[col].map(final_map).fillna(global_mean)
 
-        print(f"  {col}: {len(means)} categories encoded")
+        print(f"  {col}: {len(final_map)} categories  "
+              f"(train: expanding prior-row mean, val/test: end-of-train snapshot)")
 
+    splits["train"] = train
     return splits, encoders
 
 
@@ -424,7 +480,6 @@ def scale_features(
 def save_artefacts(
     splits: dict[str, pd.DataFrame],
     target_encoders: dict,
-    scaler: StandardScaler,
     split_metadata: dict[str, int | None],
     data_source: str,
 ) -> str:
@@ -441,7 +496,12 @@ def save_artefacts(
             continue
         split = splits[name]
         X = split[FEATURE_COLS]
-        y = split[[TARGET_COL, "resale_price"]]
+        y_cols = [TARGET_COL, "resale_price"]
+        if name == "train" and "year" in split.columns and "month_num" in split.columns:
+            split = split.copy()
+            split["year_month_raw"] = split["year"] * 100 + split["month_num"]
+            y_cols = [TARGET_COL, "resale_price", "year_month_raw"]
+        y = split[y_cols]
 
         X.to_parquet(os.path.join(run_dir, f"X_{name}.parquet"), index=False)
         y.to_parquet(os.path.join(run_dir, f"y_{name}.parquet"), index=False)
@@ -452,9 +512,10 @@ def save_artefacts(
         pickle.dump(target_encoders, f)
     print("  target_encoders.pkl")
 
+    # Save a no-op placeholder for backward compatibility; tree models don't need scaling.
     with open(os.path.join(run_dir, "scaler.pkl"), "wb") as f:
-        pickle.dump(scaler, f)
-    print("  scaler.pkl")
+        pickle.dump(None, f)
+    print("  scaler.pkl (no-op, scaling disabled)")
 
     with open(os.path.join(run_dir, "feature_cols.txt"), "w") as f:
         f.write("\n".join(FEATURE_COLS))
@@ -472,6 +533,7 @@ def save_artefacts(
         "data_source": data_source,
         "target_transform": "log1p_resale_price",
         "outlier_strategy": "diagnostic_iqr_bounds_keep_nonzero_prices",
+        "scaling_enabled": False,
     }
 
     with open(os.path.join(run_dir, "run_manifest.json"), "w") as f:
@@ -532,13 +594,11 @@ def main() -> None:
     split_metadata = build_split_metadata(splits)
     splits["train"] = remove_outliers(splits["train"])
     splits, target_encoders = target_encode(splits)
-    splits, scaler = scale_features(splits)
 
     print_summary(splits["train"])
     run_dir = save_artefacts(
         splits,
         target_encoders,
-        scaler,
         split_metadata,
         data_source,
     )

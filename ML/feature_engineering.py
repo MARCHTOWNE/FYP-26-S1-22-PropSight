@@ -83,6 +83,14 @@ FEATURE_COLS = [
     "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
+    # Rolling comparable features — must be computed before temporal split
+    "town_flattype_median_3m",
+    "town_flattype_median_6m",
+    "town_flattype_psf_3m",
+    "town_median_3m",
+    "town_txn_volume_3m",
+    "price_momentum_3m",
+    "national_median_psf_3m",
 ]
 
 TARGET_COL = "log_price"
@@ -267,11 +275,180 @@ def engineer_features(
 
     print(
         "  Features added: flat_age, month_sin, month_cos, "
-        "is_mature_estate, flat_type_ordinal, dist_hawker_centre, "
-        "hawker_count_1km, dist_high_demand_primary_school, "
-        "high_demand_primary_count_1km, "
+        "is_mature_estate, flat_type_ordinal, "
         "town_yoy_appreciation_lag1, town_5yr_cagr_lag1, log_price"
     )
+
+    df = add_rolling_market_features(df)
+    return df
+
+
+# ---------------------------------------------------------------------------
+# Rolling comparable sale features (computed before temporal split)
+# ---------------------------------------------------------------------------
+
+def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Compute rolling comparable sale features on the FULL dataset before any
+    temporal split.  For each feature:
+      1. Aggregate individual rows to monthly-level per group.
+      2. Apply a rolling window over those monthly buckets.
+      3. Shift by 1 month so each row only sees data up to the previous month.
+      4. Merge back to individual rows by (group keys, year_month).
+
+    This avoids rolling over individual transactions (slow and semantically
+    wrong) and prevents look-ahead leakage.
+    """
+    print("\nComputing rolling market features (pre-split, full dataset) ...")
+
+    df = df.sort_values(["year", "month_num"]).reset_index(drop=True)
+    df["year_month"] = df["year"] * 100 + df["month_num"]
+    df["_psf"] = df["resale_price"] / df["floor_area_sqm"]
+
+    def _fill_nan(s: pd.Series) -> pd.Series:
+        """Fill NaN with expanding mean within the group, then group mean."""
+        filled = s.fillna(s.expanding(min_periods=1).mean())
+        return filled.fillna(s.mean())
+
+    # ---- Features 1 & 2: town_flattype_median_3m / 6m --------------------
+    tf_monthly = (
+        df.groupby(["town", "flat_type", "year_month"])["resale_price"]
+        .median()
+        .reset_index()
+        .rename(columns={"resale_price": "tf_med"})
+        .sort_values(["town", "flat_type", "year_month"])
+    )
+    tf_monthly["town_flattype_median_3m"] = (
+        tf_monthly.groupby(["town", "flat_type"])["tf_med"]
+        .transform(lambda x: x.rolling(3, min_periods=1).median().shift(1))
+    )
+    tf_monthly["town_flattype_median_6m"] = (
+        tf_monthly.groupby(["town", "flat_type"])["tf_med"]
+        .transform(lambda x: x.rolling(6, min_periods=1).median().shift(1))
+    )
+    for col in ["town_flattype_median_3m", "town_flattype_median_6m"]:
+        tf_monthly[col] = (
+            tf_monthly.groupby(["town", "flat_type"])[col].transform(_fill_nan)
+        )
+
+    # ---- Feature 3: town_flattype_psf_3m ---------------------------------
+    tf_psf_monthly = (
+        df.groupby(["town", "flat_type", "year_month"])["_psf"]
+        .median()
+        .reset_index()
+        .rename(columns={"_psf": "tf_psf_med"})
+        .sort_values(["town", "flat_type", "year_month"])
+    )
+    tf_psf_monthly["town_flattype_psf_3m"] = (
+        tf_psf_monthly.groupby(["town", "flat_type"])["tf_psf_med"]
+        .transform(lambda x: x.rolling(3, min_periods=1).median().shift(1))
+    )
+    tf_psf_monthly["town_flattype_psf_3m"] = (
+        tf_psf_monthly.groupby(["town", "flat_type"])["town_flattype_psf_3m"]
+        .transform(_fill_nan)
+    )
+
+    # Merge all three town×flat_type features at once
+    tf_lookup = tf_monthly[
+        ["town", "flat_type", "year_month",
+         "town_flattype_median_3m", "town_flattype_median_6m"]
+    ].merge(
+        tf_psf_monthly[["town", "flat_type", "year_month", "town_flattype_psf_3m"]],
+        on=["town", "flat_type", "year_month"],
+        how="left",
+    )
+    df = df.merge(tf_lookup, on=["town", "flat_type", "year_month"], how="left")
+
+    # ---- Feature 4: town_median_3m ----------------------------------------
+    t_monthly = (
+        df.groupby(["town", "year_month"])["resale_price"]
+        .median()
+        .reset_index()
+        .rename(columns={"resale_price": "t_med"})
+        .sort_values(["town", "year_month"])
+    )
+    t_monthly["town_median_3m"] = (
+        t_monthly.groupby("town")["t_med"]
+        .transform(lambda x: x.rolling(3, min_periods=1).median().shift(1))
+    )
+    t_monthly["town_median_3m"] = (
+        t_monthly.groupby("town")["town_median_3m"].transform(_fill_nan)
+    )
+    df = df.merge(
+        t_monthly[["town", "year_month", "town_median_3m"]],
+        on=["town", "year_month"],
+        how="left",
+    )
+
+    # ---- Feature 5: town_txn_volume_3m ------------------------------------
+    t_vol_monthly = (
+        df.groupby(["town", "year_month"])["resale_price"]
+        .count()
+        .reset_index()
+        .rename(columns={"resale_price": "t_count"})
+        .sort_values(["town", "year_month"])
+    )
+    t_vol_monthly["town_txn_volume_3m"] = (
+        t_vol_monthly.groupby("town")["t_count"]
+        .transform(lambda x: x.rolling(3, min_periods=1).sum().shift(1))
+    )
+    t_vol_monthly["town_txn_volume_3m"] = (
+        t_vol_monthly.groupby("town")["town_txn_volume_3m"].transform(_fill_nan)
+    )
+    df = df.merge(
+        t_vol_monthly[["town", "year_month", "town_txn_volume_3m"]],
+        on=["town", "year_month"],
+        how="left",
+    )
+
+    # ---- Feature 6: price_momentum_3m -------------------------------------
+    df["price_momentum_3m"] = (
+        (df["town_flattype_median_3m"] - df["town_flattype_median_6m"])
+        / df["town_flattype_median_6m"]
+    )
+    df["price_momentum_3m"] = (
+        df["price_momentum_3m"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    )
+
+    # ---- Feature 7: national_median_psf_3m --------------------------------
+    nat_monthly = (
+        df.groupby("year_month")["_psf"]
+        .median()
+        .reset_index()
+        .rename(columns={"_psf": "nat_psf_med"})
+        .sort_values("year_month")
+    )
+    nat_monthly["national_median_psf_3m"] = (
+        nat_monthly["nat_psf_med"].rolling(3, min_periods=1).median().shift(1)
+    )
+    nat_monthly["national_median_psf_3m"] = (
+        nat_monthly["national_median_psf_3m"]
+        .fillna(nat_monthly["national_median_psf_3m"].expanding(min_periods=1).mean())
+        .fillna(nat_monthly["nat_psf_med"].mean())
+    )
+    df = df.merge(
+        nat_monthly[["year_month", "national_median_psf_3m"]],
+        on="year_month",
+        how="left",
+    )
+
+    # Drop temporary columns
+    df = df.drop(columns=["_psf", "year_month"])
+
+    # Null summary
+    new_features = [
+        "town_flattype_median_3m",
+        "town_flattype_median_6m",
+        "town_flattype_psf_3m",
+        "town_median_3m",
+        "town_txn_volume_3m",
+        "price_momentum_3m",
+        "national_median_psf_3m",
+    ]
+    print("  Rolling feature null counts after filling:")
+    for feat in new_features:
+        print(f"    {feat}: {df[feat].isna().sum():,} nulls")
+
     return df
 
 

@@ -136,7 +136,7 @@
                     </div>
 
                     <div class="mt-3 small text-muted">
-                        Based on {{ result.model_label }} &middot; Test MAPE &plusmn;{{ result.mape }}%
+                        Based on {{ result.model_label }} &middot; Test MAPE &plusmn;{{ result.mape if result.mape is not none else "N/A" }}%
                     </div>
                     {% if result.assumptions %}
                     <div class="alert alert-info mt-3 py-2 px-3 small text-start">

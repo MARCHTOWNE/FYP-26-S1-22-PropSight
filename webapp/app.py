@@ -286,6 +286,46 @@ def _coerce_float(value, default=None):
         return default
 
 
+def _prediction_mape(prediction_year=None):
+    performance = ARTEFACTS.get("performance", {}) or {}
+    test_mape = _safe_metric(performance.get("test_mape"))
+    future_mape = _safe_metric(performance.get("future_holdout_mape"))
+
+    try:
+        if (
+            prediction_year is not None
+            and int(prediction_year) > _current_year()
+            and future_mape is not None
+        ):
+            return future_mape
+    except (TypeError, ValueError):
+        pass
+
+    return test_mape if test_mape is not None else future_mape
+
+
+def _enrich_prediction_result(predicted_price, prediction_year=None, result=None):
+    rounded_price = int(round(_coerce_float(predicted_price, 0.0) or 0.0))
+    mape = _prediction_mape(prediction_year)
+
+    if mape is None:
+        price_low = rounded_price
+        price_high = rounded_price
+        mape_display = None
+    else:
+        margin = max(0.0, mape) / 100.0
+        price_low = int(round(max(0.0, rounded_price * (1 - margin))))
+        price_high = int(round(max(0.0, rounded_price * (1 + margin))))
+        mape_display = round(mape, 1)
+
+    enriched = dict(result or {})
+    enriched["predicted_price"] = rounded_price
+    enriched["price_low"] = price_low
+    enriched["price_high"] = price_high
+    enriched["mape"] = mape_display
+    return enriched
+
+
 def _rpc_param_not_available(exc, function_name, param_name):
     details = str(exc)
     return (
@@ -832,6 +872,13 @@ def _normalize_saved_prediction(prediction):
         price_label = f"${float(item.get('predicted_price', 0)):,.0f}"
     except (TypeError, ValueError):
         price_label = "N/A"
+
+    predicted_price = _coerce_float(item.get("predicted_price"))
+    if predicted_price is not None:
+        if _coerce_float(item.get("price_low")) is None or _coerce_float(item.get("price_high")) is None:
+            enriched = _enrich_prediction_result(predicted_price, result=item)
+            item["price_low"] = enriched["price_low"]
+            item["price_high"] = enriched["price_high"]
 
     item["comparison_option_label"] = " · ".join(
         part
@@ -2190,10 +2237,13 @@ def predict_price(town, flat_type, flat_model, floor_area, storey_range,
 
     performance = ARTEFACTS.get("performance", {})
 
-    return {
-        "predicted_price": round(predicted_price),
-        "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
-    }
+    return _enrich_prediction_result(
+        predicted_price,
+        prediction_year=raw_values.get("prediction_year"),
+        result={
+            "model_label": performance.get("label", ARTEFACTS.get("model_label", "Model")),
+        },
+    )
 
 
 def _get_recent_similar_transactions(
@@ -3002,8 +3052,8 @@ def predict():
         # Timeline: predict for 1-5 years ahead
         current_year = datetime.now().year
         timeline = [{
+            **result,
             "year": current_year,
-            "predicted_price": result["predicted_price"],
             "remaining_lease": max(0, 99 - (current_year - form_data["lease_commence"])),
         }]
         for y_offset in range(1, 6):
@@ -3094,6 +3144,9 @@ def save_prediction():
         "street_name": request.form.get("street_name", "").strip(),
         "block": request.form.get("block", "").strip(),
     }
+    enriched_prediction = _enrich_prediction_result(prediction["predicted_price"])
+    prediction["price_low"] = enriched_prediction["price_low"]
+    prediction["price_high"] = enriched_prediction["price_high"]
     try:
         _save_prediction_record(session["user_id"], prediction)
         flash("Prediction saved!", "success")
@@ -3611,8 +3664,11 @@ def api_future_prediction():
     except Exception:
         return jsonify({"error": "Prediction failed"}), 500
 
-    timeline = [{"year": current_year, "predicted_price": result["predicted_price"],
-                 "remaining_lease": max(0, 99 - (current_year - lease_commence))}]
+    timeline = [{
+        **result,
+        "year": current_year,
+        "remaining_lease": max(0, 99 - (current_year - lease_commence)),
+    }]
     for y_offset in range(1, 6):
         future_year = current_year + y_offset
         try:
@@ -3622,7 +3678,7 @@ def api_future_prediction():
                 override_distances=block_distances,
             )
         except Exception:
-            fp = {"predicted_price": 0}
+            fp = _enrich_prediction_result(0, prediction_year=future_year)
         fp["year"] = future_year
         fp["remaining_lease"] = max(0, 99 - (future_year - lease_commence))
         timeline.append(fp)

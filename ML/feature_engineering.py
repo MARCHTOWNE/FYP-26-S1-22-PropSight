@@ -9,6 +9,7 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 from training_data_source import load_training_dataframe
+from fetch_sora import load_sora_monthly
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +59,7 @@ SCALE_COLS = [
     "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1",
     "town_5yr_cagr_lag1",
+    "sora_3m",
 ]
 
 FEATURE_COLS = [
@@ -91,6 +93,7 @@ FEATURE_COLS = [
     "town_txn_volume_3m",
     "price_momentum_3m",
     "national_median_psf_3m",
+    "sora_3m",
 ]
 
 TARGET_COL = "log_price"
@@ -114,6 +117,7 @@ REQUIRED_MODEL_COLS = [
     "hawker_count_1km",
     "dist_high_demand_primary_school",
     "high_demand_primary_count_1km",
+    "sora_3m",
 ]
 
 
@@ -158,6 +162,14 @@ def load_data() -> tuple[pd.DataFrame, str]:
         df[col] = df[col].replace("", pd.NA)
 
     print(f"  Loaded {len(df):,} rows.")
+
+    min_year = 2000
+    before = len(df)
+    df = df[df["year"] >= min_year].copy()
+    dropped = before - len(df)
+    if dropped:
+        print(f"  Year filter (>= {min_year}): dropped {dropped:,} pre-{min_year} rows. Remaining: {len(df):,}")
+
     return df, data_source
 
 
@@ -280,6 +292,18 @@ def engineer_features(
     )
 
     df = add_rolling_market_features(df)
+
+    # ---- SORA integration -----------------------------------------------
+    sora_df = load_sora_monthly()
+    df["_sora_ym"] = df["year"] * 100 + df["month_num"]
+    df = df.merge(sora_df, left_on="_sora_ym", right_on="year_month", how="left")
+    sora_median = df["sora_3m"].dropna().median()
+    if pd.isna(sora_median):
+        sora_median = 0.0
+    df["sora_3m"] = df["sora_3m"].fillna(sora_median)
+    df = df.drop(columns=["_sora_ym", "year_month"], errors="ignore")
+    print(f"  sora_3m null count after fill: {df['sora_3m'].isna().sum():,}")
+
     return df
 
 

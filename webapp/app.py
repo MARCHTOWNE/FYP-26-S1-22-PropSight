@@ -192,6 +192,7 @@ SCALE_COLS = [
     "dist_hawker_centre", "hawker_count_1km",
     "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
+    "sora_3m",
 ]
 
 FEATURE_COLS = [
@@ -203,6 +204,7 @@ FEATURE_COLS = [
     "dist_hawker_centre", "hawker_count_1km",
     "dist_high_demand_primary_school", "high_demand_primary_count_1km",
     "town_yoy_appreciation_lag1", "town_5yr_cagr_lag1",
+    "sora_3m",
 ]
 
 STOREY_RANGES = [str(i) for i in range(1, 52)]
@@ -632,6 +634,36 @@ def _load_artefacts():
 
 
 ARTEFACTS = _load_artefacts()
+
+
+# ---------------------------------------------------------------------------
+# SORA rate — fetched once at startup, used for all predictions
+# ---------------------------------------------------------------------------
+
+def _fetch_current_sora() -> float:
+    """Fetch the most recent 3-month compounded SORA from MAS API."""
+    _MAS_SORA_URL = (
+        "https://eservices.mas.gov.sg/api/action/datastore/search.json"
+        "?resource_id=9a0bf149-308c-4bd2-832d-76c8e6cb47ed&limit=30&sort=end_of_day+desc"
+    )
+    try:
+        req = urllib_request.Request(
+            _MAS_SORA_URL,
+            headers={"User-Agent": "PropSight/1.0 (HDB Resale Price Prediction)"},
+        )
+        with urllib_request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        records = data.get("result", {}).get("records", [])
+        for rec in records:
+            val = rec.get("comp_sora_3m")
+            if val not in (None, "", "-"):
+                return float(val)
+    except Exception:
+        pass
+    return 2.5
+
+
+CURRENT_SORA_3M: float = _fetch_current_sora()
 
 
 def _serving_feature_cols():
@@ -1947,6 +1979,7 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
         "town_txn_volume_3m": rolling.get("town_txn_volume_3m", 0.0),
         "price_momentum_3m": rolling.get("price_momentum_3m", 0.0),
         "national_median_psf_3m": rolling.get("national_median_psf_3m", 0.0),
+        "sora_3m": CURRENT_SORA_3M,
     }
 
     df = pd.DataFrame([raw])

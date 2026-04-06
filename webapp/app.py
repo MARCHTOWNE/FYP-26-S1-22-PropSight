@@ -2,7 +2,7 @@
 app.py — HDB Resale Price Analytics Platform
 =============================================
 Flask web application serving:
-  - Property valuation predictions (XGBoost model)
+  - Property valuation predictions 
   - Interactive transaction heatmaps (Leaflet.js)
   - Market analytics dashboard (Chart.js)
   - Guest / General user views
@@ -318,13 +318,15 @@ def _enrich_prediction_result(predicted_price, prediction_year=None, result=None
         margin = max(0.0, mape) / 100.0
         price_low = int(round(max(0.0, rounded_price * (1 - margin))))
         price_high = int(round(max(0.0, rounded_price * (1 + margin))))
-        mape_display = round(mape, 1)
+        mape_display = round(mape, 2)
 
     enriched = dict(result or {})
     enriched["predicted_price"] = rounded_price
     enriched["price_low"] = price_low
     enriched["price_high"] = price_high
     enriched["mape"] = mape_display
+    performance = (globals().get("ARTEFACTS") or {}).get("performance") or {}
+    enriched.setdefault("model_trained_at", performance.get("model_trained_at"))
     return enriched
 
 
@@ -367,6 +369,20 @@ def _manifest_split_window(manifest, split_name):
     return _year_window_label(start_year, end_year)
 
 
+def _format_model_trained_at(run_at_str):
+    """Return a human-readable SGT datetime string from manifest run_at ISO string."""
+    if not run_at_str:
+        return None
+    try:
+        from datetime import timezone, timedelta
+        import datetime as _dt
+        dt = _dt.datetime.fromisoformat(run_at_str)
+        sgt = dt.astimezone(timezone(timedelta(hours=8)))
+        return sgt.strftime("%-d %b %Y, %-I:%M %p SGT")
+    except Exception:
+        return None
+
+
 def _build_model_performance(metrics, manifest, serving_model_key):
     winner = metrics.get("winner", {}) or {}
     model_results = metrics.get("model_results", {}) or {}
@@ -396,13 +412,13 @@ def _build_model_performance(metrics, manifest, serving_model_key):
         "is_winner": winner.get("winner") == serving_model_key,
         "selection_metric": winner.get("selection_metric"),
         "test_mape": test_mape,
-        "test_mape_display": round(test_mape, 1) if test_mape is not None else None,
+        "test_mape_display": round(test_mape, 2) if test_mape is not None else None,
         "test_rmse": test_rmse,
         "test_rmse_display": f"{round(test_rmse):,}" if test_rmse is not None else None,
         "test_r2": test_r2,
         "test_r2_display": f"{test_r2:.3f}" if test_r2 is not None else None,
         "future_holdout_mape": future_mape,
-        "future_holdout_mape_display": round(future_mape, 1) if future_mape is not None else None,
+        "future_holdout_mape_display": round(future_mape, 2) if future_mape is not None else None,
         "future_holdout_rmse": future_rmse,
         "future_holdout_rmse_display": (
             f"{round(future_rmse):,}" if future_rmse is not None else None
@@ -414,6 +430,7 @@ def _build_model_performance(metrics, manifest, serving_model_key):
         "val_window": _manifest_split_window(manifest, "val"),
         "test_window": _manifest_split_window(manifest, "test"),
         "future_holdout_window": _manifest_split_window(manifest, "future_holdout"),
+        "model_trained_at": _format_model_trained_at(manifest.get("run_at")),
     }
 
 

@@ -170,6 +170,72 @@
             grid-template-columns: 1fr;
         }
     }
+
+    /* AI FAQ Cards */
+    .ai-faq-list { display: flex; flex-direction: column; gap: 0.6rem; }
+    .ai-faq-item {
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 12px;
+        background: #fff;
+        cursor: pointer;
+        transition: box-shadow 0.2s, border-color 0.2s;
+        overflow: hidden;
+    }
+    .ai-faq-item:hover { border-color: #2563eb; box-shadow: 0 4px 12px rgba(37, 99, 235, 0.1); }
+    .ai-faq-item.expanded { border-color: rgba(37, 99, 235, 0.3); }
+    .ai-faq-item.locked { opacity: 0.55; cursor: default; }
+    .ai-faq-item.locked:hover { border-color: rgba(148, 163, 184, 0.2); box-shadow: none; }
+    .ai-faq-question {
+        padding: 0.75rem 1rem;
+        font-weight: 600;
+        font-size: 0.85rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    .ai-faq-question .chevron { transition: transform 0.2s; margin-left: auto; flex-shrink: 0; }
+    .ai-faq-item.expanded .ai-faq-question .chevron { transform: rotate(180deg); }
+    .ai-faq-answer {
+        padding: 0 1rem 0.75rem;
+        font-size: 0.84rem;
+        color: #334155;
+        display: none;
+        line-height: 1.55;
+    }
+    .ai-faq-item.expanded .ai-faq-answer { display: block; }
+    .ai-faq-shimmer {
+        height: 44px;
+        border-radius: 10px;
+        background: linear-gradient(90deg, #f1f5f9 25%, #e2e8f0 50%, #f1f5f9 75%);
+        background-size: 200% 100%;
+        animation: shimmer 1.5s infinite;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    .ai-faq-counter {
+        font-size: 0.72rem;
+        color: #64748b;
+        text-align: center;
+        padding: 0.4rem 0 0;
+    }
+    .ai-faq-upgrade {
+        text-align: center;
+        padding: 1rem;
+        background: rgba(37, 99, 235, 0.04);
+        border-radius: 10px;
+        border: 1px dashed rgba(37, 99, 235, 0.3);
+        font-size: 0.84rem;
+    }
+    .ai-faq-upgrade a { color: #2563eb; font-weight: 600; text-decoration: none; }
+    .ai-faq-upgrade a:hover { text-decoration: underline; }
+    .ai-faq-spinner {
+        display: inline-block;
+        width: 14px; height: 14px;
+        border: 2px solid #e2e8f0;
+        border-top-color: #2563eb;
+        border-radius: 50%;
+        animation: spin 0.6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
 </style>
 {% endblock %}
 
@@ -344,10 +410,10 @@
                 </div>
                 <div class="card panel-card h-100">
                     <div class="card-body">
-                        <div class="section-kicker">What Stands Out</div>
-                        <h6 class="card-title mb-2"><i class="bi bi-lightbulb me-1 text-primary"></i>Dynamic Insights</h6>
-                        <div id="insightBox" class="insight-box">
-                            <div class="text-muted">Apply filters to generate insights from historical transactions and broader benchmarks.</div>
+                        <div class="section-kicker">AI Insights</div>
+                        <h6 class="card-title mb-2"><i class="bi bi-stars me-1 text-primary"></i>Price Trend</h6>
+                        <div id="aiFaqTrend" class="ai-faq-list">
+                            <div class="text-muted" style="font-size:0.84rem;">Apply filters to generate AI insights.</div>
                         </div>
                     </div>
                 </div>
@@ -356,7 +422,18 @@
     </div>
 
     <div class="row g-4 mb-4">
-        <div class="col-lg-6">
+        <div class="col-lg-4 order-lg-1 order-2">
+            <div class="card panel-card h-100">
+                <div class="card-body">
+                    <div class="section-kicker">AI Insights</div>
+                    <h6 class="card-title mb-2"><i class="bi bi-stars me-1 text-primary"></i>Volume &amp; Mix</h6>
+                    <div id="aiFaqVolume" class="ai-faq-list">
+                        <div class="text-muted" style="font-size:0.84rem;">Apply filters to generate AI insights.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4 order-lg-2 order-1">
             <div class="card panel-card h-100">
                 <div class="card-body">
                     <div class="section-kicker">Market Activity</div>
@@ -366,7 +443,7 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-6">
+        <div class="col-lg-4 order-lg-3 order-3">
             <div class="card panel-card h-100">
                 <div class="card-body">
                     <div class="section-kicker">Market Mix</div>
@@ -379,7 +456,7 @@
     </div>
 
     <div class="row g-4 mb-4">
-        <div class="col-lg-7">
+        <div class="col-lg-5">
             <div class="card panel-card h-100">
                 <div class="card-body">
                     <div class="section-kicker">Benchmarking</div>
@@ -389,13 +466,24 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-5">
+        <div class="col-lg-4">
             <div class="card panel-card h-100">
                 <div class="card-body">
                     <div class="section-kicker">Value Density</div>
                     <h6 id="psfTitle" class="card-title mb-1"><i class="bi bi-cash-stack me-1 text-primary"></i>Price per sqm</h6>
                     <p id="psfSubtitle" class="chart-note">Average price per square metre for the current benchmark set.</p>
                     <div class="chart-container"><canvas id="psfChart"></canvas></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3">
+            <div class="card panel-card h-100">
+                <div class="card-body">
+                    <div class="section-kicker">AI Insights</div>
+                    <h6 class="card-title mb-2"><i class="bi bi-stars me-1 text-primary"></i>Benchmark</h6>
+                    <div id="aiFaqBenchmark" class="ai-faq-list">
+                        <div class="text-muted" style="font-size:0.84rem;">Apply filters to generate AI insights.</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -445,6 +533,16 @@ let volumeChart;
 let psfChart;
 let futurePredChart;
 let latestTrendData = [];
+
+/* AI FAQ state */
+var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
+let aiFaqAnswerCache = {};
+let aiAnswersRemaining = IS_PREMIUM ? Infinity : 3;
+let aiFaqReqToken = 0;
+let latestVolumeData = [];
+let latestFlatTypeData = [];
+let latestBenchmarkData = [];
+let latestPsfData = [];
 
 const pageParams = new URLSearchParams(window.location.search);
 const predictionSeed = {
@@ -758,6 +856,7 @@ function setKpis(data) {
 
 function buildInsights(data, comparisonMeta) {
     const box = document.getElementById('insightBox');
+    if (!box) return;
     if (!data.length) {
         box.innerHTML = '<div class="text-muted">No data in the selected year range.</div>';
         return;
@@ -862,6 +961,7 @@ async function loadFlatType() {
     setLoading('flatTypeChart', true);
     try {
         const data = await fetchJSON('/api/flat_type_breakdown?' + params.toString());
+        latestFlatTypeData = data;
         const ctx = document.getElementById('flatTypeChart').getContext('2d');
         if (flatTypeChart) flatTypeChart.destroy();
 
@@ -1012,6 +1112,7 @@ async function loadLocationComparison() {
             }
         });
 
+        latestBenchmarkData = chartRows;
         return {
             rows: chartRows,
             labelField: labelField,
@@ -1085,6 +1186,7 @@ async function loadPSF() {
             subtitleEl.textContent = 'Average price per square metre for the current benchmark set.';
         }
 
+        latestPsfData = rows;
         if (psfChart) psfChart.destroy();
         psfChart = new Chart(ctx, {
             type: 'bar',
@@ -1262,6 +1364,7 @@ async function refreshDashboard() {
     await loadPSF();
     buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
+    loadAiFaqQuestions();
 }
 
 document.getElementById('refreshDashboardBtn').addEventListener('click', refreshDashboard);
@@ -1514,5 +1617,176 @@ document.getElementById('filterStreet').addEventListener('change', async functio
     loadTrendVsPrediction();
     loadPredictionContext();
 })();
+
+/* ===== AI FAQ Functions ===== */
+
+function renderFaqShimmer(containerId, count) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    var html = '';
+    for (var i = 0; i < count; i++) {
+        html += '<div class="ai-faq-shimmer mb-2"></div>';
+    }
+    el.innerHTML = html;
+}
+
+function renderFaqGroup(containerId, questions) {
+    var el = document.getElementById(containerId);
+    if (!el) return;
+    if (!questions || !questions.length) {
+        el.innerHTML = '<div class="text-muted" style="font-size:0.84rem;">No AI insights for this section.</div>';
+        return;
+    }
+    var html = '';
+    questions.forEach(function(q) {
+        html += '<div class="ai-faq-item" data-question="' + escapeHtml(q) + '">' +
+            '<div class="ai-faq-question">' +
+                '<i class="bi bi-patch-question text-primary"></i>' +
+                '<span>' + escapeHtml(q) + '</span>' +
+                '<i class="bi bi-chevron-down chevron"></i>' +
+            '</div>' +
+            '<div class="ai-faq-answer"></div>' +
+        '</div>';
+    });
+    if (!IS_PREMIUM) {
+        html += '<div class="ai-faq-counter" id="aiFaqCounter">' + aiAnswersRemaining + ' of ' + {{ ai_daily_limit }} + ' questions remaining today</div>';
+    }
+    el.innerHTML = html;
+}
+
+function collectChartDataSummary() {
+    return {
+        trend: latestTrendData.map(function(d) {
+            return { year: d.year, avg_price: d.avg_price, txn_count: d.txn_count };
+        }),
+        volume: latestTrendData.map(function(d) {
+            return { year: d.year, txn_count: d.txn_count };
+        }),
+        flat_type: latestFlatTypeData.map(function(d) {
+            return { flat_type: d.flat_type, txn_count: d.txn_count, avg_price: d.avg_price };
+        }),
+        benchmark: latestBenchmarkData.slice(0, 10).map(function(d) {
+            return { label: d.town || d.street_name, avg_price: d.avg_price };
+        }),
+        psf: latestPsfData.slice(0, 10).map(function(d) {
+            return { label: d.town || d.street_name, psf: d.psf };
+        }),
+    };
+}
+
+async function loadAiFaqQuestions() {
+    var token = ++aiFaqReqToken;
+    renderFaqShimmer('aiFaqTrend', 2);
+    renderFaqShimmer('aiFaqVolume', 2);
+    renderFaqShimmer('aiFaqBenchmark', 2);
+
+    var filters = getFilters();
+    var chartData = collectChartDataSummary();
+
+    try {
+        var resp = await fetch('/api/ai_questions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filters: filters, chart_data: chartData }),
+        });
+        if (token !== aiFaqReqToken) return;
+        if (!resp.ok) throw new Error('AI unavailable');
+        var result = await resp.json();
+        var groups = result.groups || {};
+        aiAnswersRemaining = result.remaining >= 0 ? result.remaining : Infinity;
+
+        renderFaqGroup('aiFaqTrend', groups.trend || []);
+        renderFaqGroup('aiFaqVolume', (groups.volume || []).concat(groups.flat_type || []));
+        renderFaqGroup('aiFaqBenchmark', (groups.benchmark || []).concat(groups.psf || []));
+    } catch (e) {
+        if (token !== aiFaqReqToken) return;
+        ['aiFaqTrend', 'aiFaqVolume', 'aiFaqBenchmark'].forEach(function(id) {
+            var el = document.getElementById(id);
+            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.84rem;">AI insights unavailable.</div>';
+        });
+    }
+}
+
+function updateAllCounters() {
+    document.querySelectorAll('.ai-faq-counter').forEach(function(el) {
+        el.textContent = aiAnswersRemaining + ' of {{ ai_daily_limit }} questions remaining today';
+    });
+}
+
+async function expandFaqItem(item) {
+    if (item.classList.contains('locked')) return;
+
+    /* Toggle collapse if already expanded */
+    if (item.classList.contains('expanded')) {
+        item.classList.remove('expanded');
+        return;
+    }
+
+    var answerEl = item.querySelector('.ai-faq-answer');
+    var question = item.getAttribute('data-question');
+
+    /* Check cache */
+    if (aiFaqAnswerCache[question]) {
+        answerEl.innerHTML = aiFaqAnswerCache[question];
+        item.classList.add('expanded');
+        return;
+    }
+
+    /* Check limit (client-side optimistic) */
+    if (!IS_PREMIUM && aiAnswersRemaining <= 0) {
+        answerEl.innerHTML = '<div class="ai-faq-upgrade">You\'ve used all free questions today.<br><a href="/pricing">Upgrade to Premium</a> for unlimited access.</div>';
+        item.classList.add('expanded');
+        return;
+    }
+
+    /* Fetch answer */
+    answerEl.innerHTML = '<span class="ai-faq-spinner"></span> Generating answer...';
+    item.classList.add('expanded');
+
+    try {
+        var resp = await fetch('/api/ai_answer', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                question: question,
+                context: {
+                    filters: getFilters(),
+                    chart_data: collectChartDataSummary(),
+                },
+            }),
+        });
+
+        if (resp.status === 429) {
+            aiAnswersRemaining = 0;
+            answerEl.innerHTML = '<div class="ai-faq-upgrade">You\'ve used all free questions today.<br><a href="/pricing">Upgrade to Premium</a> for unlimited access.</div>';
+            /* Lock remaining items */
+            document.querySelectorAll('.ai-faq-item:not(.expanded)').forEach(function(el) { el.classList.add('locked'); });
+            updateAllCounters();
+            return;
+        }
+
+        if (!resp.ok) throw new Error('AI error');
+        var result = await resp.json();
+        var formatted = escapeHtml(result.answer).replace(/\n/g, '<br>');
+        aiFaqAnswerCache[question] = formatted;
+        answerEl.innerHTML = formatted;
+
+        if (result.remaining >= 0) {
+            aiAnswersRemaining = result.remaining;
+            updateAllCounters();
+        }
+        if (!IS_PREMIUM && aiAnswersRemaining <= 0) {
+            document.querySelectorAll('.ai-faq-item:not(.expanded)').forEach(function(el) { el.classList.add('locked'); });
+        }
+    } catch (e) {
+        answerEl.innerHTML = '<span class="text-muted">Could not generate answer. Try again later.</span>';
+    }
+}
+
+/* Event delegation for FAQ clicks */
+document.addEventListener('click', function(e) {
+    var item = e.target.closest('.ai-faq-item');
+    if (item) expandFaqItem(item);
+});
 </script>
 {% endblock %}

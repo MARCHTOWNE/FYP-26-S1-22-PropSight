@@ -44,7 +44,7 @@ def _ttl_cache(maxsize=128, ttl=3600):
             now = _time_mod.monotonic()
             if args in _cache and (now - _timestamps[args]) < ttl:
                 return _cache[args]
-            # Evict oldest if at capacity
+            #evict the oldest if at capacity
             if len(_cache) >= maxsize and args not in _cache:
                 oldest_key = min(_timestamps, key=_timestamps.get)
                 _cache.pop(oldest_key, None)
@@ -61,7 +61,6 @@ def _ttl_cache(maxsize=128, ttl=3600):
 
 # ---------------------------------------------------------------------------
 # App setup
-# ---------------------------------------------------------------------------
 
 app = Flask(__name__)
 _secret = os.environ.get("SECRET_KEY")
@@ -121,6 +120,11 @@ ASSETS_DIR = _first_existing_path([
 ])
 
 
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+GENERAL_DAILY_AI_ANSWER_LIMIT = 3
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
 SUPABASE_KEY = (
     os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
@@ -140,7 +144,6 @@ if not SUPABASE_ENABLED:
 
 # ---------------------------------------------------------------------------
 # Constants (mirrored from feature_engineering.py)
-# ---------------------------------------------------------------------------
 
 MATURE_ESTATES = {
     "ANG MO KIO", "BEDOK", "BISHAN", "BUKIT MERAH", "BUKIT TIMAH",
@@ -819,6 +822,48 @@ def _supabase_auth(path, method="POST", payload=None, access_token=None):
     except error.HTTPError as exc:
         details = exc.read().decode()
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+
+
+def _call_gemini(prompt, max_tokens=1024):
+    """call Google Gemini API and return text response, or None on error."""
+    if not GEMINI_API_KEY:
+        return None
+    url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
+    body = json.dumps({
+        "contents": [{"parts": [{"text": prompt}]}],
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},
+    }).encode("utf-8")
+    req = urllib_request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urllib_request.urlopen(req, timeout=15) as resp:
+            result = json.loads(resp.read().decode("utf-8"))
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+    except (error.HTTPError, error.URLError, SocketTimeout, KeyError, IndexError):
+        return None
+
+
+def _get_daily_ai_answer_count(user_id):
+    """count AI answer expansions for today."""
+    cutoff = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat().replace("+00:00", "Z")
+    rows = _supabase_request(
+        "feature_view_log",
+        filters={
+            "user_id": f"eq.{user_id}",
+            "feature": "eq.ai_answer",
+            "created_at": f"gte.{cutoff}",
+        },
+    ) or []
+    return len(rows)
+
+
+def _check_ai_answer_limit():
+    """returns (allowed, used, limit). Premium always allowed."""
+    tier = session.get("subscription_tier", "general")
+    if tier == "premium":
+        return True, 0, 0
+    user_id = _session_user_id()
+    used = _get_daily_ai_answer_count(user_id)
+    return used < GENERAL_DAILY_AI_ANSWER_LIMIT, used, GENERAL_DAILY_AI_ANSWER_LIMIT
 
 
 def _session_user_id():
@@ -2841,84 +2886,10 @@ def _get_popular_predictions(limit=3):
         return []
 
 
-def _format_landing_last_updated():
-    """Human-readable training / artefact month from run manifest or metrics file mtime."""
-    manifest = ARTEFACTS.get("manifest") or {}
-    run_at = manifest.get("run_at")
-    if run_at:
-        try:
-            s = str(run_at).replace("Z", "+00:00")
-            dt = datetime.fromisoformat(s)
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            dt = dt.astimezone(timezone.utc)
-            return dt.strftime("%B %Y")
-        except (ValueError, TypeError):
-            pass
-    run_dir = ARTEFACTS.get("run_dir")
-    if run_dir:
-        try:
-            path = os.path.join(run_dir, "metrics.json")
-            ts = os.path.getmtime(path)
-            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%B %Y")
-        except OSError:
-            pass
-    return None
-
-
-def _get_landing_stats():
-    """Live figures for the landing hero stats (Supabase counts + loaded model artefacts)."""
-    total_txns = None
-    try:
-        total_txns = _supabase_count("transactions")
-    except Exception:
-        manifest = ARTEFACTS.get("manifest") or {}
-        tr = manifest.get("train_rows")
-        vr = manifest.get("val_rows")
-        te = manifest.get("test_rows")
-        if tr is not None and vr is not None and te is not None:
-            try:
-                total_txns = int(tr) + int(vr) + int(te)
-            except (TypeError, ValueError):
-                total_txns = None
-
-    performance = ARTEFACTS.get("performance", {}) or {}
-    mape_val = performance.get("test_mape_display")
-    if mape_val is None:
-        tm = performance.get("test_mape")
-        if tm is not None:
-            try:
-                mape_val = round(float(tm), 2)
-            except (TypeError, ValueError):
-                mape_val = None
-
-    town_count = len(TOWNS) if TOWNS else None
-    if not town_count:
-        try:
-            rows = _get_district_summary_data()
-            towns = {r.get("town") for r in rows if r.get("town")}
-            town_count = len(towns) if towns else None
-        except Exception:
-            town_count = None
-    if not town_count:
-        dists = _get_town_avg_distances()
-        if dists:
-            town_count = len(dists)
-
-    return {
-        "total_txns": total_txns,
-        "mape": float(mape_val) if mape_val is not None else None,
-        "town_count": town_count,
-        "model_label": ARTEFACTS.get("model_label") or "Model",
-        "last_updated": _format_landing_last_updated(),
-        "data_sources": "Data.gov.sg & OneMap",
-    }
-
-
 @app.route("/")
 def landing():
     """Public marketing landing page."""
-    return render_template("landing.html", landing_stats=_get_landing_stats())
+    return render_template("landing.html")
 
 
 @app.route("/home")
@@ -3368,7 +3339,9 @@ def analytics():
         flash(f"You've used all {limit} free Analytics views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
     _log_feature_view_once(session["user_id"], "analytics")
-    return render_template("analytics.html", towns=TOWNS)
+    is_premium = session.get("subscription_tier", "general") == "premium"
+    return render_template("analytics.html", towns=TOWNS, is_premium=is_premium,
+                           ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT)
 
 
 # ---------------------------------------------------------------------------
@@ -3646,12 +3619,6 @@ def api_public_recent_ticker():
         return jsonify([])
 
 
-@app.route("/api/public/landing-stats")
-def api_public_landing_stats():
-    """Landing page counters and model metadata (JSON, no auth)."""
-    return jsonify(_get_landing_stats())
-
-
 # ---------------------------------------------------------------------------
 # API endpoints: Authenticated helpers
 # ---------------------------------------------------------------------------
@@ -3845,6 +3812,145 @@ def api_future_prediction():
             "assumptions": assumptions,
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# AI Insights (Gemini-powered FAQ)
+# ---------------------------------------------------------------------------
+
+_AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
+The user is viewing analytics for: {filter_desc}
+
+Chart data summary:
+- Price Trend: {trend_summary}
+- Transaction Volume: {volume_summary}
+- Flat Type Mix: {flat_type_summary}
+- Benchmark Comparison: {benchmark_summary}
+- Price per sqm: {psf_summary}
+
+Generate 3-6 insightful questions a home buyer or investor would ask about this data.
+Group the questions by chart topic. Each group should have 1-2 questions.
+Questions must be SPECIFIC to the numbers and patterns shown — not generic.
+
+Return ONLY valid JSON in this exact format, with no other text:
+{{"groups": {{"trend": ["question1", ...], "volume": ["question1", ...], "benchmark": ["question1", ...]}}}}
+
+Use only these group keys: trend, volume, flat_type, benchmark, psf. Omit a group if no interesting question exists for it."""
+
+_AI_ANSWER_PROMPT = """You are a Singapore HDB (public housing) market analyst.
+The user is viewing analytics for: {filter_desc}
+
+Relevant data:
+{context_data}
+
+Answer this question concisely in 2-3 sentences, using specific numbers from the data:
+{question}"""
+
+
+@app.route("/api/ai_questions", methods=["POST"])
+@api_login_required
+def api_ai_questions():
+    """Generate AI-powered contextual questions grouped by chart topic."""
+    if not GEMINI_API_KEY:
+        return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0})
+
+    body = request.get_json(silent=True) or {}
+    filters = body.get("filters", {})
+    chart_data = body.get("chart_data", {})
+
+    town = filters.get("town") or "All towns"
+    flat_type = filters.get("flat_type") or "All flat types"
+    street = filters.get("street_name", "")
+    block = filters.get("block", "")
+    filter_desc = town
+    if street:
+        filter_desc += f" > {street}"
+    if block:
+        filter_desc += f" > Blk {block}"
+    filter_desc += f", {flat_type}"
+
+    prompt = _AI_QUESTIONS_PROMPT.format(
+        filter_desc=filter_desc,
+        trend_summary=json.dumps(chart_data.get("trend", []), default=str)[:500],
+        volume_summary=json.dumps(chart_data.get("volume", []), default=str)[:300],
+        flat_type_summary=json.dumps(chart_data.get("flat_type", []), default=str)[:300],
+        benchmark_summary=json.dumps(chart_data.get("benchmark", []), default=str)[:500],
+        psf_summary=json.dumps(chart_data.get("psf", []), default=str)[:300],
+    )
+
+    text = _call_gemini(prompt)
+    if not text:
+        return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0})
+
+    #parse JSON: strip markdown fences if Gemini wraps the output
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    try:
+        groups = json.loads(cleaned).get("groups", {})
+    except (json.JSONDecodeError, AttributeError):
+        groups = {}
+
+    tier = session.get("subscription_tier", "general")
+    if tier == "premium":
+        remaining = -1  # unlimited
+    else:
+        used = _get_daily_ai_answer_count(_session_user_id())
+        remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used)
+
+    return jsonify({"groups": groups, "tier": tier, "remaining": remaining})
+
+
+@app.route("/api/ai_answer", methods=["POST"])
+@api_login_required
+def api_ai_answer():
+    """Generate an AI answer for a specific question. Enforces daily limit for general users."""
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "AI not configured"}), 503
+
+    allowed, used, limit = _check_ai_answer_limit()
+    if not allowed:
+        return jsonify({"error": "limit_reached", "used": used, "limit": limit}), 429
+
+    body = request.get_json(silent=True) or {}
+    question = body.get("question", "").strip()
+    context = body.get("context", {})
+    if not question:
+        return jsonify({"error": "No question provided"}), 400
+
+    filters = context.get("filters", {})
+    town = filters.get("town") or "All towns"
+    flat_type = filters.get("flat_type") or "All flat types"
+    street = filters.get("street_name", "")
+    block = filters.get("block", "")
+    filter_desc = town
+    if street:
+        filter_desc += f" > {street}"
+    if block:
+        filter_desc += f" > Blk {block}"
+    filter_desc += f", {flat_type}"
+
+    context_data = json.dumps(context.get("chart_data", {}), default=str)[:1500]
+
+    prompt = _AI_ANSWER_PROMPT.format(
+        filter_desc=filter_desc,
+        context_data=context_data,
+        question=question,
+    )
+
+    text = _call_gemini(prompt, max_tokens=512)
+    if not text:
+        return jsonify({"error": "AI temporarily unavailable"}), 503
+
+    #log usage for general users
+    tier = session.get("subscription_tier", "general")
+    if tier != "premium":
+        _log_feature_view(_session_user_id(), "ai_answer")
+        remaining = max(0, GENERAL_DAILY_AI_ANSWER_LIMIT - used - 1)
+    else:
+        remaining = -1
+
+    return jsonify({"answer": text.strip(), "remaining": remaining})
 
 
 # ---------------------------------------------------------------------------

@@ -2889,7 +2889,7 @@ def _get_popular_predictions(limit=3):
 @app.route("/")
 def landing():
     """Public marketing landing page."""
-    return render_template("landing.html")
+    return render_template("landing.html", landing_stats=_build_landing_stats())
 
 
 @app.route("/home")
@@ -3583,6 +3583,39 @@ def api_monthly_volume():
 # ---------------------------------------------------------------------------
 # API endpoints: Public (no auth required)
 # ---------------------------------------------------------------------------
+
+def _build_landing_stats():
+    """Stable stats payload used by landing template and public API."""
+    try:
+        total_txns = _supabase_count("transactions")
+    except Exception:
+        total_txns = None
+
+    try:
+        town_count = len(_get_district_summary_data())
+    except Exception:
+        town_count = len(TOWNS)
+
+    performance = ARTEFACTS.get("performance", {})
+    mape = performance.get("test_mape_display")
+    run_dir = ARTEFACTS.get("run_dir")
+    last_updated = os.path.basename(run_dir) if run_dir else None
+
+    return {
+        "total_txns": total_txns,
+        "mape": mape,
+        "town_count": town_count,
+        "model_label": ARTEFACTS.get("model_label", "Model"),
+        "last_updated": last_updated,
+        "data_sources": "HDB resale + Supabase",
+    }
+
+
+@app.route("/api/public/landing-stats")
+def api_public_landing_stats():
+    """Public KPI payload for landing hero counters."""
+    return jsonify(_build_landing_stats())
+
 
 @app.route("/api/public/location_summary")
 def api_public_location_summary():

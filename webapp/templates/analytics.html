@@ -539,6 +539,8 @@ var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
 let aiFaqAnswerCache = {};
 let aiAnswersRemaining = IS_PREMIUM ? Infinity : 3;
 let aiFaqReqToken = 0;
+let aiFaqQuestionsCache = {};
+let aiFaqDebounceTimer = null;
 let latestVolumeData = [];
 let latestFlatTypeData = [];
 let latestBenchmarkData = [];
@@ -1364,7 +1366,7 @@ async function refreshDashboard() {
     await loadPSF();
     buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
-    loadAiFaqQuestions();
+    debouncedLoadAiFaq();
 }
 
 document.getElementById('refreshDashboardBtn').addEventListener('click', refreshDashboard);
@@ -1674,8 +1676,27 @@ function collectChartDataSummary() {
     };
 }
 
+function getAiFaqCacheKey() {
+    var f = getFilters();
+    return [f.town || '', f.flat_type || '', f.street_name || '', f.block || ''].join('|');
+}
+
+function renderAiFaqFromGroups(groups) {
+    renderFaqGroup('aiFaqTrend', groups.trend || []);
+    renderFaqGroup('aiFaqVolume', (groups.volume || []).concat(groups.flat_type || []));
+    renderFaqGroup('aiFaqBenchmark', (groups.benchmark || []).concat(groups.psf || []));
+}
+
 async function loadAiFaqQuestions() {
     var token = ++aiFaqReqToken;
+    var cacheKey = getAiFaqCacheKey();
+
+    /* Return cached results if available */
+    if (aiFaqQuestionsCache[cacheKey]) {
+        renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]);
+        return;
+    }
+
     renderFaqShimmer('aiFaqTrend', 2);
     renderFaqShimmer('aiFaqVolume', 2);
     renderFaqShimmer('aiFaqBenchmark', 2);
@@ -1695,9 +1716,12 @@ async function loadAiFaqQuestions() {
         var groups = result.groups || {};
         aiAnswersRemaining = result.remaining >= 0 ? result.remaining : Infinity;
 
-        renderFaqGroup('aiFaqTrend', groups.trend || []);
-        renderFaqGroup('aiFaqVolume', (groups.volume || []).concat(groups.flat_type || []));
-        renderFaqGroup('aiFaqBenchmark', (groups.benchmark || []).concat(groups.psf || []));
+        /* Cache non-empty results */
+        if (Object.keys(groups).length > 0) {
+            aiFaqQuestionsCache[cacheKey] = groups;
+        }
+
+        renderAiFaqFromGroups(groups);
     } catch (e) {
         if (token !== aiFaqReqToken) return;
         ['aiFaqTrend', 'aiFaqVolume', 'aiFaqBenchmark'].forEach(function(id) {
@@ -1705,6 +1729,19 @@ async function loadAiFaqQuestions() {
             if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.84rem;">AI insights unavailable.</div>';
         });
     }
+}
+
+function debouncedLoadAiFaq() {
+    clearTimeout(aiFaqDebounceTimer);
+    var cacheKey = getAiFaqCacheKey();
+    if (aiFaqQuestionsCache[cacheKey]) {
+        renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]);
+        return;
+    }
+    renderFaqShimmer('aiFaqTrend', 2);
+    renderFaqShimmer('aiFaqVolume', 2);
+    renderFaqShimmer('aiFaqBenchmark', 2);
+    aiFaqDebounceTimer = setTimeout(loadAiFaqQuestions, 2000);
 }
 
 function updateAllCounters() {

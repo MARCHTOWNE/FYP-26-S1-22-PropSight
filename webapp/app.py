@@ -3591,10 +3591,22 @@ def _build_landing_stats():
     except Exception:
         total_txns = None
 
+    town_count = 0
     try:
-        town_count = len(_get_district_summary_data())
+        rows = _get_district_summary_data() or []
+        town_count = len({
+            (row or {}).get("town")
+            for row in rows
+            if (row or {}).get("town")
+        })
     except Exception:
-        town_count = len(TOWNS)
+        town_count = 0
+
+    if town_count <= 0:
+        town_count = len(TOWNS) if TOWNS else len(TOWN_DISTANCES)
+    if town_count <= 0:
+        # Last-resort fallback so the landing KPI does not regress to 0.
+        town_count = 26
 
     performance = ARTEFACTS.get("performance", {})
     mape = performance.get("test_mape_display")

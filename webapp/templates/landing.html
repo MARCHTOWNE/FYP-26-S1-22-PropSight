@@ -1648,23 +1648,40 @@
             <div class="trust-glass-container flex-column">
                 <div class="d-flex justify-content-around flex-wrap w-100 mb-2">
                     <div class="trust-stat">
-                        <div class="stat-num counter" data-target="150" data-suffix="K+">0</div>
+                        {% if landing_stats.total_txns is not none %}
+                        <div class="stat-num counter" id="landing-stat-txns"
+                            data-target="{{ landing_stats.total_txns }}" data-suffix="+">0</div>
+                        {% else %}
+                        <div class="stat-num" id="landing-stat-txns">—</div>
+                        {% endif %}
                         <div class="stat-label">Transactions Analysed</div>
                     </div>
                     <div class="trust-stat">
-                        <div class="stat-num text-success counter" data-target="6.49" data-suffix="%">0</div>
+                        {% if landing_stats.mape is not none %}
+                        <div class="stat-num text-success counter" id="landing-stat-mape"
+                            data-target="{{ landing_stats.mape }}" data-suffix="%">0</div>
+                        {% else %}
+                        <div class="stat-num text-success" id="landing-stat-mape">N/A</div>
+                        {% endif %}
                         <div class="stat-label">Prediction Error (MAPE)</div>
                     </div>
                     <div class="trust-stat">
-                        <div class="stat-num counter" data-target="26">0</div>
+                        {% if landing_stats.town_count is not none %}
+                        <div class="stat-num counter" id="landing-stat-towns"
+                            data-target="{{ landing_stats.town_count }}">0</div>
+                        {% else %}
+                        <div class="stat-num" id="landing-stat-towns">—</div>
+                        {% endif %}
                         <div class="stat-label">HDB Towns Mapped</div>
                     </div>
                 </div>
 
                 <div class="model-metadata reveal stagger-1">
-                    <span><i class="bi bi-cpu-fill"></i> Model: PropSight-v2.4</span>
-                    <span><i class="bi bi-calendar-check-fill"></i> Last Updated: March 2026</span>
-                    <span><i class="bi bi-database-fill"></i> API: Data.gov.sg & OneMap</span>
+                    <span id="landing-meta-model"><i class="bi bi-cpu-fill"></i> Model: PropSight ·
+                        {{ landing_stats.model_label }}</span>
+                    <span id="landing-meta-updated"><i class="bi bi-calendar-check-fill"></i> Last Updated:
+                        {% if landing_stats.last_updated %}{{ landing_stats.last_updated }}{% else %}—{% endif %}</span>
+                    <span><i class="bi bi-database-fill"></i> API: {{ landing_stats.data_sources }}</span>
                 </div>
             </div>
         </div>
@@ -2565,18 +2582,65 @@
                     const duration = 2000;
                     const increment = target / (duration / 16);
                     let current = 0;
+                    const isFloat = target % 1 !== 0;
+                    const formatVal = (v) => (isFloat ? v.toFixed(2) : Math.ceil(v).toLocaleString());
                     const updateCounter = () => {
                         current += increment;
                         if (current < target) {
-                            counter.innerText = (target % 1 !== 0 ? current.toFixed(2) : Math.ceil(current)) + suffix;
+                            counter.innerText = formatVal(current) + suffix;
                             requestAnimationFrame(updateCounter);
-                        } else { counter.innerText = target + suffix; }
+                        } else {
+                            counter.innerText = formatVal(target) + suffix;
+                        }
                     };
                     updateCounter();
                 });
             }
         }, { threshold: 0.5 });
         if (statsSection) counterObserver.observe(statsSection);
+
+        function applyLandingStatsFromApi(s) {
+            if (!s) return;
+            const tx = document.getElementById('landing-stat-txns');
+            const mp = document.getElementById('landing-stat-mape');
+            const tw = document.getElementById('landing-stat-towns');
+            const mm = document.getElementById('landing-meta-model');
+            const mu = document.getElementById('landing-meta-updated');
+            if (tx && s.total_txns != null) {
+                tx.textContent = Number(s.total_txns).toLocaleString() + '+';
+                tx.classList.remove('counter');
+            }
+            if (mp && s.mape != null) {
+                mp.textContent = Number(s.mape).toFixed(2) + '%';
+                mp.classList.remove('counter');
+            }
+            if (tw && s.town_count != null) {
+                tw.textContent = String(s.town_count);
+                tw.classList.remove('counter');
+            }
+            if (mm && s.model_label) {
+                mm.replaceChildren();
+                const ic = document.createElement('i');
+                ic.className = 'bi bi-cpu-fill';
+                mm.appendChild(ic);
+                mm.appendChild(document.createTextNode(' Model: PropSight · ' + s.model_label));
+            }
+            if (mu && s.last_updated) {
+                mu.replaceChildren();
+                const ic2 = document.createElement('i');
+                ic2.className = 'bi bi-calendar-check-fill';
+                mu.appendChild(ic2);
+                mu.appendChild(document.createTextNode(' Last Updated: ' + s.last_updated));
+            }
+        }
+        function pollLandingStats() {
+            fetch('/api/public/landing-stats')
+                .then(r => (r.ok ? r.json() : null))
+                .then(applyLandingStatsFromApi)
+                .catch(() => { });
+        }
+        setTimeout(pollLandingStats, 5000);
+        setInterval(pollLandingStats, 600000);
 
         const slider = document.getElementById('slider');
         let isDown = false, startX, scrollLeft;

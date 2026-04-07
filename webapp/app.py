@@ -2841,10 +2841,84 @@ def _get_popular_predictions(limit=3):
         return []
 
 
+def _format_landing_last_updated():
+    """Human-readable training / artefact month from run manifest or metrics file mtime."""
+    manifest = ARTEFACTS.get("manifest") or {}
+    run_at = manifest.get("run_at")
+    if run_at:
+        try:
+            s = str(run_at).replace("Z", "+00:00")
+            dt = datetime.fromisoformat(s)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt = dt.astimezone(timezone.utc)
+            return dt.strftime("%B %Y")
+        except (ValueError, TypeError):
+            pass
+    run_dir = ARTEFACTS.get("run_dir")
+    if run_dir:
+        try:
+            path = os.path.join(run_dir, "metrics.json")
+            ts = os.path.getmtime(path)
+            return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%B %Y")
+        except OSError:
+            pass
+    return None
+
+
+def _get_landing_stats():
+    """Live figures for the landing hero stats (Supabase counts + loaded model artefacts)."""
+    total_txns = None
+    try:
+        total_txns = _supabase_count("transactions")
+    except Exception:
+        manifest = ARTEFACTS.get("manifest") or {}
+        tr = manifest.get("train_rows")
+        vr = manifest.get("val_rows")
+        te = manifest.get("test_rows")
+        if tr is not None and vr is not None and te is not None:
+            try:
+                total_txns = int(tr) + int(vr) + int(te)
+            except (TypeError, ValueError):
+                total_txns = None
+
+    performance = ARTEFACTS.get("performance", {}) or {}
+    mape_val = performance.get("test_mape_display")
+    if mape_val is None:
+        tm = performance.get("test_mape")
+        if tm is not None:
+            try:
+                mape_val = round(float(tm), 2)
+            except (TypeError, ValueError):
+                mape_val = None
+
+    town_count = len(TOWNS) if TOWNS else None
+    if not town_count:
+        try:
+            rows = _get_district_summary_data()
+            towns = {r.get("town") for r in rows if r.get("town")}
+            town_count = len(towns) if towns else None
+        except Exception:
+            town_count = None
+    if not town_count:
+        dists = _get_town_avg_distances()
+        if dists:
+            town_count = len(dists)
+
+    return {
+        "total_txns": total_txns,
+        "mape": float(mape_val) if mape_val is not None else None,
+        "town_count": town_count,
+        "model_label": ARTEFACTS.get("model_label") or "Model",
+        "last_updated": _format_landing_last_updated(),
+        "data_sources": "Data.gov.sg & OneMap",
+    }
+
+
 @app.route("/")
 def landing():
     """Public marketing landing page."""
-    return render_template("landing.html")
+    return render_template("landing.html", landing_stats=_get_landing_stats())
 
 
 @app.route("/home")
@@ -3570,6 +3644,12 @@ def api_public_recent_ticker():
         ])
     except SupabaseError:
         return jsonify([])
+
+
+@app.route("/api/public/landing-stats")
+def api_public_landing_stats():
+    """Landing page counters and model metadata (JSON, no auth)."""
+    return jsonify(_get_landing_stats())
 
 
 # ---------------------------------------------------------------------------

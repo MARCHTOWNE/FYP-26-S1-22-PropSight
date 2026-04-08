@@ -201,6 +201,117 @@
         </div>
     </div>
     {% endif %}
+
+    <!-- Price Trend & Forecast Charts (Premium only) -->
+    {% if is_premium %}
+    <div id="comparisonChartsSection" class="mt-4">
+        <h5 class="mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>Price Trends & Forecasts</h5>
+        <div class="row g-4">
+            {% for panel in panels %}
+            <div class="col-xl-6">
+                <div class="card h-100">
+                    <div class="card-body">
+                        <h6 class="card-title">
+                            <span class="badge bg-primary rounded-pill me-1">{{ panel.label }}</span>
+                            {{ panel.form_data.get('town', '') }}
+                            {% if panel.form_data.get('flat_type') %} &mdash; {{ panel.form_data['flat_type'] }}{% endif %}
+                        </h6>
+                        <p class="text-muted small mb-2">Historical Price Trend</p>
+                        <div style="position:relative; height:200px;">
+                            <canvas id="trendChart{{ panel.index }}"></canvas>
+                        </div>
+                        <p class="text-muted small mb-2 mt-3">5-Year Forecast</p>
+                        <div style="position:relative; height:200px;">
+                            <canvas id="forecastChart{{ panel.index }}"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- AI Comparison Analysis Card -->
+    <div class="card mt-4" id="aiComparisonCard">
+        {% if is_premium %}
+        <div class="card-body">
+            <h5 class="mb-3">
+                <i class="bi bi-stars me-2 text-primary"></i>AI Comparison Analysis
+                <span class="badge bg-primary bg-opacity-10 text-primary ms-2" style="font-size:0.65rem;">PREMIUM</span>
+            </h5>
+
+            <!-- Factor ranking (rendered immediately from server data) -->
+            {% if factor_ranking %}
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <h6 class="mb-2"><i class="bi bi-pin-map me-1 text-primary"></i>Key Micro Factors</h6>
+                    {% for f in factor_ranking.micro %}
+                    <div class="d-flex align-items-start gap-2 mb-2">
+                        <i class="bi bi-arrow-right-circle text-primary mt-1 flex-shrink-0"></i>
+                        <div>
+                            <span class="fw-semibold small">{{ f.label }}</span>
+                            <div class="text-muted" style="font-size:0.78rem;">{{ f.spread_desc }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if not factor_ranking.micro %}
+                    <p class="text-muted small">No significant micro differences found.</p>
+                    {% endif %}
+                </div>
+                <div class="col-md-6">
+                    <h6 class="mb-2"><i class="bi bi-globe me-1 text-primary"></i>Key Macro Factors</h6>
+                    {% for f in factor_ranking.macro %}
+                    <div class="d-flex align-items-start gap-2 mb-2">
+                        <i class="bi bi-arrow-right-circle text-primary mt-1 flex-shrink-0"></i>
+                        <div>
+                            <span class="fw-semibold small">{{ f.label }}</span>
+                            <div class="text-muted" style="font-size:0.78rem;">{{ f.spread_desc }}</div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if not factor_ranking.macro %}
+                    <p class="text-muted small">No significant macro differences found.</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- AI "why that price?" explanations (loaded async) -->
+            <h6 class="mb-2"><i class="bi bi-chat-dots me-1 text-primary"></i>Why That Price?</h6>
+            <div id="aiComparisonContent">
+                <div class="text-center py-3">
+                    <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                    <div class="small text-muted mt-2">AI is analysing your properties...</div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <!-- Locked card for general users -->
+        <div class="card-body position-relative" style="min-height: 200px;">
+            <div style="filter: blur(3px); opacity: 0.5; pointer-events: none;">
+                <h5 class="mb-3"><i class="bi bi-stars me-2 text-primary"></i>AI Comparison Analysis</h5>
+                <p class="text-muted small">AI identifies the key micro and macro factors driving each property's price, explaining why each flat costs what it does.</p>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="bg-light rounded p-3" style="height:60px;"></div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="bg-light rounded p-3" style="height:60px;"></div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div class="bg-light rounded p-3" style="height:40px;"></div>
+                </div>
+            </div>
+            <a href="{{ url_for('pricing') }}" class="position-absolute top-50 start-50 translate-middle text-center text-decoration-none" style="z-index:10;">
+                <i class="bi bi-lock-fill fs-1 text-primary"></i>
+                <div class="fw-semibold text-primary mt-1">Unlock with Premium</div>
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
     {% endif %}
 </div>
 {% endblock %}
@@ -211,6 +322,8 @@ var PANEL_PREFIXES = [{% for panel in panels %}'{{ panel.prefix }}'{% if not loo
 var MAX_PANELS = {{ max_panels }};
 var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
 var currentPanelCount = {{ panel_count }};
+var HAS_RESULTS = {{ 'true' if comparison_analysis else 'false' }};
+var PAYLOADS = {{ payloads_json|safe }};
 
 function bindRange(rangeId, valueId) {
     var range = document.getElementById(rangeId);
@@ -456,6 +569,137 @@ if (compareForm) {
             setCompareSubmitState('loading-options');
         }
     });
+}
+
+// ─── Price Trend & Forecast Charts + AI Comparison (Premium) ────────
+if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
+
+    // Render charts for each panel
+    PAYLOADS.forEach(function(payload, idx) {
+        if (!payload.town) return;
+
+        // Price Trend
+        var trendParams = new URLSearchParams({
+            town: payload.town,
+            flat_type: payload.flat_type || '',
+            street_name: payload.street_name || '',
+            block: payload.block || ''
+        });
+        fetch('/api/price_trend_simple?' + trendParams.toString())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (!data || !data.length) return;
+                var ctx = document.getElementById('trendChart' + idx);
+                if (!ctx) return;
+                new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: data.map(function(d) { return d.year; }),
+                        datasets: [{
+                            label: 'Average Price',
+                            data: data.map(function(d) { return d.avg_price; }),
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37,99,235,0.12)',
+                            fill: true, tension: 0.3,
+                            pointRadius: 4, pointBackgroundColor: '#2563eb'
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: { callbacks: { label: function(c) { return '$' + c.parsed.y.toLocaleString(); } } }
+                        },
+                        scales: { y: { ticks: { callback: function(v) { return '$' + (v/1000).toFixed(0) + 'K'; } } } }
+                    }
+                });
+            }).catch(function() {});
+
+        // 5-Year Forecast
+        var forecastParams = new URLSearchParams({
+            town: payload.town,
+            flat_type: payload.flat_type || '',
+            flat_model: payload.flat_model || '',
+            floor_area: payload.floor_area || '',
+            storey_range: payload.storey_range || '',
+            lease_commence: payload.lease_commence || '',
+            street_name: payload.street_name || '',
+            block: payload.block || ''
+        });
+        fetch('/api/future_prediction?' + forecastParams.toString())
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                var timeline = data.timeline || [];
+                if (timeline.length < 2) return;
+                var ctx = document.getElementById('forecastChart' + idx);
+                if (!ctx) return;
+                new Chart(ctx.getContext('2d'), {
+                    type: 'line',
+                    data: {
+                        labels: timeline.map(function(d) { return d.year; }),
+                        datasets: [
+                            {
+                                label: 'Predicted Price',
+                                data: timeline.map(function(d) { return d.predicted_price; }),
+                                borderColor: '#2563eb',
+                                backgroundColor: 'rgba(37,99,235,0.12)',
+                                fill: true, tension: 0.3,
+                                pointRadius: 4, pointBackgroundColor: '#2563eb'
+                            },
+                            {
+                                label: 'Upper Range',
+                                data: timeline.map(function(d) { return d.price_high; }),
+                                borderColor: 'rgba(37,99,235,0.3)',
+                                borderDash: [5,5], pointRadius: 0, fill: false
+                            },
+                            {
+                                label: 'Lower Range',
+                                data: timeline.map(function(d) { return d.price_low; }),
+                                borderColor: 'rgba(37,99,235,0.3)',
+                                borderDash: [5,5], pointRadius: 0,
+                                fill: '-1', backgroundColor: 'rgba(37,99,235,0.06)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 11 } } },
+                            tooltip: { callbacks: { label: function(c) { return c.dataset.label + ': $' + c.parsed.y.toLocaleString(); } } }
+                        },
+                        scales: { y: { ticks: { callback: function(v) { return '$' + (v/1000).toFixed(0) + 'K'; } } } }
+                    }
+                });
+            }).catch(function() {});
+    });
+
+    // Fetch AI "why that price?" explanations
+    var aiContent = document.getElementById('aiComparisonContent');
+    if (aiContent) {
+        fetch('/api/comparison_ai_analysis', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payloads: PAYLOADS })
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) {
+                aiContent.innerHTML = '<div class="text-muted small">AI analysis unavailable: ' + data.error + '</div>';
+                return;
+            }
+            var html = '';
+            (data.panels || []).forEach(function(p) {
+                html += '<div class="mb-2"><strong class="text-primary">Panel ' + p.label + ':</strong> ' + p.why_price + '</div>';
+            });
+            if (!html) {
+                html = '<div class="text-muted small">No AI explanations available.</div>';
+            }
+            aiContent.innerHTML = html;
+        })
+        .catch(function() {
+            aiContent.innerHTML = '<div class="text-muted small">AI analysis could not be loaded.</div>';
+        });
+    }
 }
 </script>
 {% endblock %}

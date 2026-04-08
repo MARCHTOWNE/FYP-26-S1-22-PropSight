@@ -1297,6 +1297,133 @@ def _generate_comparison_insights(payloads, labels):
     return insights
 
 
+def _rank_comparison_factors(payloads):
+    """Rank micro and macro factors by how much they differ across compared properties.
+
+    Returns dict with 'micro' and 'macro' lists, each containing up to 2 factors
+    sorted by normalised spread (largest difference first).
+    """
+    if len(payloads) < 2:
+        return None
+
+    labels = [chr(ord("A") + i) for i in range(len(payloads))]
+
+    # Factor pools: (key, label, format_type, is_lower_better)
+    micro_pool = [
+        ("dist_mrt", "Nearest MRT", "dist", True),
+        ("dist_school", "Nearest School", "dist", True),
+        ("dist_high_demand_school", "Top Primary School", "dist", True),
+        ("dist_mall", "Nearest Mall", "dist", True),
+        ("hawker_count_1km", "Hawkers within 1 km", "count", False),
+        ("remaining_lease", "Remaining Lease", "yrs", False),
+        ("flat_age", "Flat Age", "yrs", True),
+        ("storey_midpoint", "Floor Level", "floor", False),
+        ("floor_area", "Floor Area", "sqm", False),
+    ]
+    macro_pool = [
+        ("dist_cbd", "Distance to CBD", "dist", True),
+        ("is_mature", "Mature Estate", "yesno", None),
+        ("price_per_sqm", "Price per sqm", "currency", None),
+    ]
+
+    # Compute global averages from TOWN_DISTANCES for normalisation
+    all_town_dists = TOWN_DISTANCES or {}
+    global_avgs = {}
+    if all_town_dists:
+        key_map = {
+            "dist_mrt": "avg_dist_mrt",
+            "dist_cbd": "avg_dist_cbd",
+            "dist_school": "avg_dist_school",
+            "dist_mall": "avg_dist_mall",
+            "dist_high_demand_school": "avg_dist_high_demand_school",
+            "hawker_count_1km": "avg_hawker_count_1km",
+        }
+        for factor_key, town_key in key_map.items():
+            vals = [t.get(town_key) for t in all_town_dists.values() if t.get(town_key) is not None]
+            if vals:
+                global_avgs[factor_key] = sum(float(v) for v in vals) / len(vals)
+
+    def _format_val(v, fmt):
+        if v is None:
+            return "N/A"
+        if fmt == "dist":
+            return _format_distance(v)
+        if fmt == "currency":
+            return f"${float(v):,.0f}"
+        if fmt == "sqm":
+            return f"{float(v):,.0f} sqm"
+        if fmt == "yrs":
+            return f"{int(v)} yrs"
+        if fmt == "floor":
+            return f"Level {int(v)}"
+        if fmt == "count":
+            return f"{float(v):,.0f}"
+        if fmt == "yesno":
+            return "Yes" if v else "No"
+        return str(v)
+
+    def _rank_pool(pool):
+        scored = []
+        for key, label, fmt, lower_better in pool:
+            raw = [p.get(key) for p in payloads]
+            # Handle boolean factors like is_mature
+            if fmt == "yesno":
+                flags = [bool(v) for v in raw]
+                if len(set(flags)) <= 1:
+                    continue  # no difference
+                values = {labels[i]: _format_val(v, fmt) for i, v in enumerate(raw)}
+                mature_labels = [labels[i] for i, f in enumerate(flags) if f]
+                non_mature_labels = [labels[i] for i, f in enumerate(flags) if not f]
+                spread_desc = (
+                    f"Panel {', '.join(mature_labels)}: mature estate; "
+                    f"Panel {', '.join(non_mature_labels)}: non-mature estate"
+                )
+                scored.append((1.0, {"key": key, "label": label, "values": values, "spread_desc": spread_desc}))
+                continue
+
+            # Numeric factors
+            nums = []
+            for v in raw:
+                if v is not None:
+                    try:
+                        nums.append(float(v))
+                    except (TypeError, ValueError):
+                        nums.append(None)
+                else:
+                    nums.append(None)
+            valid = [n for n in nums if n is not None]
+            if len(valid) < 2:
+                continue
+            spread = max(valid) - min(valid)
+            if spread == 0:
+                continue
+            avg = global_avgs.get(key) or (sum(valid) / len(valid))
+            norm_spread = spread / avg if avg > 0 else 0
+
+            values = {labels[i]: _format_val(v, fmt) for i, v in enumerate(raw)}
+
+            # Build spread description
+            best_i = nums.index(min(valid)) if lower_better else nums.index(max(valid))
+            worst_i = nums.index(max(valid)) if lower_better else nums.index(min(valid))
+            if best_i == worst_i:
+                continue
+            ratio = max(valid) / min(valid) if min(valid) > 0 else 0
+            if ratio >= 1.5:
+                spread_desc = f"Panel {labels[best_i]} ({_format_val(raw[best_i], fmt)}) vs Panel {labels[worst_i]} ({_format_val(raw[worst_i], fmt)}) — {ratio:.1f}x difference"
+            else:
+                spread_desc = f"Panel {labels[best_i]} ({_format_val(raw[best_i], fmt)}) vs Panel {labels[worst_i]} ({_format_val(raw[worst_i], fmt)})"
+
+            scored.append((norm_spread, {"key": key, "label": label, "values": values, "spread_desc": spread_desc}))
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        return [item for _, item in scored[:2]]
+
+    return {
+        "micro": _rank_pool(micro_pool),
+        "macro": _rank_pool(macro_pool),
+    }
+
+
 def _comparison_max_panels():
     """Return maximum number of comparison panels for the current user."""
     tier = session.get("subscription_tier", "general")
@@ -3070,6 +3197,9 @@ def comparison():
     # Build unified comparison analysis across all properties
     comparison_analysis = _build_comparison_analysis(payloads) if len(payloads) >= 2 else None
 
+    # Rank the strongest differentiating factors across panels
+    factor_ranking = _rank_comparison_factors(payloads) if len(payloads) >= 2 else None
+
     return render_template(
         "comparison.html",
         saved_predictions=saved_predictions,
@@ -3082,7 +3212,82 @@ def comparison():
         max_panels=max_panels,
         is_premium=is_premium,
         comparison_analysis=comparison_analysis,
+        factor_ranking=factor_ranking,
+        payloads_json=json.dumps(payloads, default=str) if payloads else "[]",
     )
+
+
+@app.route("/api/comparison_ai_analysis", methods=["POST"])
+@api_login_required
+def api_comparison_ai_analysis():
+    """AI-powered comparison analysis explaining why each property is priced as it is."""
+    if session.get("subscription_tier", "general") != "premium":
+        return jsonify({"error": "Premium required"}), 403
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "AI unavailable"}), 503
+
+    body = request.get_json(silent=True) or {}
+    payloads = body.get("payloads", [])
+    if len(payloads) < 2:
+        return jsonify({"error": "Need at least 2 properties"}), 400
+
+    # Rank factors
+    ranking = _rank_comparison_factors(payloads)
+    if not ranking:
+        return jsonify({"error": "Could not rank factors"}), 500
+
+    labels = [chr(ord("A") + i) for i in range(len(payloads))]
+
+    # Build property summaries for the prompt
+    summaries = []
+    for i, p in enumerate(payloads):
+        summaries.append(
+            f"Property {labels[i]}: {p.get('town', '?')}, {p.get('flat_type', '?')}, "
+            f"{p.get('flat_model', '?')}, {p.get('floor_area', '?')} sqm, "
+            f"storey {p.get('storey_range', '?')}, lease from {p.get('lease_commence', '?')}, "
+            f"predicted ${float(p.get('predicted_price', 0)):,.0f}"
+        )
+
+    # Format the pre-computed factors for the prompt
+    micro_lines = []
+    for f in ranking.get("micro", []):
+        micro_lines.append(f"- {f['label']}: {f['spread_desc']}")
+    macro_lines = []
+    for f in ranking.get("macro", []):
+        macro_lines.append(f"- {f['label']}: {f['spread_desc']}")
+
+    prompt = _AI_COMPARISON_PROMPT.format(
+        n=len(payloads),
+        property_summaries="\n".join(summaries),
+        micro_factors="\n".join(micro_lines) or "None identified",
+        macro_factors="\n".join(macro_lines) or "None identified",
+    )
+
+    text = _call_gemini(prompt, max_tokens=1024)
+    if not text:
+        return jsonify({"error": "AI generation failed"}), 503
+
+    # Parse JSON response
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    try:
+        result = json.loads(cleaned)
+    except json.JSONDecodeError:
+        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if m:
+            try:
+                result = json.loads(m.group())
+            except json.JSONDecodeError:
+                return jsonify({"error": "Could not parse AI response"}), 500
+        else:
+            return jsonify({"error": "Could not parse AI response"}), 500
+
+    # Attach the ranked factors to the response
+    result["micro"] = ranking.get("micro", [])
+    result["macro"] = ranking.get("macro", [])
+
+    return jsonify(result)
 
 
 @app.route("/comparison/select/<int:pred_id>")
@@ -3913,7 +4118,7 @@ Chart data summary:
 - Benchmark Comparison: {benchmark_summary}
 - Price per sqm: {psf_summary}
 
-The charts listed above are also attached as images. Analyse both the data summaries AND the visual chart patterns (trends, outliers, distributions) to generate questions.
+The charts listed above are also attached as images. Analyse both the data summaries AND the visual chart patterns (trends, patterns, distributions) to generate questions.
 
 Generate 3-6 questions a home buyer or investor would ask about this data.
 Group the questions by chart topic. Each group should have 1-2 questions.
@@ -3927,6 +4132,27 @@ Return ONLY valid JSON in this exact format, with no other text:
 {{"groups": {{"trend": ["question1", ...], "volume": ["question1", ...], "benchmark": ["question1", ...]}}}}
 
 Use only these group keys: trend, volume, flat_type, benchmark, psf. Omit a group if no interesting question exists for it."""
+
+_AI_COMPARISON_PROMPT = """You are a Singapore HDB (public housing) market analyst.
+The user is comparing {n} HDB properties side by side.
+
+Property summaries:
+{property_summaries}
+
+The system has identified the key differentiating factors:
+
+Micro factors (property-specific):
+{micro_factors}
+
+Macro factors (market-level):
+{macro_factors}
+
+For each property, write a 1-2 sentence plain-language explanation of "why that price?" using ONLY the factors above.
+Connect the factors to the predicted price — explain how each factor pushes the price up or down.
+Avoid jargon. Write as if explaining to someone unfamiliar with property markets.
+
+Return ONLY valid JSON:
+{{"panels": [{{"label": "A", "why_price": "explanation..."}}, ...]}}"""
 
 _AI_ANSWER_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is viewing analytics for: {filter_desc}

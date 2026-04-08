@@ -172,6 +172,7 @@
         transition: background 0.15s, transform 0.1s; white-space: nowrap;
     }
     .ai-chat-suggestion:hover { background: #dbeafe; transform: scale(1.04); }
+    .ai-chat-suggestion.used { opacity: 0.4; pointer-events: none; }
     @media (max-width: 575.98px) {
         .ai-chat-panel { width: calc(100vw - 32px); max-height: 75vh; }
         .ai-chat-widget { right: 16px; bottom: 16px; }
@@ -984,9 +985,10 @@
         <div id="aiChatSuggestions" class="ai-chat-suggestions">
             <button class="ai-chat-suggestion" data-q="What's the price trend?">What's the price trend?</button>
             <button class="ai-chat-suggestion" data-q="Which flat type is best value?">Which flat type is best value?</button>
-            <button class="ai-chat-suggestion" data-q="Compare towns for me">Compare towns for me</button>
             <button class="ai-chat-suggestion" data-q="Summarise the charts">Summarise the charts</button>
-            <button class="ai-chat-suggestion" data-q="Any outliers or anomalies?">Any outliers or anomalies?</button>
+            <button class="ai-chat-suggestion" data-q="What's driving prices here?">What's driving prices here?</button>
+            <button class="ai-chat-suggestion" data-q="How will prices change?">How will prices change?</button>
+            <button class="ai-chat-suggestion" data-q="Is this area good value?">Is this area good value?</button>
         </div>
         <div class="ai-chat-input-area">
             <input id="aiChatInput" type="text" class="form-control form-control-sm"
@@ -2271,6 +2273,7 @@ if (IS_PREMIUM) {
         const btn = e.target.closest('.ai-chat-suggestion');
         if (!btn || chatBusy) return;
         chatInput.value = btn.getAttribute('data-q');
+        btn.classList.add('used');
         sendChatMessage();
     });
 }

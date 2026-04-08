@@ -13,6 +13,7 @@ Focused scripts also exist:
   - python scripts/run_data_preprocessing.py
   - python scripts/run_ml_pipeline.py
   - python scripts/sync_to_supabase.py
+  - python scripts/retrain_and_deploy.py
 """
 
 from pipeline_orchestration import run_full_pipeline

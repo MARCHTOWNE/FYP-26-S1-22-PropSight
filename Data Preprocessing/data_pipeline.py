@@ -846,6 +846,18 @@ def incremental_update_from_latest_raw(
         )
 
         if inserted > 0:
+            # Migrate: add any columns present in new_rows but absent from the DB table
+            existing_cols = {
+                row[1]
+                for row in conn.execute(f'PRAGMA table_info("{TABLE_NAME}")')
+            }
+            for col in new_rows.columns:
+                if col not in existing_cols:
+                    dtype = SQLITE_DTYPES.get(col, "TEXT")
+                    conn.execute(f'ALTER TABLE "{TABLE_NAME}" ADD COLUMN "{col}" {dtype}')
+                    print(f"  Schema migration: added column '{col}' ({dtype}) to {TABLE_NAME}")
+            conn.commit()
+
             new_rows.to_sql(TABLE_NAME, conn, if_exists="append", index=False)
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_month ON "{TABLE_NAME}"(month)')
             conn.execute(f'CREATE INDEX IF NOT EXISTS idx_town  ON "{TABLE_NAME}"(town)')

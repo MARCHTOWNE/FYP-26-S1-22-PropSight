@@ -3937,10 +3937,14 @@ Relevant data:
 Chart images are attached for visual reference.
 
 IMPORTANT: The user can ALREADY see the charts and numbers. Do NOT repeat or describe what the charts show.
-Instead, provide the "why" behind the patterns — explain causes, implications, and actionable takeaways.
-Think: policy changes (cooling measures, grants), macro factors (interest rates, COVID), neighbourhood developments (MRT lines, amenities), or buyer strategy tips.
+Instead, explain what the data MEANS for homeowners in plain, simple language:
+- How do these trends affect their home's value? (e.g. "your flat is likely worth more now because...")
+- What's causing the changes? (policy changes, cooling measures, interest rates, new MRT lines, grants, COVID effects)
+- Tell them the value of their house (mature? good value? low value with comparison?)
+Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
+Avoid giving advice of any kind such as buy, sell, renovate or rent, we are only a DECISION SUPPORT TOOL.
 
-Answer in 2-3 sentences. Be direct and insightful.
+Answer in 2-3 sentences. Be direct and practical.
 
 Question: {question}"""
 
@@ -4087,10 +4091,11 @@ Chart images are attached to the first message for visual reference.
 
 Rules:
 - The user can ALREADY see the charts and numbers on screen. NEVER describe or restate what the charts show.
-- Focus on the WHY: explain causes behind trends (policy changes, cooling measures, interest rates, new MRT lines, COVID effects, grant changes), implications for buyers/sellers, and actionable advice.
-- When the user asks "what" questions, briefly acknowledge the pattern then pivot to explaining why it happened and what it means.
+- Explain what the data MEANS for homeowners in plain, simple language. Assume the user doesn't understand property market jargon.
+- Always connect trends to the user's home value: "this means your flat is likely worth more/less because..."
+- Explain causes simply: policy changes, cooling measures, interest rates, new MRT lines, COVID effects, grant changes.
+- Give practical advice when relevant: is it a good time to sell, hold, or upgrade?
 - Be concise (2-4 sentences) unless the user asks for detail.
-- You may reference a specific number only when it supports your explanation of why something happened.
 - If the user asks something outside HDB analytics scope, politely redirect."""
 
 

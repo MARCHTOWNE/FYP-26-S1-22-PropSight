@@ -1,1122 +1,1680 @@
 {% extends "base.html" %}
 {% block title %}Price Prediction — PropSight{% endblock %}
 
+{% block extra_head %}
+<style>
+/* ===== PREDICT PAGE LAYOUT ===== */
+.predict-shell {
+  display: flex;
+  gap: 28px;
+  padding: 28px 32px 56px;
+  align-items: flex-start;
+  max-width: 1440px;
+  margin: 0 auto;
+}
+
+/* ===== SIDEBAR ===== */
+.predict-sidebar {
+  width: 380px;
+  min-width: 320px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 76px;
+  align-self: flex-start;
+}
+
+.sidebar-card {
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 22px 24px 0;
+  margin-bottom: 18px;
+}
+
+.sidebar-body { padding: 0 24px 24px; }
+
+.p-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.sidebar-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── Form ── */
+.pf-group { margin-bottom: 14px; }
+.pf-row { display: flex; gap: 10px; }
+.pf-row .pf-group { flex: 1; min-width: 0; }
+
+.pf-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 5px;
+}
+
+.pf-select {
+  width: 100%;
+  padding: 9px 34px 9px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13.5px;
+  color: #0f172a;
+  background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%2364748b' d='m7 10 5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+.pf-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+  background-color: #fff;
+}
+.pf-select option:disabled { color: #94a3b8; }
+
+/* ── Sliders ── */
+.pf-slider-group { display: flex; flex-direction: column; gap: 7px; }
+
+.slider-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.slider-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.slider-unit { font-size: 12px; color: #94a3b8; font-weight: 600; }
+
+.pf-range {
+  width: 100%;
+  height: 5px;
+  border-radius: 5px;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  background: linear-gradient(to right, #2563eb 50%, #e2e8f0 50%);
+  transition: background 0.1s;
+}
+.pf-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px; height: 18px;
+  background: #fff;
+  border: 3px solid #2563eb;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+  cursor: pointer;
+}
+.pf-range::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: #fff;
+  border: 3px solid #2563eb;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+  cursor: pointer;
+  border: none; /* moz doesn't need outer border trick */
+  border: 3px solid #2563eb;
+}
+
+.field-warning {
+  font-size: 11.5px;
+  color: #d97706;
+  margin-top: 3px;
+  display: none;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.4;
+}
+.field-warning.visible { display: flex; }
+
+/* ── Address collapsible ── */
+.addr-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+  border: 1.5px dashed #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.addr-toggle:hover { border-color: #2563eb; color: #2563eb; background: rgba(37,99,235,0.03); }
+.addr-toggle .chevron { transition: transform 0.25s; }
+.addr-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+
+/* ── CTA ── */
+.btn-estimate {
+  width: 100%;
+  padding: 13px;
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.25s, transform 0.15s, box-shadow 0.25s;
+  text-decoration: none;
+}
+.btn-estimate:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(37,99,235,0.32);
+  color: #fff;
+}
+.btn-estimate:active { transform: translateY(0); }
+.btn-estimate:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+
+/* ===== RESULTS CANVAS ===== */
+.predict-canvas { flex: 1; min-width: 0; }
+
+/* ── Empty state ── */
+.results-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  text-align: center;
+  gap: 14px;
+}
+.empty-ring {
+  width: 88px; height: 88px;
+  background: rgba(37,99,235,0.07);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: emptyPulse 2.4s ease-in-out infinite;
+}
+@keyframes emptyPulse {
+  0%,100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.07); opacity: 0.75; }
+}
+.empty-arrow-icon {
+  font-size: 34px;
+  color: #2563eb;
+  opacity: 0.55;
+  animation: arrowBounce 1.8s ease-in-out infinite;
+}
+@keyframes arrowBounce {
+  0%,100% { transform: translateX(0); }
+  50% { transform: translateX(-7px); }
+}
+.empty-title { font-size: 19px; font-weight: 700; color: #0f172a; margin: 0; }
+.empty-sub { font-size: 14px; color: #64748b; max-width: 270px; margin: 0; line-height: 1.6; }
+
+/* ── Result blocks animation ── */
+.result-block {
+  margin-bottom: 20px;
+  opacity: 0;
+  transform: translateY(22px);
+  animation: blockReveal 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes blockReveal {
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ===== PRICE CARD ===== */
+.price-card {
+  background: #fff;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+  overflow: hidden;
+}
+.price-card-hero {
+  padding: 30px 28px 22px;
+  background: linear-gradient(135deg, #0c1829 0%, #1a3560 60%, #1e4080 100%);
+  color: #fff;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.price-card-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 75% 25%, rgba(37,99,235,0.35), transparent 55%),
+    radial-gradient(circle at 20% 80%, rgba(16,185,129,0.15), transparent 45%);
+}
+.price-card-hero > * { position: relative; }
+
+.price-eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,0.5);
+  margin-bottom: 8px;
+}
+.price-main-val {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  margin-bottom: 12px;
+}
+.price-range-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
+}
+.pr-label { font-size: 12px; color: rgba(255,255,255,0.48); }
+.pr-vals { font-size: 13.5px; font-weight: 600; color: rgba(255,255,255,0.82); }
+
+.price-badges {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.pbadge {
+  border-radius: 50px;
+  padding: 4px 13px;
+  font-size: 12.5px;
+  font-weight: 700;
+}
+.pbadge-glass { background: rgba(255,255,255,0.1); color: rgba(255,255,255,0.88); }
+.pbadge-mape { background: rgba(245,158,11,0.18); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+
+.price-trained {
+  font-size: 10.5px;
+  color: rgba(255,255,255,0.32);
+  margin-top: 10px;
+}
+
+/* Action bar */
+.price-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(226,232,240,0.6);
+  flex-wrap: wrap;
+}
+.btn-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 17px;
+  border-radius: 50px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-decoration: none;
+  border: none;
+}
+.btn-act-dark { background: #0f172a; color: #fff; }
+.btn-act-dark:hover { background: #2563eb; color: #fff; }
+.btn-act-outline { background: transparent; color: #374151; border: 1.5px solid #e2e8f0; }
+.btn-act-outline:hover { border-color: #2563eb; color: #2563eb; }
+
+/* Summary pills */
+.summary-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 20px 18px;
+}
+.spill {
+  display: flex;
+  flex-direction: column;
+  background: #f8fafc;
+  border: 1px solid #e8eef5;
+  border-radius: 10px;
+  padding: 8px 14px;
+  flex: 1;
+  min-width: 90px;
+}
+.spill-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+  margin-bottom: 2px;
+}
+.spill-val { font-size: 13.5px; font-weight: 700; color: #0f172a; }
+.spill-val.pos { color: #10b981; }
+.spill-val.neg { color: #ef4444; }
+
+.assumptions-bar {
+  margin: 0 20px 14px;
+  background: rgba(37,99,235,0.05);
+  border: 1px solid rgba(37,99,235,0.14);
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-size: 12.5px;
+  color: #374151;
+  line-height: 1.5;
+}
+
+/* ===== SHAP CARD ===== */
+.shap-card, .shap-lock-card, .shap-unavail-card {
+  background: #fff;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+  padding: 26px 30px;
+}
+.card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 22px;
+  flex-wrap: wrap;
+}
+.section-title-lg {
+  font-size: 20px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 4px 0 0;
+}
+.premium-badge {
+  background: rgba(245,158,11,0.1);
+  color: #d97706;
+  border: 1px solid rgba(245,158,11,0.25);
+  border-radius: 50px;
+  padding: 4px 13px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* Baseline pills */
+.baseline-row { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
+.bpill {
+  flex: 1; min-width: 130px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 15px;
+  display: flex;
+  flex-direction: column;
+}
+.bpill.pos { background: rgba(16,185,129,0.06); border-color: rgba(16,185,129,0.2); }
+.bpill.neg { background: rgba(239,68,68,0.06); border-color: rgba(239,68,68,0.2); }
+.bpill-label {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #94a3b8;
+  margin-bottom: 3px;
+}
+.bpill-val { font-size: 19px; font-weight: 800; color: #0f172a; }
+.bpill.pos .bpill-val { color: #10b981; }
+.bpill.neg .bpill-val { color: #ef4444; }
+
+/* SHAP bars */
+.shap-bars { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
+.shap-row {
+  display: grid;
+  grid-template-columns: 155px 1fr 92px;
+  align-items: center;
+  gap: 11px;
+}
+.shap-feat {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.shap-track {
+  height: 7px;
+  background: #f1f5f9;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.shap-fill {
+  height: 100%;
+  border-radius: 4px;
+}
+.shap-fill.pos { background: linear-gradient(90deg, #10b981, #34d399); }
+.shap-fill.neg { background: linear-gradient(90deg, #ef4444, #f87171); }
+.shap-dollar {
+  font-size: 12px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
+.shap-dollar.pos { color: #10b981; }
+.shap-dollar.neg { color: #ef4444; }
+
+.shap-narrative {
+  background: #f8fafc;
+  border-left: 3px solid #2563eb;
+  border-radius: 0 10px 10px 0;
+  padding: 13px 16px;
+  font-size: 13.5px;
+  color: #374151;
+  line-height: 1.7;
+}
+.narrative-kicker {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #2563eb;
+  margin-bottom: 6px;
+}
+.shap-disclaimer { margin-top: 14px; font-size: 12px; }
+.shap-disclaimer summary {
+  cursor: pointer;
+  color: #94a3b8;
+  font-weight: 600;
+  padding: 4px 0;
+}
+.shap-disclaimer p { color: #94a3b8; line-height: 1.6; margin: 8px 0 0; }
+
+/* SHAP lock chips */
+.lock-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 18px; }
+.lock-chip {
+  padding: 6px 14px;
+  border-radius: 50px;
+  font-size: 12.5px;
+  font-weight: 600;
+  background: #f1f5f9;
+  color: #cbd5e1;
+  filter: blur(0.4px);
+}
+.lock-chip.pos { background: rgba(16,185,129,0.07); color: rgba(16,185,129,0.4); }
+.lock-chip.neg { background: rgba(239,68,68,0.07); color: rgba(239,68,68,0.4); }
+
+/* ===== GENAI Q&A ===== */
+.genai-card {
+  background: #fff;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+  overflow: hidden;
+}
+.genai-header {
+  padding: 22px 26px 18px;
+  background: linear-gradient(135deg, rgba(37,99,235,0.04) 0%, rgba(16,185,129,0.03) 100%);
+  border-bottom: 1px solid rgba(226,232,240,0.5);
+}
+.genai-sub { font-size: 13px; color: #64748b; margin: 3px 0 0; }
+
+.suggest-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  padding: 14px 18px;
+  border-bottom: 1px solid #f8fafc;
+}
+.suggest-pill {
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 50px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  white-space: nowrap;
+}
+.suggest-pill:hover {
+  background: rgba(37,99,235,0.06);
+  border-color: #93c5fd;
+  color: #2563eb;
+}
+
+.chat-thread {
+  padding: 14px 18px;
+  min-height: 72px;
+  max-height: 460px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.chat-thread:empty::after {
+  content: "Ask a question above to get started";
+  color: #cbd5e1;
+  font-size: 13px;
+  text-align: center;
+  padding: 16px 0;
+  display: block;
+}
+
+.bwrap { display: flex; flex-direction: column; gap: 5px; }
+.bwrap.user { align-items: flex-end; }
+.bwrap.ai { align-items: flex-start; }
+
+.cbubble {
+  max-width: 82%;
+  padding: 9px 15px;
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+.cbubble.user {
+  background: #0f172a;
+  color: #fff;
+  border-radius: 16px 16px 4px 16px;
+}
+.cbubble.ai {
+  background: #fff;
+  color: #0f172a;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px 16px 16px 4px;
+}
+.cbubble.ai-err {
+  background: rgba(239,68,68,0.05);
+  border-color: rgba(239,68,68,0.2);
+  color: #b91c1c;
+  border-radius: 16px 16px 16px 4px;
+}
+
+.typing-ind {
+  display: flex;
+  gap: 4px;
+  padding: 11px 16px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px 16px 16px 4px;
+  width: fit-content;
+}
+.tdot {
+  width: 6px; height: 6px;
+  background: #cbd5e1;
+  border-radius: 50%;
+  animation: tdotBounce 1.2s ease-in-out infinite;
+}
+.tdot:nth-child(2) { animation-delay: 0.2s; }
+.tdot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes tdotBounce {
+  0%,60%,100% { transform: translateY(0); opacity: 0.5; }
+  30% { transform: translateY(-5px); opacity: 1; }
+}
+
+.followup-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
+.fu-pill {
+  background: rgba(37,99,235,0.05);
+  border: 1px solid rgba(37,99,235,0.18);
+  border-radius: 50px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #2563eb;
+  cursor: pointer;
+  transition: background 0.15s;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+}
+.fu-pill:hover { background: rgba(37,99,235,0.11); }
+
+.chat-input-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid #f1f5f9;
+  background: #fafafa;
+}
+.chat-inp {
+  flex: 1;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 50px;
+  padding: 9px 18px;
+  font-size: 13.5px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.chat-inp:focus { border-color: #2563eb; }
+.chat-send {
+  width: 38px; height: 38px;
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+.chat-send:hover { background: #2563eb; }
+.chat-send:disabled { opacity: 0.45; cursor: not-allowed; background: #94a3b8; }
+
+.limit-note {
+  padding: 7px 18px 10px;
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+}
+.limit-note a { color: #2563eb; font-weight: 600; text-decoration: none; }
+
+/* ===== COMPARABLES ===== */
+.comp-card {
+  background: #fff;
+  border: 1px solid rgba(148,163,184,0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15,23,42,0.06);
+  padding: 26px 30px;
+}
+.comp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin-top: 14px;
+}
+.comp-table thead th {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  padding: 0 10px 9px;
+  border-bottom: 1.5px solid #f1f5f9;
+  white-space: nowrap;
+}
+.comp-table tbody tr {
+  border-bottom: 1px solid #f8fafc;
+  transition: background 0.15s;
+}
+.comp-table tbody tr:last-child { border-bottom: none; }
+.comp-table tbody tr:hover { background: #f8fafc; }
+.comp-table tbody td { padding: 10px 10px; color: #374151; font-weight: 500; vertical-align: middle; }
+.comp-table .addr { font-weight: 600; color: #0f172a; }
+.comp-table .price-col { font-weight: 700; color: #2563eb; text-align: right; }
+
+/* Explore button */
+.explore-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 26px;
+  background: #f8fafc;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 50px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  text-decoration: none;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  transition: all 0.2s;
+}
+.explore-btn:hover {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 920px) {
+  .predict-shell { flex-direction: column; padding: 16px 16px 40px; gap: 16px; }
+  .predict-sidebar { width: 100%; position: static; }
+  .shap-row { grid-template-columns: 110px 1fr 80px; }
+}
+@media (max-width: 600px) {
+  .price-main-val { font-size: 34px; }
+  .shap-row {
+    grid-template-columns: 1fr;
+    background: #f8fafc;
+    border-radius: 10px;
+    padding: 9px 12px;
+    gap: 5px;
+  }
+  .shap-dollar { text-align: left; }
+  .summary-pills { gap: 6px; }
+  .spill { flex: none; min-width: 80px; }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container py-4">
-    <div class="row">
-        <!-- Input form -->
-        <div class="col-lg-5 mb-4">
-            <div class="card">
-                <div class="card-body predict-form">
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-                        <h4 class="card-title mb-0">
-                            <i class="bi bi-calculator me-2 text-primary"></i>Property Valuation
-                        </h4>
-                        <a href="{% if form_data.get('town') %}{{ url_for('comparison', panel_count=2, p0_town=form_data.get('town', ''), p0_flat_type=form_data.get('flat_type', ''), p0_flat_model=form_data.get('flat_model', ''), p0_floor_area=form_data.get('floor_area', ''), p0_storey_range=form_data.get('storey_range', ''), p0_lease_commence=form_data.get('lease_commence', ''), p0_street_name=form_data.get('street_name', ''), p0_block=form_data.get('block', '')) }}{% else %}{{ url_for('comparison') }}{% endif %}" class="btn btn-outline-primary btn-sm">
-                            <i class="bi bi-columns-gap me-1"></i>Compare
-                        </a>
-                    </div>
-                    {% if prefill_source == 'map_pin' %}
-                    <div class="alert alert-info py-2 px-3 small mb-3">
-                        Filled from the selected map transaction. Review the inputs below and adjust anything you want before estimating again.
-                    </div>
-                    {% endif %}
-                    <form method="POST" action="{{ url_for('predict') }}" id="predictForm">
-                        <div class="mb-3">
-                            <label class="form-label">Town</label>
-                            <select name="town" id="predictTown" class="form-select" required>
-                                <option value="">Select town...</option>
-                                {% for t in towns %}
-                                <option value="{{ t }}"
-                                    {% if form_data.get('town') == t or request.args.get('town') == t %}selected{% endif %}>
-                                    {{ t }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+{# ── Pre-compute template variables ── #}
+{% if result %}
+  {% set psf_val = (result.predicted_price / (form_data.floor_area | float * 10.764)) | int %}
+  {% if town_avg_price and town_avg_price > 0 %}
+    {% set avg_diff = result.predicted_price - town_avg_price %}
+    {% set avg_diff_pct = ((avg_diff | abs / town_avg_price) * 100) | round(1) %}
+  {% endif %}
+  {% if explanation and explanation.features %}
+    {% set ns = namespace(max_abs=1) %}
+    {% for f in explanation.features %}
+      {% if (f.dollar_impact | abs) > ns.max_abs %}{% set ns.max_abs = f.dollar_impact | abs %}{% endif %}
+    {% endfor %}
+  {% endif %}
+{% endif %}
 
-                        <div class="row">
-                            <div class="col-7 mb-3">
-                                <label class="form-label">Street <small class="text-muted">(optional)</small></label>
-                                <select name="street_name" id="predictStreet" class="form-select">
-                                    <option value="">Any street...</option>
-                                </select>
-                            </div>
-                            <div class="col-5 mb-3">
-                                <label class="form-label">Block <small class="text-muted">(optional)</small></label>
-                                <select name="block" id="predictBlock" class="form-select">
-                                    <option value="">Any block...</option>
-                                </select>
-                            </div>
-                        </div>
+<div class="predict-shell">
 
-                        <div class="mb-3">
-                            <label class="form-label">Flat Type</label>
-                            <select name="flat_type" id="predictFlatType" class="form-select" required>
-                                {% for ft in flat_types %}
-                                <option value="{{ ft }}"
-                                    {% if form_data.get('flat_type') == ft %}selected{% endif %}>
-                                    {{ ft }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+  {# ======================================================= #}
+  {# LEFT SIDEBAR — Input form                               #}
+  {# ======================================================= #}
+  <aside class="predict-sidebar">
+    <div class="sidebar-card">
 
-                        <div class="mb-3">
-                            <label class="form-label">Flat Model</label>
-                            <select name="flat_model" id="predictFlatModel" class="form-select" required>
-                                {% for fm in flat_models %}
-                                <option value="{{ fm }}"
-                                    {% if form_data.get('flat_model') == fm %}selected{% endif %}>
-                                    {{ fm }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+      <div class="sidebar-header">
+        <span class="p-kicker">Property Valuation</span>
+        <h2 class="sidebar-title">
+          <i class="bi bi-calculator-fill" style="color:#2563eb;font-size:17px;"></i>
+          Get Estimate
+        </h2>
+      </div>
 
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Floor Area (sqm)</label>
-                                <div class="slider-wrap">
-                                  <input type="range" id="predictFloorRange" name="floor_area"
-                                         min="30" max="300" value="{{ form_data.get('floor_area', 90) or 90 }}" step="1"
-                                         class="form-range accent-range">
-                                  <div class="slider-display"><span id="predictFloorVal">{{ form_data.get('floor_area', 90) or 90 }}</span> sqm</div>
-                                </div>
-                                <div id="floorAreaWarning" class="text-warning d-none" style="font-size:0.72rem; margin-top:2px;">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i><span id="floorAreaWarningText"></span>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Lease Start Year</label>
-                                <div class="slider-wrap">
-                                  <input type="range" id="predictLeaseRange" name="lease_commence"
-                                         min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1"
-                                         class="form-range accent-range">
-                                  <div class="slider-display"><span id="predictLeaseVal">{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span></div>
-                                </div>
-                                <div id="leaseYearWarning" class="text-warning d-none" style="font-size:0.72rem; margin-top:2px;">
-                                    <i class="bi bi-exclamation-triangle-fill me-1"></i><span id="leaseYearWarningText"></span>
-                                </div>
-                            </div>
-                        </div>
+      <div class="sidebar-body">
 
-                        <div class="mb-3">
-                            <label class="form-label">Floor</label>
-                            <select name="storey_range" id="predictStoreyRange" class="form-select" required>
-                                {% for sr in storey_ranges %}
-                                <option value="{{ sr }}"
-                                    {% if form_data.get('storey_range') == sr %}selected{% endif %}>
-                                    {{ sr }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+        {% if prefill_source == 'map_pin' %}
+        <div style="background:rgba(37,99,235,0.06);border:1px solid rgba(37,99,235,0.14);border-radius:10px;padding:9px 13px;font-size:12.5px;color:#374151;margin-bottom:14px;line-height:1.5;">
+          <i class="bi bi-geo-alt-fill me-1" style="color:#2563eb;"></i>
+          Pre-filled from a map transaction. Review and adjust before estimating.
+        </div>
+        {% endif %}
 
-                        <button type="submit" id="predictSubmitBtn" class="btn btn-primary w-100 py-2 fw-bold">
-                            <i class="bi bi-lightning-charge me-1"></i> Get Estimate
-                        </button>
-                        <div id="predictFlatTypeStatus" class="mt-2 small text-warning d-none" role="status"></div>
-                    </form>
+        <form method="POST" action="{{ url_for('predict') }}" id="predictForm">
+
+          {# Town #}
+          <div class="pf-group">
+            <label class="pf-label" for="predictTown">Town</label>
+            <select name="town" id="predictTown" class="pf-select" required>
+              <option value="">Select town...</option>
+              {% for t in towns %}
+              <option value="{{ t }}"
+                {% if form_data.get('town') == t or request.args.get('town') == t %}selected{% endif %}>{{ t }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Street & Block (collapsible, optional — narrows model inputs when provided) #}
+          <div class="pf-group">
+            <button type="button" class="addr-toggle"
+                    data-bs-toggle="collapse" data-bs-target="#addrCollapse"
+                    aria-expanded="{{ 'true' if form_data.get('street_name') else 'false' }}"
+                    id="addrToggleBtn">
+              <span><i class="bi bi-geo-alt me-1"></i>Street &amp; Block <em style="font-style:normal;font-weight:400;font-size:11.5px;color:#94a3b8;">optional</em></span>
+              <i class="bi bi-chevron-down chevron" style="font-size:12px;"></i>
+            </button>
+            <div class="collapse {{ 'show' if form_data.get('street_name') else '' }}"
+                 id="addrCollapse" style="margin-top:10px;">
+              <div class="pf-row">
+                <div class="pf-group" style="flex:2;">
+                  <label class="pf-label">Street</label>
+                  <select name="street_name" id="predictStreet" class="pf-select">
+                    <option value="">Any street...</option>
+                  </select>
                 </div>
+                <div class="pf-group">
+                  <label class="pf-label">Block</label>
+                  <select name="block" id="predictBlock" class="pf-select">
+                    <option value="">Any block...</option>
+                  </select>
+                </div>
+              </div>
             </div>
+          </div>
+
+          {# Flat Type + Flat Model #}
+          <div class="pf-row">
+            <div class="pf-group">
+              <label class="pf-label" for="predictFlatType">Flat Type</label>
+              <select name="flat_type" id="predictFlatType" class="pf-select" required>
+                {% for ft in flat_types %}
+                <option value="{{ ft }}"
+                  {% if form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="pf-group">
+              <label class="pf-label" for="predictFlatModel">Flat Model</label>
+              <select name="flat_model" id="predictFlatModel" class="pf-select" required>
+                {% for fm in flat_models %}
+                <option value="{{ fm }}"
+                  {% if form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+
+          {# Storey Range #}
+          <div class="pf-group">
+            <label class="pf-label" for="predictStoreyRange">Floor</label>
+            <select name="storey_range" id="predictStoreyRange" class="pf-select" required>
+              {% for sr in storey_ranges %}
+              <option value="{{ sr }}"
+                {% if form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
+              {% endfor %}
+            </select>
+          </div>
+
+          {# Floor Area Slider #}
+          <div class="pf-group">
+            <label class="pf-label">Floor Area</label>
+            <div class="pf-slider-group">
+              <div class="slider-top">
+                <span class="slider-val" id="predictFloorVal">{{ form_data.get('floor_area', 90) or 90 }}</span>
+                <span class="slider-unit">sqm</span>
+              </div>
+              <input type="range" id="predictFloorRange" name="floor_area" class="pf-range"
+                     min="30" max="300"
+                     value="{{ form_data.get('floor_area', 90) or 90 }}" step="1">
+              <div class="field-warning" id="floorAreaWarning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span id="floorAreaWarningText"></span>
+              </div>
+            </div>
+          </div>
+
+          {# Lease Year Slider #}
+          <div class="pf-group">
+            <label class="pf-label">Lease Start Year</label>
+            <div class="pf-slider-group">
+              <div class="slider-top">
+                <span class="slider-val" id="predictLeaseVal">{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span>
+                <span class="slider-unit">year</span>
+              </div>
+              <input type="range" id="predictLeaseRange" name="lease_commence" class="pf-range"
+                     min="{{ lease_year_min }}" max="{{ lease_year_max }}"
+                     value="{{ form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1">
+              <div class="field-warning" id="leaseYearWarning">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <span id="leaseYearWarningText"></span>
+              </div>
+            </div>
+          </div>
+
+          <div id="predictFlatTypeStatus" class="field-warning mb-1" role="status"></div>
+
+          <button type="submit" id="predictSubmitBtn" class="btn-estimate" style="margin-top:4px;">
+            <i class="bi bi-lightning-charge-fill"></i> Get Estimate
+          </button>
+
+        </form>
+
+        <div style="text-align:center;margin-top:13px;">
+          <a href="{% if form_data.get('town') %}{{ url_for('comparison', panel_count=2,
+               p0_town=form_data.get('town',''),
+               p0_flat_type=form_data.get('flat_type',''),
+               p0_flat_model=form_data.get('flat_model',''),
+               p0_floor_area=form_data.get('floor_area',''),
+               p0_storey_range=form_data.get('storey_range',''),
+               p0_lease_commence=form_data.get('lease_commence',''),
+               p0_street_name=form_data.get('street_name',''),
+               p0_block=form_data.get('block','')) }}{% else %}{{ url_for('comparison') }}{% endif %}"
+             style="font-size:13px;color:#64748b;text-decoration:none;font-weight:600;">
+            <i class="bi bi-columns-gap me-1"></i>Compare properties side-by-side
+          </a>
         </div>
 
-        <!-- Results -->
-        <div class="col-lg-7">
-            {% if result %}
-            <!-- Price card -->
-            <div class="card mb-4">
-                <div class="card-body text-center py-4">
-                    <h5 class="text-muted mb-1">Estimated Resale Price</h5>
-                    <div class="price-display">${{ "{:,}".format(result.predicted_price) }}</div>
-                    <div class="price-range mt-1">
-                        Range: ${{ "{:,}".format(result.price_low) }} &mdash;
-                        ${{ "{:,}".format(result.price_high) }}
-                    </div>
-
-                    <div class="mt-3 small text-muted">
-                        Based on {{ result.model_label }} &middot; Test MAPE &plusmn;{{ result.mape if result.mape is not none else "N/A" }}%
-                        {% if result.model_trained_at %}
-                        <br><span class="text-muted" style="font-size:0.85em;">Model trained: {{ result.model_trained_at }}</span>
-                        {% endif %}
-                    </div>
-                    {% if result.assumptions %}
-                    <div class="alert alert-info mt-3 py-2 px-3 small text-start">
-                        {% for note in result.assumptions %}
-                        <div>{{ note }}</div>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
-
-                    {% if g.user %}
-                    <div class="mt-3 d-flex gap-2 flex-wrap justify-content-center">
-                        <form method="POST" action="{{ url_for('save_prediction') }}" class="d-inline">
-                            <input type="hidden" name="town" value="{{ form_data.town }}">
-                            <input type="hidden" name="flat_type" value="{{ form_data.flat_type }}">
-                            <input type="hidden" name="flat_model" value="{{ form_data.flat_model }}">
-                            <input type="hidden" name="floor_area" value="{{ form_data.floor_area }}">
-                            <input type="hidden" name="storey_range" value="{{ form_data.storey_range }}">
-                            <input type="hidden" name="lease_commence" value="{{ form_data.lease_commence }}">
-                            <input type="hidden" name="street_name" value="{{ form_data.get('street_name', '') }}">
-                            <input type="hidden" name="block" value="{{ form_data.get('block', '') }}">
-                            <input type="hidden" name="predicted_price" value="{{ result.predicted_price }}">
-                            <input type="hidden" name="price_low" value="{{ result.price_low }}">
-                            <input type="hidden" name="price_high" value="{{ result.price_high }}">
-                            <button type="submit" class="btn btn-outline-primary btn-sm">
-                                <i class="bi bi-bookmark-plus me-1"></i> Save Prediction
-                            </button>
-                        </form>
-                        <a href="{{ url_for('map_view') }}?mode=transactions&town={{ form_data.town|urlencode }}{% if form_data.get('street_name') %}&street={{ form_data.street_name|urlencode }}{% endif %}{% if form_data.get('block') %}&block={{ form_data.block|urlencode }}{% endif %}" class="btn btn-outline-secondary btn-sm">
-                            <i class="bi bi-geo-alt me-1"></i> View on Map
-                        </a>
-                    </div>
-                    {% else %}
-                    <p class="mt-3 small text-muted">
-                        <a href="{{ url_for('login') }}">Log in</a> to save this prediction.
-                    </p>
-                    {% endif %}
-                </div>
-            </div>
-
-            {% if explanation %}
-            <div class="card mb-4 shap-card">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
-                        <div>
-                            <div class="kicker mb-2">Premium Explainability</div>
-                            <h5 class="mb-1">What Drives Your Flat's Value</h5>
-                            <p class="text-muted mb-0">
-                                Full SHAP breakdown from the {{ explanation.model_label }} model. Each bar shows how much a factor pulls this estimate above or below the baseline.
-                            </p>
-                        </div>
-                        <span class="badge shap-premium-badge">Full SHAP &middot; {{ explanation.feature_count }} factors</span>
-                    </div>
-
-                    <div class="shap-summary-grid mb-4">
-                        <div class="shap-summary-pill">
-                            <span>Baseline price</span>
-                            <strong>${{ "{:,}".format(explanation.baseline_price) }}</strong>
-                        </div>
-                        <div class="shap-summary-pill {% if explanation.delta_from_baseline >= 0 %}is-positive{% else %}is-negative{% endif %}">
-                            <span>Difference vs baseline</span>
-                            <strong>
-                                {% if explanation.delta_from_baseline >= 0 %}+{% endif %}${{ "{:,}".format(explanation.delta_from_baseline|abs) }}
-                            </strong>
-                        </div>
-                    </div>
-
-                    <div class="shap-chart-shell mb-4">
-                        <canvas id="shapChart"></canvas>
-                    </div>
-
-                    <div class="shap-narrative">
-                        <div class="shap-section-pill">Plain-English Summary</div>
-                        <p class="mb-0">{{ explanation.narrative }}</p>
-                    </div>
-
-                    <details class="shap-disclaimer mt-3">
-                        <summary>What the model doesn't see</summary>
-                        <p class="mb-0">
-                            This estimate does not directly capture renovation quality, interior condition, facing, noise, corridor privacy, unit layout quirks,
-                            ethnic quota timing, en-bloc potential, or sudden policy changes. Use the SHAP breakdown as model transparency, not as a full
-                            substitute for on-site judgment.
-                        </p>
-                    </details>
-                </div>
-            </div>
-            <script id="predict-shap-data" type="application/json">{{ explanation | tojson }}</script>
-            {% elif is_premium %}
-            <div class="card mb-4 shap-card shap-card-unavailable">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
-                        <div>
-                            <div class="kicker mb-2">Premium Explainability</div>
-                            <h5 class="mb-1">SHAP Explainability Is Temporarily Unavailable</h5>
-                            <p class="text-muted mb-0">
-                                This Premium insight is ready for supported tree models, but it could not be generated for the current setup.
-                            </p>
-                        </div>
-                        <span class="badge text-bg-secondary">Unavailable</span>
-                    </div>
-                    <p class="mb-0 text-muted">
-                        The valuation still uses the active production model normally. Once the current environment and serving model support explainability,
-                        the full feature contribution chart will appear here automatically.
-                    </p>
-                </div>
-            </div>
-            {% else %}
-            <div class="card mb-4 shap-lock-card">
-                <div class="card-body">
-                    <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-3">
-                        <div>
-                            <div class="kicker mb-2">Premium Explainability</div>
-                            <h5 class="mb-1">Unlock the Full SHAP Breakdown</h5>
-                            <p class="text-muted mb-0">
-                                Premium users can see every feature contribution behind this valuation, plus a plain-English summary and model caveats.
-                            </p>
-                        </div>
-                        <span class="badge text-bg-warning">Premium only</span>
-                    </div>
-
-                    <div class="shap-lock-preview mb-3">
-                        <div class="shap-lock-chip is-positive">Floor area contribution</div>
-                        <div class="shap-lock-chip is-positive">MRT proximity effect</div>
-                        <div class="shap-lock-chip is-negative">Lease and age drag</div>
-                        <div class="shap-lock-chip">All feature impacts</div>
-                    </div>
-
-                    <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-sm">
-                        <i class="bi bi-gem me-1"></i>Upgrade to Premium
-                    </a>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Context cards -->
-            <div class="row g-3 mb-4">
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">{{ form_data.town }}</div>
-                        <div class="metric-label">Town</div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">{{ form_data.flat_type }}</div>
-                        <div class="metric-label">Flat Type</div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">{{ form_data.floor_area }} sqm</div>
-                        <div class="metric-label">Floor Area</div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Extra context -->
-            <div class="row g-3 mb-4">
-                {% if remaining_lease is not none %}
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">{{ remaining_lease }} yrs</div>
-                        <div class="metric-label">Remaining Lease</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if flat_age is not none %}
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">{{ flat_age }} yrs</div>
-                        <div class="metric-label">Flat Age</div>
-                    </div>
-                </div>
-                {% endif %}
-                {% if town_avg_price %}
-                <div class="col-md-4">
-                    <div class="card metric-card">
-                        <div class="metric-value">${{ "{:,}".format(town_avg_price|int) }}</div>
-                        <div class="metric-label">Town Avg ({{ form_data.flat_type }})</div>
-                        {% if result.predicted_price > town_avg_price %}
-                        <small class="text-danger">+${{ "{:,}".format((result.predicted_price - town_avg_price)|int) }} above avg</small>
-                        {% elif result.predicted_price < town_avg_price %}
-                        <small class="text-success">${{ "{:,}".format((town_avg_price - result.predicted_price)|int) }} below avg</small>
-                        {% else %}
-                        <small class="text-muted">At average</small>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endif %}
-            </div>
-
-            <!-- Timeline forecast -->
-            {% if timeline %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h6 class="card-title mb-3"><i class="bi bi-graph-up me-2"></i>5-Year Price Forecast</h6>
-                    <canvas id="timelineChart" height="200"></canvas>
-                    <div class="table-responsive mt-3">
-                        <table class="table table-sm table-hover mb-0 small">
-                            <thead>
-                                <tr>
-                                    <th>Year</th>
-                                    <th class="text-end">Predicted Price</th>
-                                    <th class="text-end">Range</th>
-                                    <th class="text-end">Remaining Lease</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for t in timeline %}
-                                <tr{% if loop.first %} class="fw-bold"{% endif %}>
-                                    <td>{{ t.year }}{% if loop.first %} (Now){% endif %}</td>
-                                    <td class="text-end">${{ "{:,}".format(t.predicted_price) }}</td>
-                                    <td class="text-end">${{ "{:,}".format(t.price_low) }} - ${{ "{:,}".format(t.price_high) }}</td>
-                                    <td class="text-end">{{ t.remaining_lease }} yrs</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Recent similar transactions -->
-            {% if recent_transactions %}
-            <div class="card mb-4">
-                <div class="card-body">
-                    <h6 class="card-title mb-3"><i class="bi bi-clock-history me-2"></i>Recent Similar Transactions</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0 small">
-                            <thead>
-                                <tr>
-                                    <th>Address</th>
-                                    <th>Storey</th>
-                                    <th class="text-end">Area</th>
-                                    <th class="text-end">Price</th>
-                                    <th>Month</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for txn in recent_transactions %}
-                                <tr>
-                                    <td>{{ txn.block }} {{ txn.street_name }}</td>
-                                    <td>{{ txn.storey_range }}</td>
-                                    <td class="text-end">{{ txn.floor_area_sqm }} sqm</td>
-                                    <td class="text-end">${{ "{:,}".format(txn.resale_price|int) }}</td>
-                                    <td>{{ txn.month }}</td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            <!-- Explore deeper link -->
-            <div class="text-center mb-4">
-                <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&flat_model={{ form_data.flat_model|urlencode }}&floor_area={{ form_data.floor_area }}&storey_range={{ form_data.storey_range|urlencode }}&lease_commence={{ form_data.lease_commence }}&street_name={{ form_data.street_name|urlencode }}&block={{ form_data.block|urlencode }}&predicted_price={{ result.predicted_price }}"
-                   class="btn btn-outline-primary">
-                    <i class="bi bi-bar-chart-line me-2"></i>Explore Deeper Analysis
-                </a>
-            </div>
-
-            {% else %}
-            <!-- Empty state -->
-            <div class="card">
-                <div class="card-body text-center py-5">
-                    <i class="bi bi-house-door display-1 text-primary opacity-25"></i>
-                    <h5 class="mt-3 text-muted">Enter property details to get started</h5>
-                    <p class="text-muted">
-                        Fill in the form on the left with your property's attributes
-                        and we'll estimate its current market value.
-                    </p>
-                </div>
-            </div>
-            {% endif %}
-        </div>
+      </div>
     </div>
+  </aside>
+
+  {# ======================================================= #}
+  {# RIGHT CANVAS — Progressive results                      #}
+  {# ======================================================= #}
+  <div class="predict-canvas">
+
+    {% if not result %}
+    {# ── EMPTY STATE ── #}
+    <div class="results-empty">
+      <div class="empty-ring">
+        <i class="bi bi-arrow-left-circle-fill empty-arrow-icon"></i>
+      </div>
+      <h3 class="empty-title">Enter property details to get started</h3>
+      <p class="empty-sub">Fill in the form and we'll estimate the current market value of your HDB flat using our machine learning model.</p>
+    </div>
+
+    {% else %}
+
+    {# ── SECTION 1: PRICE CARD (delay 0ms) ── #}
+    <div class="result-block price-card" style="animation-delay:0ms;">
+
+      <div class="price-card-hero">
+        <div class="price-eyebrow">Estimated Resale Price</div>
+        <div class="price-main-val">${{ "{:,}".format(result.predicted_price) }}</div>
+
+        <div class="price-range-row">
+          <span class="pr-label">80% confidence range:</span>
+          <span class="pr-vals">${{ "{:,}".format(result.price_low) }} &mdash; ${{ "{:,}".format(result.price_high) }}</span>
+        </div>
+
+        <div class="price-badges">
+          <span class="pbadge pbadge-glass">${{ psf_val }} psf</span>
+          {% if result.mape is not none %}
+          <span class="pbadge pbadge-mape">MAPE &plusmn;{{ result.mape }}%</span>
+          {% endif %}
+          <span class="pbadge pbadge-glass">{{ result.model_label }}</span>
+        </div>
+
+        {% if result.model_trained_at %}
+        <div class="price-trained">Model trained {{ result.model_trained_at }}</div>
+        {% endif %}
+      </div>
+
+      {# Action buttons #}
+      <div class="price-actions">
+        {% if g.user %}
+        <form style="display:inline;" method="POST" action="{{ url_for('save_prediction') }}">
+          <input type="hidden" name="town" value="{{ form_data.town }}">
+          <input type="hidden" name="flat_type" value="{{ form_data.flat_type }}">
+          <input type="hidden" name="flat_model" value="{{ form_data.flat_model }}">
+          <input type="hidden" name="floor_area" value="{{ form_data.floor_area }}">
+          <input type="hidden" name="storey_range" value="{{ form_data.storey_range }}">
+          <input type="hidden" name="lease_commence" value="{{ form_data.lease_commence }}">
+          <input type="hidden" name="street_name" value="{{ form_data.get('street_name', '') }}">
+          <input type="hidden" name="block" value="{{ form_data.get('block', '') }}">
+          <input type="hidden" name="predicted_price" value="{{ result.predicted_price }}">
+          <input type="hidden" name="price_low" value="{{ result.price_low }}">
+          <input type="hidden" name="price_high" value="{{ result.price_high }}">
+          <button type="submit" class="btn-act btn-act-dark">
+            <i class="bi bi-bookmark-plus"></i> Save
+          </button>
+        </form>
+        {% else %}
+        <a href="{{ url_for('login') }}" class="btn-act btn-act-dark">
+          <i class="bi bi-bookmark-plus"></i> Save
+        </a>
+        {% endif %}
+
+        <a href="{{ url_for('map_view') }}?mode=transactions&town={{ form_data.town|urlencode }}{% if form_data.get('street_name') %}&street={{ form_data.street_name|urlencode }}{% endif %}{% if form_data.get('block') %}&block={{ form_data.block|urlencode }}{% endif %}"
+           class="btn-act btn-act-outline">
+          <i class="bi bi-geo-alt"></i> View on Map
+        </a>
+      </div>
+
+      {# Summary pills: Town / Flat Type / Floor Area / Remaining Lease / Flat Age / vs Town Avg #}
+      <div class="summary-pills">
+        <div class="spill">
+          <span class="spill-label">Town</span>
+          <span class="spill-val">{{ form_data.town }}</span>
+        </div>
+        <div class="spill">
+          <span class="spill-label">Flat Type</span>
+          <span class="spill-val">{{ form_data.flat_type }}</span>
+        </div>
+        <div class="spill">
+          <span class="spill-label">Floor Area</span>
+          <span class="spill-val">{{ form_data.floor_area }} sqm</span>
+        </div>
+        {% if remaining_lease is not none %}
+        <div class="spill">
+          <span class="spill-label">Remaining Lease</span>
+          <span class="spill-val">{{ remaining_lease }} yrs</span>
+        </div>
+        {% endif %}
+        {% if flat_age is not none %}
+        <div class="spill">
+          <span class="spill-label">Flat Age</span>
+          <span class="spill-val">{{ flat_age }} yrs</span>
+        </div>
+        {% endif %}
+        {% if town_avg_price and town_avg_price > 0 %}
+        <div class="spill">
+          <span class="spill-label">vs Town Avg</span>
+          {% if avg_diff > 0 %}
+          <span class="spill-val pos">+{{ avg_diff_pct }}%</span>
+          {% elif avg_diff < 0 %}
+          <span class="spill-val neg">-{{ avg_diff_pct }}%</span>
+          {% else %}
+          <span class="spill-val">At avg</span>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      {% if result.assumptions %}
+      <div class="assumptions-bar">
+        {% for note in result.assumptions %}<div>{{ note }}</div>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+    {# /PRICE CARD #}
+
+    {# ── SECTION 2: SHAP EXPLAINABILITY (delay 600ms) ── #}
+    {% if explanation %}
+    <div class="result-block shap-card" style="animation-delay:600ms;">
+      <div class="card-head">
+        <div>
+          <span class="p-kicker">Why This Price?</span>
+          <h3 class="section-title-lg">What Drives Your Flat's Value</h3>
+        </div>
+        <span class="premium-badge">Full SHAP &middot; {{ explanation.feature_count }} factors</span>
+      </div>
+
+      <div class="baseline-row">
+        <div class="bpill">
+          <span class="bpill-label">Baseline Price</span>
+          <span class="bpill-val">${{ "{:,}".format(explanation.baseline_price) }}</span>
+        </div>
+        <div class="bpill {{ 'pos' if explanation.delta_from_baseline >= 0 else 'neg' }}">
+          <span class="bpill-label">Your Property's Adjustment</span>
+          <span class="bpill-val">
+            {{ '+' if explanation.delta_from_baseline >= 0 else '−' }}${{ "{:,}".format(explanation.delta_from_baseline | abs | int) }}
+          </span>
+        </div>
+      </div>
+
+      <div class="shap-bars">
+        {% for f in explanation.features %}
+        {% set bar_pct = ((f.dollar_impact | abs) / ns.max_abs * 100) | int %}
+        {% set is_pos = f.dollar_impact >= 0 %}
+        <div class="shap-row">
+          <div class="shap-feat" title="{{ f.label }}">{{ f.label }}</div>
+          <div class="shap-track">
+            <div class="shap-fill {{ 'pos' if is_pos else 'neg' }}" style="width:{{ bar_pct }}%;"></div>
+          </div>
+          <div class="shap-dollar {{ 'pos' if is_pos else 'neg' }}">
+            {{ '+' if is_pos else '−' }}${{ "{:,}".format(f.dollar_impact | abs | int) }}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="shap-narrative">
+        <div class="narrative-kicker">Plain-English Summary</div>
+        <p style="margin:0;">{{ explanation.narrative }}</p>
+      </div>
+
+      <details class="shap-disclaimer">
+        <summary>What the model doesn't see</summary>
+        <p>This estimate does not capture renovation quality, interior condition, unit facing, corridor privacy, noise levels, layout quirks, ethnic quota timing, en-bloc potential, or sudden policy changes. Use the SHAP breakdown as model transparency — not a substitute for on-site judgment.</p>
+      </details>
+    </div>
+
+    {% elif is_premium %}
+    <div class="result-block shap-unavail-card" style="animation-delay:600ms;">
+      <div class="card-head">
+        <div>
+          <span class="p-kicker">Why This Price?</span>
+          <h3 class="section-title-lg">SHAP Breakdown Temporarily Unavailable</h3>
+          <p style="font-size:13.5px;color:#64748b;margin-top:6px;margin-bottom:0;">The valuation still uses the active model. Explainability will appear once the serving model supports it.</p>
+        </div>
+        <span style="background:#f1f5f9;color:#94a3b8;border-radius:50px;padding:4px 13px;font-size:12px;font-weight:700;">Unavailable</span>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="result-block shap-lock-card" style="animation-delay:600ms;">
+      <div class="card-head">
+        <div>
+          <span class="p-kicker">Why This Price?</span>
+          <h3 class="section-title-lg">Unlock the Full SHAP Breakdown</h3>
+          <p style="font-size:13.5px;color:#64748b;margin-top:6px;margin-bottom:0;">Premium users see every feature contribution behind this estimate, plus a plain-English summary.</p>
+        </div>
+        <span class="premium-badge">Premium only</span>
+      </div>
+      <div class="lock-chips">
+        <span class="lock-chip pos">Floor area contribution</span>
+        <span class="lock-chip pos">MRT proximity effect</span>
+        <span class="lock-chip neg">Lease &amp; age drag</span>
+        <span class="lock-chip">Town demand factor</span>
+        <span class="lock-chip">All 20+ factors</span>
+      </div>
+      <a href="{{ url_for('pricing') }}" class="btn-estimate" style="max-width:210px;">
+        <i class="bi bi-gem"></i> Upgrade to Premium
+      </a>
+    </div>
+    {% endif %}
+    {# /SHAP #}
+
+    {# ── SECTION 3: GENAI Q&A (delay 1200ms) ── #}
+    <div class="result-block genai-card" id="genaiPanel" style="animation-delay:1200ms;">
+      <div class="genai-header">
+        <span class="p-kicker">AI Assistant</span>
+        <h3 class="section-title-lg" style="font-size:19px;">Ask About This Prediction</h3>
+        <p class="genai-sub">Get plain-English explanations powered by Gemini AI &mdash; no property jargon.</p>
+      </div>
+
+      <div class="suggest-pills" id="initialSuggestions">
+        <button class="suggest-pill" onclick="sendPQ('Why does floor area have the biggest impact on price?')">Why does floor area matter most?</button>
+        <button class="suggest-pill" onclick="sendPQ('How does the remaining lease years affect my flat\'s resale value?')">How does lease affect value?</button>
+        <button class="suggest-pill" onclick="sendPQ('Is the estimated price fair for a {{ form_data.flat_type }} flat in {{ form_data.town }}?')">Is this a fair price?</button>
+        <button class="suggest-pill" onclick="sendPQ('What can I do to increase the resale value of my flat?')">How to boost value?</button>
+      </div>
+
+      <div class="chat-thread" id="pqThread"></div>
+
+      <div class="chat-input-bar">
+        <input class="chat-inp" id="pqInput" type="text"
+               placeholder="Ask anything about this estimate..."
+               onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendPQ();}" />
+        <button class="chat-send" id="pqSend" onclick="sendPQ()">
+          <i class="bi bi-send-fill"></i>
+        </button>
+      </div>
+
+      {% if not is_premium %}
+      <div class="limit-note" id="pqLimitNote">
+        <i class="bi bi-info-circle me-1"></i>
+        General users get 3 AI answers per day.
+        <a href="{{ url_for('pricing') }}">Upgrade for unlimited</a>
+      </div>
+      {% endif %}
+    </div>
+    {# /GENAI Q&A #}
+
+    {# ── SECTION 4: RECENT COMPARABLES (delay 1800ms) ── #}
+    {% if recent_transactions %}
+    <div class="result-block comp-card" style="animation-delay:1800ms;">
+      <span class="p-kicker">Market Context</span>
+      <h3 class="section-title-lg" style="font-size:19px;margin-bottom:0;">Recent Similar Transactions</h3>
+      <table class="comp-table">
+        <thead>
+          <tr>
+            <th>Address</th>
+            <th>Storey</th>
+            <th style="text-align:right;">Area</th>
+            <th style="text-align:right;">Price</th>
+            <th>Month</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for txn in recent_transactions %}
+          <tr>
+            <td class="addr">Blk {{ txn.block }} {{ txn.street_name }}</td>
+            <td>{{ txn.storey_range }}</td>
+            <td style="text-align:right;">{{ txn.floor_area_sqm }} sqm</td>
+            <td class="price-col">${{ "{:,}".format(txn.resale_price | int) }}</td>
+            <td>{{ txn.month }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {# /COMPARABLES #}
+
+    {# Explore deeper #}
+    <div class="result-block" style="text-align:center;margin-top:4px;margin-bottom:16px;animation-delay:2200ms;">
+      <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&flat_model={{ form_data.flat_model|urlencode }}&floor_area={{ form_data.floor_area }}&storey_range={{ form_data.storey_range|urlencode }}&lease_commence={{ form_data.lease_commence }}&street_name={{ form_data.get('street_name','')|urlencode }}&block={{ form_data.get('block','')|urlencode }}&predicted_price={{ result.predicted_price }}"
+         class="explore-btn">
+        <i class="bi bi-bar-chart-line"></i> Explore Deeper Analytics
+      </a>
+    </div>
+
+    {% endif %}{# end if result #}
+  </div>
+  {# /RIGHT CANVAS #}
+
 </div>
+{# /PREDICT SHELL #}
+
+{# ── Embedded data for JS ── #}
+{% if result %}
+<script id="pq-ctx" type="application/json">
+{
+  "predicted_price": {{ result.predicted_price }},
+  "price_low": {{ result.price_low }},
+  "price_high": {{ result.price_high }},
+  "mape": {{ result.mape | tojson }},
+  "model_label": {{ result.model_label | tojson }},
+  "floor_area": {{ form_data.floor_area | int }},
+  "storey_range": {{ form_data.storey_range | tojson }},
+  "remaining_lease": {{ remaining_lease | tojson }},
+  "flat_age": {{ flat_age | tojson }},
+  "town_avg_price": {{ town_avg_price | tojson }},
+  "town": {{ form_data.town | tojson }},
+  "flat_type": {{ form_data.flat_type | tojson }},
+  "street_name": {{ form_data.get('street_name', '') | tojson }},
+  "block": {{ form_data.get('block', '') | tojson }}
+  {% if explanation %},
+  "narrative": {{ explanation.narrative | tojson }},
+  "shap_features": {{ explanation.features | tojson }}
+  {% endif %}
+}
+</script>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-// Slider live display
-document.getElementById('predictFloorRange').oninput = function() {
-    document.getElementById('predictFloorVal').textContent = this.value;
-    checkFloorAreaBounds();
-};
-document.getElementById('predictLeaseRange').oninput = function() {
-    document.getElementById('predictLeaseVal').textContent = this.value;
-    checkLeaseYearBounds();
-};
+/* ================================================================
+   SLIDER TRACK FILL
+   ================================================================ */
+function updateSliderTrack(el) {
+  var min = Number(el.min) || 0, max = Number(el.max) || 100;
+  var pct = ((Number(el.value) - min) / (max - min) * 100).toFixed(1);
+  el.style.background = 'linear-gradient(to right,#2563eb ' + pct + '%,#e2e8f0 ' + pct + '%)';
+}
 
-// Training data bounds for range warnings
+var floorEl = document.getElementById('predictFloorRange');
+var leaseEl = document.getElementById('predictLeaseRange');
+
+if (floorEl) {
+  updateSliderTrack(floorEl);
+  floorEl.addEventListener('input', function () {
+    document.getElementById('predictFloorVal').textContent = this.value;
+    updateSliderTrack(this);
+    checkFloorBounds();
+  });
+}
+if (leaseEl) {
+  updateSliderTrack(leaseEl);
+  leaseEl.addEventListener('input', function () {
+    document.getElementById('predictLeaseVal').textContent = this.value;
+    updateSliderTrack(this);
+    checkLeaseBounds();
+  });
+}
+
+/* ================================================================
+   ADDRESS COLLAPSE — sync aria-expanded with chevron
+   ================================================================ */
+(function () {
+  var btn = document.getElementById('addrToggleBtn');
+  var col = document.getElementById('addrCollapse');
+  if (!btn || !col) return;
+  col.addEventListener('show.bs.collapse',  function () { btn.setAttribute('aria-expanded','true'); });
+  col.addEventListener('hide.bs.collapse',  function () { btn.setAttribute('aria-expanded','false'); });
+})();
+
+/* ================================================================
+   TRAINING DATA BOUNDS WARNINGS
+   ================================================================ */
 var knownFloorBounds = { min: null, max: null };
 var knownLeaseBounds = { min: null, max: null };
 
-function checkFloorAreaBounds() {
-    var el = document.getElementById('floorAreaWarning');
-    var textEl = document.getElementById('floorAreaWarningText');
-    if (!el || knownFloorBounds.min === null) { el && el.classList.add('d-none'); return; }
-    var val = Number(document.getElementById('predictFloorRange').value);
-    if (val < knownFloorBounds.min || val > knownFloorBounds.max) {
-        textEl.textContent = 'Outside typical range (' + knownFloorBounds.min + '-' + knownFloorBounds.max + ' sqm) for this town/type. Prediction may be less reliable.';
-        el.classList.remove('d-none');
-    } else {
-        el.classList.add('d-none');
-    }
+function checkFloorBounds() {
+  var el = document.getElementById('floorAreaWarning');
+  var tx = document.getElementById('floorAreaWarningText');
+  if (!el || knownFloorBounds.min === null) { el && el.classList.remove('visible'); return; }
+  var v = Number(floorEl.value);
+  if (v < knownFloorBounds.min || v > knownFloorBounds.max) {
+    tx.textContent = 'Outside typical range (' + knownFloorBounds.min + '–' + knownFloorBounds.max + ' sqm) — prediction may be less reliable.';
+    el.classList.add('visible');
+  } else { el.classList.remove('visible'); }
 }
 
-function checkLeaseYearBounds() {
-    var el = document.getElementById('leaseYearWarning');
-    var textEl = document.getElementById('leaseYearWarningText');
-    if (!el || knownLeaseBounds.min === null) { el && el.classList.add('d-none'); return; }
-    var val = Number(document.getElementById('predictLeaseRange').value);
-    if (val < knownLeaseBounds.min || val > knownLeaseBounds.max) {
-        textEl.textContent = 'Outside typical range (' + knownLeaseBounds.min + '-' + knownLeaseBounds.max + ') for this town. Prediction may be less reliable.';
-        el.classList.remove('d-none');
-    } else {
-        el.classList.add('d-none');
-    }
+function checkLeaseBounds() {
+  var el = document.getElementById('leaseYearWarning');
+  var tx = document.getElementById('leaseYearWarningText');
+  if (!el || knownLeaseBounds.min === null) { el && el.classList.remove('visible'); return; }
+  var v = Number(leaseEl.value);
+  if (v < knownLeaseBounds.min || v > knownLeaseBounds.max) {
+    tx.textContent = 'Outside typical range (' + knownLeaseBounds.min + '–' + knownLeaseBounds.max + ') for this town.';
+    el.classList.add('visible');
+  } else { el.classList.remove('visible'); }
 }
 
-// Store original dropdown options
-var predictFlatTypeSelect = document.getElementById('predictFlatType');
-var predictFlatModelSelect = document.getElementById('predictFlatModel');
-var predictStoreyRangeSelect = document.getElementById('predictStoreyRange');
-var predictFlatTypeStatus = document.getElementById('predictFlatTypeStatus');
-var originalPredictFlatTypeOptions = predictFlatTypeSelect.innerHTML;
-var originalPredictFlatModelOptions = predictFlatModelSelect.innerHTML;
-var originalPredictStoreyOptions = predictStoreyRangeSelect.innerHTML;
-var predictForm = document.getElementById('predictForm');
-var predictSubmitBtn = document.getElementById('predictSubmitBtn');
-var defaultSubmitHtml = predictSubmitBtn ? predictSubmitBtn.innerHTML : '';
+/* ================================================================
+   CASCADING DROPDOWNS + DYNAMIC SLIDERS
+   ================================================================ */
+var ftSel   = document.getElementById('predictFlatType');
+var fmSel   = document.getElementById('predictFlatModel');
+var srSel   = document.getElementById('predictStoreyRange');
+var ftStatus = document.getElementById('predictFlatTypeStatus');
+var origFT  = ftSel  ? ftSel.innerHTML  : '';
+var origFM  = fmSel  ? fmSel.innerHTML  : '';
+var origSR  = srSel  ? srSel.innerHTML  : '';
+var pForm   = document.getElementById('predictForm');
+var subBtn  = document.getElementById('predictSubmitBtn');
+var origBtnHTML = subBtn ? subBtn.innerHTML : '';
+var stSel   = document.getElementById('predictStreet');
+var blkSel  = document.getElementById('predictBlock');
+var townSel = document.getElementById('predictTown');
 
-// Street/block dropdowns
-var predictStreetSelect = document.getElementById('predictStreet');
-var predictBlockSelect = document.getElementById('predictBlock');
-var streetRequestToken = 0;
-var prefillStreet = '{{ form_data.get("street_name", "") | e }}';
-var prefillBlock = '{{ form_data.get("block", "") | e }}';
-var prefillFlatType = '{{ form_data.get("flat_type", "") | e }}';
+var prefillStreet    = '{{ form_data.get("street_name", "") | e }}';
+var prefillBlock     = '{{ form_data.get("block", "") | e }}';
+var prefillFlatType  = '{{ form_data.get("flat_type", "") | e }}';
 var prefillFlatModel = '{{ form_data.get("flat_model", "") | e }}';
-var prefillStorey = '{{ form_data.get("storey_range", "") | e }}';
-var prefillFloorArea = '{{ form_data.get("floor_area", "") | e }}';
-var prefillLease = '{{ form_data.get("lease_commence", "") | e }}';
+var prefillStorey    = '{{ form_data.get("storey_range", "") | e }}';
+var prefillFloor     = '{{ form_data.get("floor_area", "") | e }}';
+var prefillLease     = '{{ form_data.get("lease_commence", "") | e }}';
 
-// Cascading dropdowns + dynamic sliders
-var predictTownSelect = document.getElementById('predictTown');
-var townRequestToken = 0;
-var flatTypeRequestToken = 0;
-var pendingOptionRequests = 0;
+var townToken = 0, ftToken = 0, addrToken = 0, stToken = 0, pending = 0;
 
-function setSliderWithinBounds(rangeEl, displayId, minValue, maxValue, preferredValue, fallbackValue) {
-    var min = Number(minValue);
-    var max = Number(maxValue);
-    if (!Number.isFinite(min)) min = Number(rangeEl.min) || 0;
-    if (!Number.isFinite(max)) max = Number(rangeEl.max) || min;
-    rangeEl.min = min;
-    rangeEl.max = max;
-
-    var preferred = Number(preferredValue);
-    var fallback = Number(fallbackValue);
-    var nextValue = Number.isFinite(preferred) ? preferred : fallback;
-    if (!Number.isFinite(nextValue)) nextValue = min;
-    nextValue = Math.min(max, Math.max(min, nextValue));
-    nextValue = Math.round(nextValue);
-    rangeEl.value = String(nextValue);
-    document.getElementById(displayId).textContent = String(nextValue);
+function addrQS() {
+  var st = stSel  ? stSel.value.trim()  : '';
+  var bk = blkSel ? blkSel.value.trim() : '';
+  return (st ? '&street_name=' + encodeURIComponent(st) : '') + (bk ? '&block=' + encodeURIComponent(bk) : '');
 }
 
-function renderSelectOptions(selectEl, values, preferredValue, fallbackValue) {
-    if (!Array.isArray(values) || values.length === 0) return false;
-    var normalizedValues = values.map(function(value) { return String(value); });
-    var preferred = String(preferredValue || '');
-    var fallback = String(fallbackValue || '');
-    var selectedValue = normalizedValues.includes(preferred)
-        ? preferred
-        : (fallback && normalizedValues.includes(fallback) ? fallback : normalizedValues[0]);
+function setBtnState(mode) {
+  if (!subBtn) return;
+  if (mode === 'opts')  { subBtn.disabled = true; subBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading...'; return; }
+  if (mode === 'load')  { subBtn.disabled = true; subBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Estimating...'; return; }
+  subBtn.disabled = false; subBtn.innerHTML = origBtnHTML;
+}
+function beginLoad() { pending++; setBtnState('opts'); }
+function endLoad()   { pending = Math.max(0,pending-1); if (!pending) setBtnState('idle'); }
 
-    selectEl.innerHTML = normalizedValues.map(function(value) {
-        var selected = value === selectedValue ? ' selected' : '';
-        return '<option value="' + value + '"' + selected + '>' + value + '</option>';
-    }).join('');
-    return true;
+function setBounds(rangeEl, dispId, mn, mx, pref, fb) {
+  var min = Number(mn), max = Number(mx);
+  if (!isFinite(min)) min = Number(rangeEl.min) || 0;
+  if (!isFinite(max)) max = Number(rangeEl.max) || min;
+  rangeEl.min = min; rangeEl.max = max;
+  var v = isFinite(Number(pref)) ? Number(pref) : (isFinite(Number(fb)) ? Number(fb) : min);
+  v = Math.round(Math.min(max, Math.max(min, v)));
+  rangeEl.value = v; document.getElementById(dispId).textContent = v;
+  updateSliderTrack(rangeEl);
 }
 
-function setSubmitButtonState(mode) {
-    if (!predictSubmitBtn) return;
-    if (mode === 'loading-options') {
-        predictSubmitBtn.disabled = true;
-        predictSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Loading options...';
-        return;
+function fillOpts(el, arr, pref, fb) {
+  if (!Array.isArray(arr) || !arr.length) return false;
+  var vs = arr.map(String);
+  var sel = vs.includes(String(pref||'')) ? String(pref) : (vs.includes(String(fb||'')) ? String(fb) : vs[0]);
+  el.innerHTML = vs.map(function(v){ return '<option value="'+v+'"'+(v===sel?' selected':'')+'>'+v+'</option>'; }).join('');
+  return true;
+}
+
+if (townSel) townSel.addEventListener('change', async function() {
+  var t = this.value;
+  if (stSel)  stSel.innerHTML  = '<option value="">Any street...</option>';
+  if (blkSel) blkSel.innerHTML = '<option value="">Any block...</option>';
+  if (!t) return;
+  var tok = ++townToken; beginLoad();
+  try {
+    var [r1,r2,r3] = await Promise.all([
+      fetch('/api/lease_year_range?town='+encodeURIComponent(t)),
+      fetch('/api/flat_type_breakdown?town='+encodeURIComponent(t)),
+      fetch('/api/available_streets?town='+encodeURIComponent(t))
+    ]);
+    if (tok !== townToken) return;
+    if (r1.ok) { var d=await r1.json(); setBounds(leaseEl,'predictLeaseVal',d.min_year,d.max_year,leaseEl.value,d.avg_year); knownLeaseBounds.min=+d.min_year;knownLeaseBounds.max=+d.max_year;checkLeaseBounds(); }
+    var nextFT = ftSel ? ftSel.value : '';
+    if (r2.ok && ftSel) {
+      var d2=await r2.json(); var vt=d2.filter(function(x){return x.txn_count>0;}).map(function(x){return x.flat_type;});
+      Array.from(ftSel.options).forEach(function(o){if(o.value&&vt.length)o.disabled=!vt.includes(o.value);});
+      if (vt.length&&(!nextFT||!vt.includes(nextFT))){nextFT=vt[0];ftSel.value=nextFT;}
     }
-    if (mode === 'submitting') {
-        predictSubmitBtn.disabled = true;
-        predictSubmitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Estimating...';
-        return;
-    }
-    predictSubmitBtn.disabled = false;
-    predictSubmitBtn.innerHTML = defaultSubmitHtml;
-}
-
-function beginOptionLoad() {
-    pendingOptionRequests += 1;
-    setSubmitButtonState('loading-options');
-}
-
-function endOptionLoad() {
-    pendingOptionRequests = Math.max(0, pendingOptionRequests - 1);
-    if (pendingOptionRequests === 0) {
-        setSubmitButtonState('idle');
-    }
-}
-
-function canEstimateForSelectedFlatType() {
-    if (!predictFlatTypeSelect) return false;
-    var idx = predictFlatTypeSelect.selectedIndex;
-    if (idx < 0) return false;
-    var opt = predictFlatTypeSelect.options[idx];
-    if (!opt) return false;
-    if (!opt.value) return false;
-    // If JS previously disabled the option for this town, it won't be submitted reliably.
-    return !opt.disabled;
-}
-
-function showFlatTypeCannotEstimate() {
-    if (predictFlatTypeStatus) {
-        predictFlatTypeStatus.textContent = 'Cannot get estimate for this flat type in the selected town.';
-        predictFlatTypeStatus.classList.remove('d-none');
-    }
-}
-
-function hideFlatTypeCannotEstimate() {
-    if (predictFlatTypeStatus) {
-        predictFlatTypeStatus.textContent = '';
-        predictFlatTypeStatus.classList.add('d-none');
-    }
-}
-
-predictTownSelect.addEventListener('change', async function() {
-    var town = this.value;
-    predictStreetSelect.innerHTML = '<option value="">Any street...</option>';
-    predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
-    if (!town) return;
-    var requestToken = ++townRequestToken;
-    beginOptionLoad();
-
-    try {
-        var responses = await Promise.all([
-            fetch('/api/lease_year_range?town=' + encodeURIComponent(town)),
-            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town)),
-            fetch('/api/available_streets?town=' + encodeURIComponent(town))
-        ]);
-        if (requestToken !== townRequestToken) return;
-
-        var leaseResp = responses[0];
-        var flatTypeResp = responses[1];
-        var streetResp = responses[2];
-
-        if (leaseResp.ok) {
-            var data = await leaseResp.json();
-            var leaseRange = document.getElementById('predictLeaseRange');
-            setSliderWithinBounds(
-                leaseRange,
-                'predictLeaseVal',
-                data.min_year,
-                data.max_year,
-                leaseRange.value,
-                data.avg_year
-            );
-            knownLeaseBounds.min = Number(data.min_year);
-            knownLeaseBounds.max = Number(data.max_year);
-            checkLeaseYearBounds();
-        }
-
-        var nextFlatType = predictFlatTypeSelect.value;
-        if (flatTypeResp.ok) {
-            var data2 = await flatTypeResp.json();
-            var validTypes = data2.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
-            Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
-                if (opt.value && validTypes.length > 0) {
-                    opt.disabled = !validTypes.includes(opt.value);
-                }
-            });
-            if (validTypes.length > 0 && (!nextFlatType || !validTypes.includes(nextFlatType))) {
-                nextFlatType = validTypes[0];
-                predictFlatTypeSelect.value = nextFlatType;
-            }
-        }
-
-        if (streetResp.ok) {
-            var data3 = await streetResp.json();
-            predictStreetSelect.innerHTML = '<option value="">Any street...</option>' +
-                (data3.streets || []).map(function(s) { return '<option value="' + s + '">' + s + '</option>'; }).join('');
-        }
-        if (nextFlatType) {
-            predictFlatTypeSelect.dispatchEvent(new Event('change'));
-        }
-    } catch(e) {
-        predictFlatTypeSelect.innerHTML = originalPredictFlatTypeOptions;
-        predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
-        predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
-    } finally {
-        predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
-        endOptionLoad();
-    }
+    if (r3.ok && stSel) { var d3=await r3.json(); stSel.innerHTML='<option value="">Any street...</option>'+(d3.streets||[]).map(function(s){return'<option value="'+s+'">'+s+'</option>';}).join(''); }
+    if (nextFT && ftSel) ftSel.dispatchEvent(new Event('change'));
+  } catch(e) { if(ftSel)ftSel.innerHTML=origFT; if(fmSel)fmSel.innerHTML=origFM; if(srSel)srSel.innerHTML=origSR; }
+  finally { if(blkSel)blkSel.innerHTML='<option value="">Any block...</option>'; endLoad(); }
 });
 
-// Helper: build address query string suffix
-function addressParams() {
-    var street = (predictStreetSelect.value || '').trim();
-    var block = (predictBlockSelect.value || '').trim();
-    var qs = '';
-    if (street) qs += '&street_name=' + encodeURIComponent(street);
-    if (block) qs += '&block=' + encodeURIComponent(block);
-    return qs;
+async function refreshForAddr() {
+  var t = townSel ? townSel.value : ''; if (!t) return;
+  var ft = ftSel ? ftSel.value : '';
+  var tok = ++addrToken; var qs = addrQS(); beginLoad();
+  try {
+    var reqs = [
+      fetch('/api/flat_type_breakdown?town='+encodeURIComponent(t)+qs),
+      fetch('/api/lease_year_range?town='+encodeURIComponent(t)+qs),
+      ft?fetch('/api/floor_area_stats?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs):Promise.resolve(null),
+      ft?fetch('/api/available_models?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs):Promise.resolve(null),
+      ft?fetch('/api/available_storey_ranges?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs):Promise.resolve(null)
+    ];
+    var [r0,r1,r2,r3,r4] = await Promise.all(reqs);
+    if (tok !== addrToken) return;
+    if(r0&&r0.ok&&ftSel){var d=await r0.json();var vt=d.filter(function(x){return x.txn_count>0;}).map(function(x){return x.flat_type;});Array.from(ftSel.options).forEach(function(o){if(o.value&&vt.length)o.disabled=!vt.includes(o.value);});if(vt.length&&(!ft||!vt.includes(ft)))ftSel.value=vt[0];}
+    if(r1&&r1.ok){var d=await r1.json();setBounds(leaseEl,'predictLeaseVal',d.min_year,d.max_year,leaseEl.value,d.avg_year);knownLeaseBounds.min=+d.min_year;knownLeaseBounds.max=+d.max_year;checkLeaseBounds();}
+    if(r2&&r2.ok){var d=await r2.json();setBounds(floorEl,'predictFloorVal',d.min_area,d.max_area,floorEl.value,d.avg_area);knownFloorBounds.min=+d.min_area;knownFloorBounds.max=+d.max_area;checkFloorBounds();}
+    if(r3&&r3.ok&&fmSel){var d=await r3.json();if(!fillOpts(fmSel,d.models,fmSel.value,d.models&&d.models[0]))fmSel.innerHTML=origFM;}
+    if(r4&&r4.ok&&srSel){var d=await r4.json();var mid=d.storey_ranges&&d.storey_ranges[Math.floor(d.storey_ranges.length/2)];if(!fillOpts(srSel,d.storey_ranges,srSel.value,mid))srSel.innerHTML=origSR;}
+  } catch(e){}finally{endLoad();}
 }
 
-// Refresh dependent options (flat type, model, floor area, lease, storey) for current address
-var addressRequestToken = 0;
-async function refreshOptionsForAddress() {
-    var town = predictTownSelect.value;
-    if (!town) return;
-    var flatType = predictFlatTypeSelect.value;
-    var token = ++addressRequestToken;
-    var addrQs = addressParams();
-    beginOptionLoad();
-
-    try {
-        var responses = await Promise.all([
-            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(town) + addrQs),
-            fetch('/api/lease_year_range?town=' + encodeURIComponent(town) + addrQs),
-            flatType ? fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs) : Promise.resolve(null),
-            flatType ? fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs) : Promise.resolve(null),
-            flatType ? fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs) : Promise.resolve(null)
-        ]);
-        if (token !== addressRequestToken) return;
-
-        var flatTypeResp = responses[0];
-        var leaseResp = responses[1];
-        var floorResp = responses[2];
-        var modelResp = responses[3];
-        var storeyResp = responses[4];
-
-        if (flatTypeResp && flatTypeResp.ok) {
-            var ftData = await flatTypeResp.json();
-            var validTypes = ftData.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
-            Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
-                if (opt.value && validTypes.length > 0) opt.disabled = !validTypes.includes(opt.value);
-            });
-            if (validTypes.length > 0 && (!flatType || !validTypes.includes(flatType))) {
-                predictFlatTypeSelect.value = validTypes[0];
-            }
-        }
-
-        if (leaseResp && leaseResp.ok) {
-            var leaseData = await leaseResp.json();
-            var leaseRange = document.getElementById('predictLeaseRange');
-            setSliderWithinBounds(leaseRange, 'predictLeaseVal', leaseData.min_year, leaseData.max_year, leaseRange.value, leaseData.avg_year);
-            knownLeaseBounds.min = Number(leaseData.min_year);
-            knownLeaseBounds.max = Number(leaseData.max_year);
-            checkLeaseYearBounds();
-        }
-
-        if (floorResp && floorResp.ok) {
-            var floorData = await floorResp.json();
-            var floorRange = document.getElementById('predictFloorRange');
-            setSliderWithinBounds(floorRange, 'predictFloorVal', floorData.min_area, floorData.max_area, floorRange.value, floorData.avg_area);
-            knownFloorBounds.min = Number(floorData.min_area);
-            knownFloorBounds.max = Number(floorData.max_area);
-            checkFloorAreaBounds();
-        }
-
-        if (modelResp && modelResp.ok) {
-            var modelData = await modelResp.json();
-            if (!(modelData.models && renderSelectOptions(predictFlatModelSelect, modelData.models, predictFlatModelSelect.value, modelData.models[0]))) {
-                predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
-            }
-        }
-
-        if (storeyResp && storeyResp.ok) {
-            var storeyData = await storeyResp.json();
-            if (!(storeyData.storey_ranges && renderSelectOptions(
-                predictStoreyRangeSelect, storeyData.storey_ranges,
-                predictStoreyRangeSelect.value,
-                storeyData.storey_ranges[Math.floor(storeyData.storey_ranges.length / 2)]
-            ))) {
-                predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
-            }
-        }
-    } catch(e) {} finally {
-        endOptionLoad();
-    }
-}
-
-// Street change → load blocks + refresh options for address
-predictStreetSelect.addEventListener('change', async function() {
-    var town = predictTownSelect.value;
-    var street = this.value;
-    predictBlockSelect.innerHTML = '<option value="">Any block...</option>';
-    if (!town || !street) {
-        // Street cleared — refresh options at town level only
-        if (town) refreshOptionsForAddress();
-        return;
-    }
-    var token = ++streetRequestToken;
-    try {
-        var resp = await fetch('/api/available_blocks?town=' + encodeURIComponent(town) + '&street_name=' + encodeURIComponent(street));
-        if (token !== streetRequestToken) return;
-        if (resp.ok) {
-            var data = await resp.json();
-            predictBlockSelect.innerHTML = '<option value="">Any block...</option>' +
-                (data.blocks || []).map(function(b) { return '<option value="' + b + '">' + b + '</option>'; }).join('');
-        }
-    } catch(e) {}
-    refreshOptionsForAddress();
+if (stSel) stSel.addEventListener('change', async function() {
+  var t=townSel?townSel.value:'', s=this.value;
+  if(blkSel)blkSel.innerHTML='<option value="">Any block...</option>';
+  if(!t||!s){if(t)refreshForAddr();return;}
+  var tok=++stToken;
+  try {
+    var r=await fetch('/api/available_blocks?town='+encodeURIComponent(t)+'&street_name='+encodeURIComponent(s));
+    if(tok!==stToken)return;
+    if(r.ok&&blkSel){var d=await r.json();blkSel.innerHTML='<option value="">Any block...</option>'+(d.blocks||[]).map(function(b){return'<option value="'+b+'">'+b+'</option>';}).join('');}
+  } catch(e){}
+  refreshForAddr();
 });
 
-// Block change → refresh options for address
-predictBlockSelect.addEventListener('change', function() {
-    refreshOptionsForAddress();
+if (blkSel) blkSel.addEventListener('change', function(){refreshForAddr();});
+
+if (ftSel) ftSel.addEventListener('change', async function() {
+  var t=townSel?townSel.value:'', ft=this.value;
+  if(!t||!ft)return;
+  var tok=++ftToken; var qs=addrQS(); beginLoad();
+  try {
+    var [r0,r1,r2]=await Promise.all([
+      fetch('/api/floor_area_stats?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs),
+      fetch('/api/available_models?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs),
+      fetch('/api/available_storey_ranges?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(ft)+qs)
+    ]);
+    if(tok!==ftToken)return;
+    if(r0.ok){var d=await r0.json();setBounds(floorEl,'predictFloorVal',d.min_area,d.max_area,floorEl.value,d.avg_area);knownFloorBounds.min=+d.min_area;knownFloorBounds.max=+d.max_area;checkFloorBounds();}
+    if(r1.ok&&fmSel){var d=await r1.json();if(!fillOpts(fmSel,d.models,fmSel.value,d.models&&d.models[0]))fmSel.innerHTML=origFM;}
+    if(r2.ok&&srSel){var d=await r2.json();var mid=d.storey_ranges&&d.storey_ranges[Math.floor(d.storey_ranges.length/2)];if(!fillOpts(srSel,d.storey_ranges,srSel.value,mid))srSel.innerHTML=origSR;}
+  } catch(e){if(fmSel)fmSel.innerHTML=origFM;if(srSel)srSel.innerHTML=origSR;}
+  finally{endLoad();}
 });
 
-// Auto-init cascading dropdowns if town is pre-filled (e.g. from saved prediction link)
+/* Auto-init on pre-filled town */
 (async function() {
-    var initTown = predictTownSelect.value;
-    if (!initTown) return;
-
-    try {
-        var prefillAddrQs = '';
-        if (prefillStreet) prefillAddrQs += '&street_name=' + encodeURIComponent(prefillStreet);
-        if (prefillBlock) prefillAddrQs += '&block=' + encodeURIComponent(prefillBlock);
-        var responses = await Promise.all([
-            fetch('/api/available_streets?town=' + encodeURIComponent(initTown)),
-            fetch('/api/flat_type_breakdown?town=' + encodeURIComponent(initTown) + prefillAddrQs),
-            fetch('/api/lease_year_range?town=' + encodeURIComponent(initTown) + prefillAddrQs)
-        ]);
-
-        if (responses[0].ok) {
-            var data = await responses[0].json();
-            predictStreetSelect.innerHTML = '<option value="">Any street...</option>' +
-                (data.streets || []).map(function(s) {
-                    var sel = (s === prefillStreet) ? ' selected' : '';
-                    return '<option value="' + s + '"' + sel + '>' + s + '</option>';
-                }).join('');
-
-            // Load blocks if street is pre-filled
-            if (prefillStreet) {
-                var blockResp = await fetch('/api/available_blocks?town=' + encodeURIComponent(initTown) + '&street_name=' + encodeURIComponent(prefillStreet));
-                if (blockResp.ok) {
-                    var blockData = await blockResp.json();
-                    predictBlockSelect.innerHTML = '<option value="">Any block...</option>' +
-                        (blockData.blocks || []).map(function(b) {
-                            var sel = (b === prefillBlock) ? ' selected' : '';
-                            return '<option value="' + b + '"' + sel + '>' + b + '</option>';
-                        }).join('');
-                }
-            }
-        }
-
-        if (responses[1].ok) {
-            var ftData = await responses[1].json();
-            var validTypes = ftData.filter(function(d) { return d.txn_count > 0; }).map(function(d) { return d.flat_type; });
-            Array.from(predictFlatTypeSelect.options).forEach(function(opt) {
-                if (opt.value && validTypes.length > 0) opt.disabled = !validTypes.includes(opt.value);
-            });
-            if (validTypes.length > 0 && (!predictFlatTypeSelect.value || !validTypes.includes(predictFlatTypeSelect.value))) {
-                predictFlatTypeSelect.value = validTypes[0];
-            }
-        }
-
-        if (responses[2].ok) {
-            var leaseData = await responses[2].json();
-            setSliderWithinBounds(
-                document.getElementById('predictLeaseRange'),
-                'predictLeaseVal',
-                leaseData.min_year,
-                leaseData.max_year,
-                prefillLease,
-                leaseData.avg_year
-            );
-            knownLeaseBounds.min = Number(leaseData.min_year);
-            knownLeaseBounds.max = Number(leaseData.max_year);
-            checkLeaseYearBounds();
-        }
-
-        if (prefillFlatType && responses[1].ok) {
-            var initAddrQs = '';
-            if (prefillStreet) initAddrQs += '&street_name=' + encodeURIComponent(prefillStreet);
-            if (prefillBlock) initAddrQs += '&block=' + encodeURIComponent(prefillBlock);
-            var detailResponses = await Promise.all([
-                fetch('/api/floor_area_stats?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType) + initAddrQs),
-                fetch('/api/available_models?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType) + initAddrQs),
-                fetch('/api/available_storey_ranges?town=' + encodeURIComponent(initTown) + '&flat_type=' + encodeURIComponent(prefillFlatType) + initAddrQs)
-            ]);
-
-            if (detailResponses[0].ok) {
-                var floorData = await detailResponses[0].json();
-                setSliderWithinBounds(
-                    document.getElementById('predictFloorRange'),
-                    'predictFloorVal',
-                    floorData.min_area,
-                    floorData.max_area,
-                    prefillFloorArea,
-                    floorData.avg_area
-                );
-                knownFloorBounds.min = Number(floorData.min_area);
-                knownFloorBounds.max = Number(floorData.max_area);
-                checkFloorAreaBounds();
-            }
-            if (detailResponses[1].ok) {
-                var modelData = await detailResponses[1].json();
-                if (!(modelData.models && renderSelectOptions(predictFlatModelSelect, modelData.models, prefillFlatModel, modelData.models[0]))) {
-                    predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
-                }
-            }
-            if (detailResponses[2].ok) {
-                var storeyData = await detailResponses[2].json();
-                if (!(storeyData.storey_ranges && renderSelectOptions(
-                    predictStoreyRangeSelect,
-                    storeyData.storey_ranges,
-                    prefillStorey,
-                    storeyData.storey_ranges[Math.floor(storeyData.storey_ranges.length / 2)]
-                ))) {
-                    predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
-                }
-            }
-        }
-    } catch(e) {}
-})();
-
-predictFlatTypeSelect.addEventListener('change', async function() {
-    var town = predictTownSelect.value;
-    var flatType = this.value;
-    if (!town || !flatType) return;
-    var requestToken = ++flatTypeRequestToken;
-    var addrQs = addressParams();
-    beginOptionLoad();
-
-    try {
-        var responses = await Promise.all([
-            fetch('/api/floor_area_stats?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs),
-            fetch('/api/available_models?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs),
-            fetch('/api/available_storey_ranges?town=' + encodeURIComponent(town) + '&flat_type=' + encodeURIComponent(flatType) + addrQs)
-        ]);
-        if (requestToken !== flatTypeRequestToken) return;
-
-        var floorAreaResp = responses[0];
-        var modelResp = responses[1];
-        var storeyResp = responses[2];
-
-        if (floorAreaResp.ok) {
-            var data = await floorAreaResp.json();
-            var floorRange = document.getElementById('predictFloorRange');
-            setSliderWithinBounds(
-                floorRange,
-                'predictFloorVal',
-                data.min_area,
-                data.max_area,
-                floorRange.value,
-                data.avg_area
-            );
-            knownFloorBounds.min = Number(data.min_area);
-            knownFloorBounds.max = Number(data.max_area);
-            checkFloorAreaBounds();
-        }
-        if (modelResp.ok) {
-            var data2 = await modelResp.json();
-            if (!(data2.models && renderSelectOptions(predictFlatModelSelect, data2.models, predictFlatModelSelect.value, data2.models[0]))) {
-                predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
-            }
-        }
-        if (storeyResp.ok) {
-            var data3 = await storeyResp.json();
-            if (!(data3.storey_ranges && renderSelectOptions(
-                predictStoreyRangeSelect,
-                data3.storey_ranges,
-                predictStoreyRangeSelect.value,
-                data3.storey_ranges[Math.floor(data3.storey_ranges.length / 2)]
-            ))) {
-                predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
-            }
-        }
-    } catch(e) {
-        predictFlatModelSelect.innerHTML = originalPredictFlatModelOptions;
-        predictStoreyRangeSelect.innerHTML = originalPredictStoreyOptions;
-    } finally {
-        endOptionLoad();
+  var t = townSel ? townSel.value : ''; if (!t) return;
+  try {
+    var qs2 = (prefillStreet?'&street_name='+encodeURIComponent(prefillStreet):'')+(prefillBlock?'&block='+encodeURIComponent(prefillBlock):'');
+    var [r0,r1,r2]=await Promise.all([fetch('/api/available_streets?town='+encodeURIComponent(t)),fetch('/api/flat_type_breakdown?town='+encodeURIComponent(t)+qs2),fetch('/api/lease_year_range?town='+encodeURIComponent(t)+qs2)]);
+    if(r0.ok&&stSel){var d=await r0.json();stSel.innerHTML='<option value="">Any street...</option>'+(d.streets||[]).map(function(s){return'<option value="'+s+'"'+(s===prefillStreet?' selected':'')+'>'+s+'</option>';}).join('');
+      if(prefillStreet&&blkSel){var br=await fetch('/api/available_blocks?town='+encodeURIComponent(t)+'&street_name='+encodeURIComponent(prefillStreet));if(br.ok){var bd=await br.json();blkSel.innerHTML='<option value="">Any block...</option>'+(bd.blocks||[]).map(function(b){return'<option value="'+b+'"'+(b===prefillBlock?' selected':'')+'>'+b+'</option>';}).join('');}}
     }
-});
+    if(r1.ok&&ftSel){var d=await r1.json();var vt=d.filter(function(x){return x.txn_count>0;}).map(function(x){return x.flat_type;});Array.from(ftSel.options).forEach(function(o){if(o.value&&vt.length)o.disabled=!vt.includes(o.value);});if(vt.length&&(!ftSel.value||!vt.includes(ftSel.value)))ftSel.value=vt[0];}
+    if(r2.ok){var d=await r2.json();setBounds(leaseEl,'predictLeaseVal',d.min_year,d.max_year,prefillLease,d.avg_year);knownLeaseBounds.min=+d.min_year;knownLeaseBounds.max=+d.max_year;checkLeaseBounds();}
+    if(prefillFlatType&&r1.ok){
+      var iqs=(prefillStreet?'&street_name='+encodeURIComponent(prefillStreet):'')+(prefillBlock?'&block='+encodeURIComponent(prefillBlock):'');
+      var [dr0,dr1,dr2]=await Promise.all([fetch('/api/floor_area_stats?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(prefillFlatType)+iqs),fetch('/api/available_models?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(prefillFlatType)+iqs),fetch('/api/available_storey_ranges?town='+encodeURIComponent(t)+'&flat_type='+encodeURIComponent(prefillFlatType)+iqs)]);
+      if(dr0.ok){var d=await dr0.json();setBounds(floorEl,'predictFloorVal',d.min_area,d.max_area,prefillFloor,d.avg_area);knownFloorBounds.min=+d.min_area;knownFloorBounds.max=+d.max_area;checkFloorBounds();}
+      if(dr1.ok&&fmSel){var d=await dr1.json();if(!fillOpts(fmSel,d.models,prefillFlatModel,d.models&&d.models[0]))fmSel.innerHTML=origFM;}
+      if(dr2.ok&&srSel){var d=await dr2.json();var mid=d.storey_ranges&&d.storey_ranges[Math.floor(d.storey_ranges.length/2)];if(!fillOpts(srSel,d.storey_ranges,prefillStorey,mid))srSel.innerHTML=origSR;}
+    }
+  } catch(e){}
+})();
 
-// Form submit loading state
-(function() {
-    if (!predictForm || !predictSubmitBtn) return;
+/* Form submit */
+if (pForm && subBtn) {
+  pForm.addEventListener('submit', function(e) {
+    if (pending > 0) { e.preventDefault(); setBtnState('opts'); return; }
+    var idx = ftSel ? ftSel.selectedIndex : -1;
+    var canEst = idx >= 0 && ftSel.options[idx] && ftSel.options[idx].value && !ftSel.options[idx].disabled;
+    if (!canEst) {
+      e.preventDefault();
+      if(ftStatus){ftStatus.textContent='Cannot estimate this flat type for the selected town.';ftStatus.classList.add('visible');}
+      setBtnState('idle'); return;
+    }
+    if(ftStatus)ftStatus.classList.remove('visible');
+    if (!pForm.checkValidity()) { setBtnState('idle'); return; }
+    setBtnState('load');
+  });
+  window.addEventListener('pageshow', function(){ setBtnState('idle'); });
+}
 
-    predictForm.addEventListener('submit', function(e) {
-        if (pendingOptionRequests > 0) {
-            e.preventDefault();
-            setSubmitButtonState('loading-options');
-            return;
+/* ================================================================
+   GENAI PREDICTION Q&A
+   ================================================================ */
+(function () {
+  var ctxEl = document.getElementById('pq-ctx');
+  if (!ctxEl) return;
+
+  var ctx    = JSON.parse(ctxEl.textContent || '{}');
+  var isPrem = {{ 'true' if is_premium else 'false' }};
+  var busy   = false;
+  var hist   = [];  /* premium multi-turn history */
+
+  var apiCtx = {
+    filters: { town: ctx.town||'', flat_type: ctx.flat_type||'', street_name: ctx.street_name||'', block: ctx.block||'' },
+    chart_data: {
+      predicted_price: ctx.predicted_price,
+      price_low: ctx.price_low,
+      price_high: ctx.price_high,
+      floor_area_sqm: ctx.floor_area,
+      storey_range: ctx.storey_range,
+      remaining_lease: ctx.remaining_lease,
+      flat_age: ctx.flat_age,
+      town_avg_price: ctx.town_avg_price,
+      mape: ctx.mape,
+      narrative: ctx.narrative || null,
+      shap_features: ctx.shap_features || []
+    }
+  };
+
+  var thread   = document.getElementById('pqThread');
+  var inp      = document.getElementById('pqInput');
+  var sendBtn2 = document.getElementById('pqSend');
+  var limitEl  = document.getElementById('pqLimitNote');
+  if (!thread || !inp || !sendBtn2) return;
+
+  /* Expose globally for onclick in HTML */
+  window.sendPQ = async function (text) {
+    var q = (text != null ? String(text) : inp.value).trim();
+    if (!q || busy) return;
+    inp.value = ''; busy = true; sendBtn2.disabled = true;
+
+    var initPills = document.getElementById('initialSuggestions');
+    if (initPills) initPills.style.display = 'none';
+
+    appendBubble('user', q);
+    var tyEl = appendTyping();
+
+    try {
+      var endpoint = isPrem ? '/api/ai_chat' : '/api/ai_answer';
+      var body = isPrem
+        ? { message: q, history: hist, context: apiCtx }
+        : { question: q, context: apiCtx };
+
+      var resp = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      removeEl(tyEl);
+
+      if (!resp.ok) {
+        var err = {};
+        try { err = await resp.json(); } catch(x){}
+        if (err.error === 'limit_reached') {
+          appendBubble('ai', "You've used all your AI answers for today. Upgrade to Premium for unlimited questions.", true);
+        } else {
+          appendBubble('ai', "Couldn't get an answer right now. Please try again shortly.", true);
         }
-        if (!canEstimateForSelectedFlatType()) {
-            e.preventDefault();
-            showFlatTypeCannotEstimate();
-            setSubmitButtonState('idle');
-            return;
-        }
-        if (!predictForm.checkValidity()) {
-            setSubmitButtonState('idle');
-            return;
-        }
-        hideFlatTypeCannotEstimate();
-        setSubmitButtonState('submitting');
+        return;
+      }
+
+      var data = await resp.json();
+      var ans = (data.answer || data.reply || data.response || '').trim();
+
+      if (isPrem && ans) {
+        hist.push({ role: 'user',  text: q });
+        hist.push({ role: 'model', text: ans });
+      }
+
+      appendBubble('ai', ans || 'No response received.');
+      appendFollowUps();
+
+      if (!isPrem && data.remaining != null && limitEl) {
+        var rem = Number(data.remaining);
+        limitEl.innerHTML = rem <= 0
+          ? '<i class="bi bi-exclamation-circle me-1" style="color:#f59e0b;"></i>Daily limit reached. <a href="{{ url_for("pricing") }}">Upgrade for unlimited</a>'
+          : '<i class="bi bi-info-circle me-1"></i>' + rem + ' AI answer' + (rem===1?'':'s') + ' remaining today. <a href="{{ url_for("pricing") }}">Upgrade for unlimited</a>';
+      }
+
+    } catch(e) {
+      removeEl(tyEl);
+      appendBubble('ai', 'Something went wrong. Please check your connection and try again.', true);
+    } finally {
+      busy = false; sendBtn2.disabled = false;
+    }
+  };
+
+  function appendBubble(role, text, isErr) {
+    var wrap = document.createElement('div');
+    wrap.className = 'bwrap ' + role;
+    var b = document.createElement('div');
+    b.className = 'cbubble ' + (role === 'user' ? 'user' : (isErr ? 'ai-err' : 'ai'));
+    b.textContent = text;
+    wrap.appendChild(b);
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+    return wrap;
+  }
+
+  function appendTyping() {
+    var wrap = document.createElement('div');
+    wrap.className = 'bwrap ai';
+    var ind = document.createElement('div');
+    ind.className = 'typing-ind';
+    ind.innerHTML = '<div class="tdot"></div><div class="tdot"></div><div class="tdot"></div>';
+    wrap.appendChild(ind);
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+    return wrap;
+  }
+
+  function removeEl(el) { if (el && el.parentNode) el.parentNode.removeChild(el); }
+
+  var FU_POOLS = [
+    ['What about future resale value?', 'How does this compare to nearby towns?'],
+    ['Which factor has the biggest impact?', 'Is now a good time to sell?'],
+    ['How reliable is this estimate?', 'What makes this area desirable?'],
+    ['How does floor level affect price?', 'What does "remaining lease" mean for buyers?'],
+    ['How does my flat compare to the town average?', 'What drives HDB prices in Singapore?']
+  ];
+  var fuIdx = 0;
+
+  function appendFollowUps() {
+    var pool = FU_POOLS[fuIdx % FU_POOLS.length]; fuIdx++;
+    var wrap = document.createElement('div');
+    wrap.className = 'bwrap ai';
+    var row = document.createElement('div');
+    row.className = 'followup-row';
+    pool.forEach(function (q) {
+      var btn = document.createElement('button');
+      btn.className = 'fu-pill';
+      btn.textContent = q;
+      btn.onclick = function () { window.sendPQ(q); };
+      row.appendChild(btn);
     });
-
-    window.addEventListener('pageshow', function() {
-        setSubmitButtonState('idle');
-    });
+    wrap.appendChild(row);
+    thread.appendChild(wrap);
+    thread.scrollTop = thread.scrollHeight;
+  }
 })();
 </script>
-{% if timeline %}
-<script id="predict-timeline-data" type="application/json">{{ timeline | tojson }}</script>
-<script>
-// Timeline chart (kept out of the main JS block so template syntax doesn't break JS linting)
-(function() {
-    var ctx = document.getElementById('timelineChart');
-    if (!ctx) return;
-    var el = document.getElementById('predict-timeline-data');
-    if (!el) return;
-    var timeline = JSON.parse(el.textContent || '[]');
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: timeline.map(function(t) { return t.year; }),
-            datasets: [
-                {
-                    label: 'Predicted Price',
-                    data: timeline.map(function(t) { return t.predicted_price; }),
-                    borderColor: '#0d6efd',
-                    backgroundColor: 'rgba(13,110,253,0.1)',
-                    fill: true,
-                    tension: 0.3,
-                    pointRadius: 4,
-                },
-                {
-                    label: 'Upper Range',
-                    data: timeline.map(function(t) { return t.price_high; }),
-                    borderColor: 'rgba(13,110,253,0.3)',
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: false,
-                },
-                {
-                    label: 'Lower Range',
-                    data: timeline.map(function(t) { return t.price_low; }),
-                    borderColor: 'rgba(13,110,253,0.3)',
-                    borderDash: [5, 5],
-                    pointRadius: 0,
-                    fill: '-1',
-                    backgroundColor: 'rgba(13,110,253,0.05)',
-                }
-            ]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: true, position: 'bottom', labels: { boxWidth: 12 } },
-                tooltip: {
-                    callbacks: {
-                        label: function(ctx) {
-                            return ctx.dataset.label + ': $' + ctx.parsed.y.toLocaleString();
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: function(v) { return '$' + (v/1000).toFixed(0) + 'k'; }
-                    }
-                }
-            }
-        }
-    });
-})();
-</script>
-{% endif %}
-{% if explanation %}
-<script>
-(function() {
-    var canvas = document.getElementById('shapChart');
-    var payloadEl = document.getElementById('predict-shap-data');
-    if (!canvas || !payloadEl) return;
-
-    var explanation = JSON.parse(payloadEl.textContent || '{}');
-    var features = Array.isArray(explanation.features) ? explanation.features : [];
-    if (!features.length) return;
-
-    var labels = features.map(function(feature) { return feature.label; });
-    var values = features.map(function(feature) { return feature.dollar_impact; });
-    var colors = features.map(function(feature) {
-        return feature.dollar_impact >= 0 ? '#22c55e' : '#f97316';
-    });
-
-    var currencyShort = new Intl.NumberFormat('en-SG', {
-        style: 'currency',
-        currency: 'SGD',
-        maximumFractionDigits: 0,
-        notation: 'compact'
-    });
-    var currencyFull = new Intl.NumberFormat('en-SG', {
-        style: 'currency',
-        currency: 'SGD',
-        maximumFractionDigits: 0
-    });
-
-    canvas.height = Math.max(420, features.length * 34);
-    new Chart(canvas, {
-        type: 'bar',
-        data: {
-            labels: labels,
-            datasets: [{
-                label: 'SHAP contribution',
-                data: values,
-                backgroundColor: colors,
-                borderRadius: 6,
-                borderSkipped: false,
-                barThickness: 22
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            maintainAspectRatio: false,
-            responsive: true,
-            layout: {
-                padding: { right: 12 }
-            },
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(ctx) {
-                            var value = Number(ctx.raw || 0);
-                            var prefix = value >= 0 ? '+' : '-';
-                            return prefix + currencyFull.format(Math.abs(value));
-                        }
-                    }
-                }
-            },
-            scales: {
-                x: {
-                    grid: {
-                        color: 'rgba(15, 34, 58, 0.08)'
-                    },
-                    ticks: {
-                        callback: function(value) {
-                            var numeric = Number(value || 0);
-                            var prefix = numeric >= 0 ? '+' : '-';
-                            return prefix + currencyShort.format(Math.abs(numeric)).replace('SGD', '').trim();
-                        }
-                    }
-                },
-                y: {
-                    grid: { display: false },
-                    ticks: {
-                        color: '#0f223a',
-                        font: {
-                            size: 11,
-                            weight: '600'
-                        }
-                    }
-                }
-            }
-        }
-    });
-})();
-</script>
-{% endif %}
 {% endblock %}

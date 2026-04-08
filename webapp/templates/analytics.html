@@ -236,6 +236,62 @@
         animation: spin 0.6s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* AI Chatbot Widget (Premium) */
+    .ai-chat-widget { position: fixed; bottom: 24px; right: 24px; z-index: 1050; }
+    .ai-chat-toggle {
+        width: 56px; height: 56px; border-radius: 50%;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #fff; border: none; font-size: 1.3rem; cursor: pointer;
+        box-shadow: 0 6px 20px rgba(37,99,235,0.35);
+        transition: transform 0.2s, box-shadow 0.2s;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .ai-chat-toggle:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(37,99,235,0.45); }
+    .ai-chat-toggle.open { display: none; }
+    .ai-chat-panel {
+        width: 440px; max-height: 620px; border-radius: 16px;
+        border: 1px solid rgba(148,163,184,0.22); background: #fff;
+        box-shadow: 0 16px 48px rgba(15,23,42,0.15);
+        display: flex; flex-direction: column; overflow: hidden;
+    }
+    .ai-chat-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 0.75rem 1rem; border-bottom: 1px solid rgba(148,163,184,0.15);
+        background: linear-gradient(135deg, rgba(37,99,235,0.04), rgba(14,165,233,0.03));
+    }
+    .ai-chat-messages {
+        flex: 1; overflow-y: auto; padding: 0.75rem;
+        display: flex; flex-direction: column; gap: 0.6rem;
+        max-height: 480px; min-height: 240px;
+    }
+    .ai-chat-bubble {
+        padding: 0.6rem 0.85rem; border-radius: 12px;
+        font-size: 0.84rem; line-height: 1.5; max-width: 85%; word-wrap: break-word;
+    }
+    .ai-chat-bot { background: linear-gradient(135deg,#f0f4ff,#e8f0fe); color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
+    .ai-chat-user { background: #2563eb; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .ai-chat-typing { align-self: flex-start; background: #f1f5f9; color: #64748b; font-style: italic; }
+    .ai-chat-input-area {
+        display: flex; gap: 0.4rem; padding: 0.6rem 0.75rem;
+        border-top: 1px solid rgba(148,163,184,0.15); background: #fafbfc;
+    }
+    .ai-chat-input-area input { border-radius: 10px; font-size: 0.84rem; }
+    .ai-chat-input-area button { border-radius: 10px; padding: 0.25rem 0.65rem; }
+    .ai-chat-suggestions {
+        display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.5rem 0.75rem 0;
+    }
+    .ai-chat-suggestion {
+        background: linear-gradient(135deg, #eff6ff, #e0f2fe); color: #1e40af;
+        border: 1px solid rgba(37,99,235,0.18); border-radius: 20px;
+        padding: 0.3rem 0.7rem; font-size: 0.75rem; cursor: pointer;
+        transition: background 0.15s, transform 0.1s; white-space: nowrap;
+    }
+    .ai-chat-suggestion:hover { background: #dbeafe; transform: scale(1.04); }
+    @media (max-width: 575.98px) {
+        .ai-chat-panel { width: calc(100vw - 32px); max-height: 75vh; }
+        .ai-chat-widget { right: 16px; bottom: 16px; }
+    }
 </style>
 {% endblock %}
 
@@ -306,7 +362,7 @@
             </div>
             <div class="col-md-2 d-grid">
                 <button class="btn btn-primary btn-sm" id="refreshDashboardBtn" type="button">
-                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                    <i class="bi bi-search me-1"></i>Search
                 </button>
             </div>
             <div class="col-md-6 d-flex flex-wrap justify-content-md-end gap-2">
@@ -522,6 +578,40 @@
         </div>
     </div>
 </div>
+
+{% if is_premium %}
+<div id="aiChatWidget" class="ai-chat-widget">
+    <button id="aiChatToggle" class="ai-chat-toggle" title="AI Chat">
+        <i class="bi bi-chat-dots-fill"></i>
+    </button>
+    <div id="aiChatPanel" class="ai-chat-panel d-none">
+        <div class="ai-chat-header">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-stars text-primary"></i>
+                <span class="fw-bold">AI Market Analyst</span>
+                <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:0.65rem;">PREMIUM</span>
+            </div>
+            <button id="aiChatClose" class="btn btn-sm btn-link text-muted p-0"><i class="bi bi-x-lg"></i></button>
+        </div>
+        <div id="aiChatMessages" class="ai-chat-messages">
+            <div class="ai-chat-bubble ai-chat-bot">
+                Ask me anything about the charts and data on this page. I can see all the visualisations and numbers.
+            </div>
+        </div>
+        <div id="aiChatSuggestions" class="ai-chat-suggestions">
+            <button class="ai-chat-suggestion" data-q="What's the price trend?">What's the price trend?</button>
+            <button class="ai-chat-suggestion" data-q="Which flat type is best value?">Which flat type is best value?</button>
+            <button class="ai-chat-suggestion" data-q="Compare towns for me">Compare towns for me</button>
+            <button class="ai-chat-suggestion" data-q="Summarise the charts">Summarise the charts</button>
+            <button class="ai-chat-suggestion" data-q="Any outliers or anomalies?">Any outliers or anomalies?</button>
+        </div>
+        <div class="ai-chat-input-area">
+            <input id="aiChatInput" type="text" class="form-control form-control-sm" placeholder="Ask about prices, trends, comparisons..." maxlength="500">
+            <button id="aiChatSend" class="btn btn-primary btn-sm"><i class="bi bi-send-fill"></i></button>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
@@ -1366,10 +1456,12 @@ async function refreshDashboard() {
     await loadPSF();
     buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
-    debouncedLoadAiFaq();
 }
 
-document.getElementById('refreshDashboardBtn').addEventListener('click', refreshDashboard);
+document.getElementById('refreshDashboardBtn').addEventListener('click', function() {
+    refreshDashboard();
+    debouncedLoadAiFaq();
+});
 document.getElementById('clearLocationBtn').addEventListener('click', clearLocationFilters);
 
 document.getElementById('filterTown').addEventListener('change', async function() {
@@ -1676,6 +1768,20 @@ function collectChartDataSummary() {
     };
 }
 
+function collectChartImages() {
+    var images = {};
+    var chartIds = ['priceTrendChart', 'volumeChart', 'flatTypeChart', 'districtChart', 'psfChart', 'futurePredChart'];
+    chartIds.forEach(function(id) {
+        var canvas = document.getElementById(id);
+        if (canvas && canvas.getContext) {
+            try {
+                images[id] = canvas.toDataURL('image/png').split(',')[1];
+            } catch(e) { /* skip tainted or empty canvases */ }
+        }
+    });
+    return images;
+}
+
 function getAiFaqCacheKey() {
     var f = getFilters();
     return [f.town || '', f.flat_type || '', f.street_name || '', f.block || ''].join('|');
@@ -1703,18 +1809,29 @@ async function loadAiFaqQuestions() {
 
     var filters = getFilters();
     var chartData = collectChartDataSummary();
+    var chartImages = collectChartImages();
 
     try {
         var resp = await fetch('/api/ai_questions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filters: filters, chart_data: chartData }),
+            body: JSON.stringify({ filters: filters, chart_data: chartData, chart_images: chartImages }),
         });
         if (token !== aiFaqReqToken) return;
         if (!resp.ok) throw new Error('AI unavailable');
         var result = await resp.json();
         var groups = result.groups || {};
         aiAnswersRemaining = result.remaining >= 0 ? result.remaining : Infinity;
+
+        if (result.ai_unavailable) {
+            var msg = '<div class="text-muted" style="font-size:0.84rem;">' +
+                '<i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
+            ['aiFaqTrend', 'aiFaqVolume', 'aiFaqBenchmark'].forEach(function(id) {
+                var el = document.getElementById(id);
+                if (el) el.innerHTML = msg;
+            });
+            return;
+        }
 
         /* Cache non-empty results */
         if (Object.keys(groups).length > 0) {
@@ -1726,7 +1843,8 @@ async function loadAiFaqQuestions() {
         if (token !== aiFaqReqToken) return;
         ['aiFaqTrend', 'aiFaqVolume', 'aiFaqBenchmark'].forEach(function(id) {
             var el = document.getElementById(id);
-            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.84rem;">AI insights unavailable.</div>';
+            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.84rem;">' +
+                '<i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
         });
     }
 }
@@ -1789,6 +1907,7 @@ async function expandFaqItem(item) {
                 context: {
                     filters: getFilters(),
                     chart_data: collectChartDataSummary(),
+                    chart_images: collectChartImages(),
                 },
             }),
         });
@@ -1825,5 +1944,115 @@ document.addEventListener('click', function(e) {
     var item = e.target.closest('.ai-faq-item');
     if (item) expandFaqItem(item);
 });
+
+/* ===== Premium AI Chatbot ===== */
+if (IS_PREMIUM) {
+    var chatHistory = [];
+    var chatBusy = false;
+
+    var chatToggle = document.getElementById('aiChatToggle');
+    var chatPanel = document.getElementById('aiChatPanel');
+    var chatClose = document.getElementById('aiChatClose');
+    var chatInput = document.getElementById('aiChatInput');
+    var chatSendBtn = document.getElementById('aiChatSend');
+    var chatMessages = document.getElementById('aiChatMessages');
+
+    function openChat() {
+        chatPanel.classList.remove('d-none');
+        chatToggle.classList.add('open');
+        chatInput.focus();
+    }
+    function closeChat() {
+        chatPanel.classList.add('d-none');
+        chatToggle.classList.remove('open');
+    }
+
+    chatToggle.addEventListener('click', openChat);
+    chatClose.addEventListener('click', closeChat);
+
+    function appendBubble(text, role) {
+        var bubble = document.createElement('div');
+        bubble.className = 'ai-chat-bubble ' + (role === 'user' ? 'ai-chat-user' : 'ai-chat-bot');
+        bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+        chatMessages.appendChild(bubble);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        return bubble;
+    }
+
+    function showTyping() {
+        var el = document.createElement('div');
+        el.className = 'ai-chat-bubble ai-chat-typing';
+        el.id = 'aiChatTyping';
+        el.innerHTML = '<span class="ai-faq-spinner"></span> Thinking...';
+        chatMessages.appendChild(el);
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    function removeTyping() {
+        var el = document.getElementById('aiChatTyping');
+        if (el) el.remove();
+    }
+
+    async function sendChatMessage() {
+        var text = chatInput.value.trim();
+        if (!text || chatBusy) return;
+
+        chatBusy = true;
+        chatInput.value = '';
+        chatSendBtn.disabled = true;
+
+        appendBubble(text, 'user');
+        showTyping();
+
+        try {
+            var resp = await fetch('/api/ai_chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    message: text,
+                    history: chatHistory,
+                    context: {
+                        filters: getFilters(),
+                        chart_data: collectChartDataSummary(),
+                        chart_images: collectChartImages(),
+                    },
+                }),
+            });
+            removeTyping();
+
+            if (!resp.ok) {
+                var err = await resp.json().catch(function() { return {}; });
+                appendBubble(err.error || 'Something went wrong. Please try again.', 'bot');
+            } else {
+                var result = await resp.json();
+                chatHistory.push({ role: 'user', text: text });
+                chatHistory.push({ role: 'model', text: result.reply });
+                appendBubble(result.reply, 'bot');
+            }
+        } catch (e) {
+            removeTyping();
+            appendBubble('Connection error. Please try again.', 'bot');
+        }
+        chatBusy = false;
+        chatSendBtn.disabled = false;
+        chatInput.focus();
+    }
+
+    chatSendBtn.addEventListener('click', sendChatMessage);
+    chatInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendChatMessage();
+        }
+    });
+
+    // Suggestion bubbles
+    var suggestionsContainer = document.getElementById('aiChatSuggestions');
+    suggestionsContainer.addEventListener('click', function(e) {
+        var btn = e.target.closest('.ai-chat-suggestion');
+        if (!btn || chatBusy) return;
+        chatInput.value = btn.getAttribute('data-q');
+        sendChatMessage();
+    });
+}
 </script>
 {% endblock %}

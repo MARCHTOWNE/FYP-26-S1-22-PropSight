@@ -15,6 +15,7 @@ import json
 import math
 import os
 import pickle
+import re
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 from socket import timeout as SocketTimeout
@@ -122,7 +123,9 @@ ASSETS_DIR = _first_existing_path([
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.0-flash"
+GEMINI_FALLBACK_MODEL = "gemini-2.5-flash"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
+GEMINI_FALLBACK_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_FALLBACK_MODEL}:generateContent"
 GENERAL_DAILY_AI_ANSWER_LIMIT = 3
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").rstrip("/")
@@ -824,22 +827,59 @@ def _supabase_auth(path, method="POST", payload=None, access_token=None):
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
 
 
-def _call_gemini(prompt, max_tokens=1024):
-    """call Google Gemini API and return text response, or None on error."""
+def _gemini_request(url, body_dict, timeout=25):
+    """Make a single Gemini API request and return the text, or raise on failure."""
+    body = json.dumps(body_dict).encode("utf-8")
+    req = urllib_request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
+    with urllib_request.urlopen(req, timeout=timeout) as resp:
+        raw = resp.read().decode("utf-8")
+    result = json.loads(raw)
+    candidates = result.get("candidates") or []
+    if not candidates:
+        block_reason = result.get("promptFeedback", {}).get("blockReason", "unknown")
+        print(f"[Gemini] No candidates returned. blockReason={block_reason}", flush=True)
+        raise ValueError(f"No candidates: {block_reason}")
+    return candidates[0]["content"]["parts"][0]["text"]
+
+
+def _call_gemini(prompt, max_tokens=1024, images=None):
+    """call Google Gemini API and return text response, or None on error.
+    Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
     if not GEMINI_API_KEY:
         return None
-    url = f"{GEMINI_ENDPOINT}?key={GEMINI_API_KEY}"
-    body = json.dumps({
-        "contents": [{"parts": [{"text": prompt}]}],
+    parts = [{"text": prompt}]
+    if images:
+        for img_b64 in images:
+            parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
+    payload = {
+        "contents": [{"parts": parts}],
         "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},
-    }).encode("utf-8")
-    req = urllib_request.Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
-    try:
-        with urllib_request.urlopen(req, timeout=15) as resp:
-            result = json.loads(resp.read().decode("utf-8"))
-            return result["candidates"][0]["content"]["parts"][0]["text"]
-    except (error.HTTPError, error.URLError, SocketTimeout, KeyError, IndexError):
+    }
+    for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
+        try:
+            return _gemini_request(f"{endpoint}?key={GEMINI_API_KEY}", payload, timeout=25)
+        except Exception as exc:
+            print(f"[Gemini] {endpoint.split('/models/')[1].split(':')[0]} failed: {exc}", flush=True)
+            continue
+    return None
+
+
+def _call_gemini_chat(contents, max_tokens=1024):
+    """Call Gemini with multi-turn conversation history and return text response.
+    Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
+    if not GEMINI_API_KEY:
         return None
+    payload = {
+        "contents": contents,
+        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},
+    }
+    for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
+        try:
+            return _gemini_request(f"{endpoint}?key={GEMINI_API_KEY}", payload, timeout=30)
+        except Exception as exc:
+            print(f"[Gemini] {endpoint.split('/models/')[1].split(':')[0]} failed: {exc}", flush=True)
+            continue
+    return None
 
 
 def _get_daily_ai_answer_count(user_id):
@@ -3860,7 +3900,7 @@ def api_future_prediction():
 
 
 # ---------------------------------------------------------------------------
-# AI Insights (Gemini-powered FAQ)
+# AI Insights (Gemini-powered QnA)
 # ---------------------------------------------------------------------------
 
 _AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
@@ -3873,9 +3913,15 @@ Chart data summary:
 - Benchmark Comparison: {benchmark_summary}
 - Price per sqm: {psf_summary}
 
-Generate 3-6 insightful questions a home buyer or investor would ask about this data.
+The charts listed above are also attached as images. Analyse both the data summaries AND the visual chart patterns (trends, outliers, distributions) to generate questions.
+
+Generate 3-6 questions a home buyer or investor would ask about this data.
 Group the questions by chart topic. Each group should have 1-2 questions.
-Questions must be SPECIFIC to the numbers and patterns shown — not generic.
+Questions must be SPECIFIC to the patterns shown — not generic.
+Focus on "why" and "what does this mean" questions — NOT "what happened" questions (the user can see the charts).
+Good: "Why did prices spike after 2020?" or "Is this a good time to buy a 4-room here?"
+Bad: "What is the average price trend?" or "How many transactions were there?"
+Keep questions SHORT (under 20 words each).
 
 Return ONLY valid JSON in this exact format, with no other text:
 {{"groups": {{"trend": ["question1", ...], "volume": ["question1", ...], "benchmark": ["question1", ...]}}}}
@@ -3888,8 +3934,15 @@ The user is viewing analytics for: {filter_desc}
 Relevant data:
 {context_data}
 
-Answer this question concisely in 2-3 sentences, using specific numbers from the data:
-{question}"""
+Chart images are attached for visual reference.
+
+IMPORTANT: The user can ALREADY see the charts and numbers. Do NOT repeat or describe what the charts show.
+Instead, provide the "why" behind the patterns — explain causes, implications, and actionable takeaways.
+Think: policy changes (cooling measures, grants), macro factors (interest rates, COVID), neighbourhood developments (MRT lines, amenities), or buyer strategy tips.
+
+Answer in 2-3 sentences. Be direct and insightful.
+
+Question: {question}"""
 
 
 @app.route("/api/ai_questions", methods=["POST"])
@@ -3902,6 +3955,8 @@ def api_ai_questions():
     body = request.get_json(silent=True) or {}
     filters = body.get("filters", {})
     chart_data = body.get("chart_data", {})
+    chart_images = body.get("chart_images", {})
+    images = [v for v in chart_images.values() if v]
 
     town = filters.get("town") or "All towns"
     flat_type = filters.get("flat_type") or "All flat types"
@@ -3923,17 +3978,35 @@ def api_ai_questions():
         psf_summary=json.dumps(chart_data.get("psf", []), default=str)[:300],
     )
 
-    text = _call_gemini(prompt)
+    text = _call_gemini(prompt, max_tokens=8192, images=images)
     if not text:
-        return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0})
+        print("[AI Questions] _call_gemini returned None — both models failed", flush=True)
+        return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0, "ai_unavailable": True})
 
-    #parse JSON: strip markdown fences if Gemini wraps the output
+    print(f"[AI Questions] Raw Gemini response ({len(text)} chars): {text[:500]}", flush=True)
+
+    # Parse JSON: strip markdown fences and extract the JSON object
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+    # Fallback: extract first {...} block if there's surrounding text
     try:
         groups = json.loads(cleaned).get("groups", {})
-    except (json.JSONDecodeError, AttributeError):
+    except (json.JSONDecodeError, AttributeError) as exc:
+        print(f"[AI Questions] Direct JSON parse failed: {exc}", flush=True)
+        m = re.search(r'\{.*\}', cleaned, re.DOTALL)
+        if m:
+            try:
+                groups = json.loads(m.group()).get("groups", {})
+            except (json.JSONDecodeError, AttributeError) as exc2:
+                print(f"[AI Questions] Regex JSON parse also failed: {exc2}", flush=True)
+                groups = {}
+        else:
+            print("[AI Questions] No JSON object found in response", flush=True)
+            groups = {}
+
+    print(f"[AI Questions] Parsed groups keys: {list(groups.keys()) if isinstance(groups, dict) else 'NOT A DICT'}", flush=True)
+    if not isinstance(groups, dict):
         groups = {}
 
     tier = session.get("subscription_tier", "general")
@@ -3960,6 +4033,8 @@ def api_ai_answer():
     body = request.get_json(silent=True) or {}
     question = body.get("question", "").strip()
     context = body.get("context", {})
+    chart_images = context.get("chart_images", {})
+    images = [v for v in chart_images.values() if v]
     if not question:
         return jsonify({"error": "No question provided"}), 400
 
@@ -3983,7 +4058,7 @@ def api_ai_answer():
         question=question,
     )
 
-    text = _call_gemini(prompt, max_tokens=512)
+    text = _call_gemini(prompt, max_tokens=2048, images=images)
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
@@ -3996,6 +4071,96 @@ def api_ai_answer():
         remaining = -1
 
     return jsonify({"answer": text.strip(), "remaining": remaining})
+
+
+# ---------------------------------------------------------------------------
+# AI Chat (Premium chatbot)
+# ---------------------------------------------------------------------------
+
+_AI_CHAT_SYSTEM_PROMPT = """You are a Singapore HDB (public housing) market analyst chatbot.
+The user is viewing analytics for: {filter_desc}
+
+Current chart data:
+{context_data}
+
+Chart images are attached to the first message for visual reference.
+
+Rules:
+- The user can ALREADY see the charts and numbers on screen. NEVER describe or restate what the charts show.
+- Focus on the WHY: explain causes behind trends (policy changes, cooling measures, interest rates, new MRT lines, COVID effects, grant changes), implications for buyers/sellers, and actionable advice.
+- When the user asks "what" questions, briefly acknowledge the pattern then pivot to explaining why it happened and what it means.
+- Be concise (2-4 sentences) unless the user asks for detail.
+- You may reference a specific number only when it supports your explanation of why something happened.
+- If the user asks something outside HDB analytics scope, politely redirect."""
+
+
+@app.route("/api/ai_chat", methods=["POST"])
+@api_login_required
+def api_ai_chat():
+    """Premium multi-turn chatbot powered by Gemini."""
+    if session.get("subscription_tier", "general") != "premium":
+        return jsonify({"error": "Premium feature"}), 403
+    if not GEMINI_API_KEY:
+        return jsonify({"error": "AI not configured"}), 503
+
+    body = request.get_json(silent=True) or {}
+    message = body.get("message", "").strip()
+    history = body.get("history", [])
+    context = body.get("context", {})
+
+    if not message:
+        return jsonify({"error": "No message provided"}), 400
+
+    # Build filter description
+    filters = context.get("filters", {})
+    town = filters.get("town") or "All towns"
+    flat_type = filters.get("flat_type") or "All flat types"
+    street = filters.get("street_name", "")
+    block = filters.get("block", "")
+    filter_desc = town
+    if street:
+        filter_desc += f" > {street}"
+    if block:
+        filter_desc += f" > Blk {block}"
+    filter_desc += f", {flat_type}"
+
+    context_data = json.dumps(context.get("chart_data", {}), default=str)[:1500]
+    chart_images = context.get("chart_images", {})
+    images = [v for v in chart_images.values() if v]
+
+    system_text = _AI_CHAT_SYSTEM_PROMPT.format(
+        filter_desc=filter_desc,
+        context_data=context_data,
+    )
+
+    # Build Gemini multi-turn contents
+    contents = []
+
+    if not history:
+        # First message: system prompt + images + user question
+        first_parts = [{"text": system_text + "\n\nUser question: " + message}]
+        for img_b64 in images:
+            first_parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
+        contents.append({"role": "user", "parts": first_parts})
+    else:
+        # Rebuild conversation: first turn always carries system prompt + images
+        first_parts = [{"text": system_text + "\n\nUser question: " + history[0]["text"]}]
+        for img_b64 in images:
+            first_parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
+        contents.append({"role": "user", "parts": first_parts})
+
+        # Add remaining history (cap at last 20 messages = 10 exchanges)
+        for h in history[1:][-20:]:
+            contents.append({"role": h["role"], "parts": [{"text": h["text"]}]})
+
+        # Add current message
+        contents.append({"role": "user", "parts": [{"text": message}]})
+
+    text = _call_gemini_chat(contents, max_tokens=2048)
+    if not text:
+        return jsonify({"error": "AI temporarily unavailable"}), 503
+
+    return jsonify({"reply": text.strip()})
 
 
 # ---------------------------------------------------------------------------

@@ -1450,6 +1450,8 @@ async function refreshForAddr() {
     if(r2&&r2.ok){var d=await r2.json();setBounds(floorEl,'predictFloorVal',d.min_area,d.max_area,floorEl.value,d.avg_area);knownFloorBounds.min=+d.min_area;knownFloorBounds.max=+d.max_area;checkFloorBounds();}
     if(r3&&r3.ok&&fmSel){var d=await r3.json();if(!fillOpts(fmSel,d.models,fmSel.value,d.models&&d.models[0]))fmSel.innerHTML=origFM;}
     if(r4&&r4.ok&&srSel){var d=await r4.json();var mid=d.storey_ranges&&d.storey_ranges[Math.floor(d.storey_ranges.length/2)];if(!fillOpts(srSel,d.storey_ranges,srSel.value,mid))srSel.innerHTML=origSR;}
+    /* If flat type was auto-switched (not available for this street/block), re-fetch with the new type */
+    if(ftSel&&ftSel.value&&ftSel.value!==ft)ftSel.dispatchEvent(new Event('change'));
   } catch(e){}finally{endLoad();}
 }
 
@@ -1503,6 +1505,9 @@ if (ftSel) ftSel.addEventListener('change', async function() {
       if(dr0.ok){var d=await dr0.json();setBounds(floorEl,'predictFloorVal',d.min_area,d.max_area,prefillFloor,d.avg_area);knownFloorBounds.min=+d.min_area;knownFloorBounds.max=+d.max_area;checkFloorBounds();}
       if(dr1.ok&&fmSel){var d=await dr1.json();if(!fillOpts(fmSel,d.models,prefillFlatModel,d.models&&d.models[0]))fmSel.innerHTML=origFM;}
       if(dr2.ok&&srSel){var d=await dr2.json();var mid=d.storey_ranges&&d.storey_ranges[Math.floor(d.storey_ranges.length/2)];if(!fillOpts(srSel,d.storey_ranges,prefillStorey,mid))srSel.innerHTML=origSR;}
+    } else if(ftSel&&ftSel.value){
+      /* No prefill flat type — dispatch change so flat model/floor/storey update for the town */
+      ftSel.dispatchEvent(new Event('change'));
     }
   } catch(e){}
 })();

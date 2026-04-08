@@ -123,7 +123,7 @@ ASSETS_DIR = _first_existing_path([
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_FALLBACK_MODEL = "gemini-2.0-flash"
+GEMINI_FALLBACK_MODEL = "gemini-2.5-flash-lite"
 GEMINI_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_MODEL}:generateContent"
 GEMINI_FALLBACK_ENDPOINT = f"https://generativelanguage.googleapis.com/v1beta/models/{GEMINI_FALLBACK_MODEL}:generateContent"
 GENERAL_DAILY_AI_ANSWER_LIMIT = 3

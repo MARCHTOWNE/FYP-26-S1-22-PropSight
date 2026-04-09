@@ -34,6 +34,30 @@ from flask import (
 )
 
 # ---------------------------------------------------------------------------
+# EnsembleModel must be defined here so pickle can deserialize ensemble_model.pkl
+# (pickle looks up the class by module path at load time).
+class EnsembleModel:
+    """Weighted average of two trained regressors. Mirrors ML/model_training.py."""
+
+    def __init__(self, models: list, weights) -> None:
+        self.models = models
+        self.weights = weights
+
+    def predict(self, X) -> np.ndarray:
+        preds = np.stack([m.predict(X) for m in self.models], axis=1)
+        return preds @ self.weights
+
+    def shap_values(self, X) -> np.ndarray:
+        import shap as shap_lib
+        blended = None
+        for model, w in zip(self.models, self.weights):
+            explainer = shap_lib.TreeExplainer(model)
+            sv = np.asarray(explainer.shap_values(X), dtype=float)
+            blended = sv * w if blended is None else blended + sv * w
+        return blended
+
+
+# ---------------------------------------------------------------------------
 def _ttl_cache(maxsize=128, ttl=3600):
     """lru_cache replacement that expires entries after *ttl* seconds."""
     def decorator(fn):
@@ -396,13 +420,18 @@ def _build_model_performance(metrics, manifest, serving_model_key):
     test_metrics = serving_results.get("test", {}) or {}
     future_metrics = serving_results.get("future_holdout", {}) or {}
 
-    test_mape = _safe_metric(test_metrics.get("mape"))
-    if test_mape is None and winner.get("winner") == serving_model_key:
+    # Prefer winner["test_mape"] when serving the winner model — it reflects
+    # the post-refit value (train+val refit), which is more accurate than the
+    # pre-refit model_results entry.
+    if winner.get("winner") == serving_model_key and winner.get("test_mape") is not None:
         test_mape = _safe_metric(winner.get("test_mape"))
+    else:
+        test_mape = _safe_metric(test_metrics.get("mape"))
 
-    test_rmse = _safe_metric(test_metrics.get("rmse"))
-    if test_rmse is None and winner.get("winner") == serving_model_key:
+    if winner.get("winner") == serving_model_key and winner.get("test_rmse") is not None:
         test_rmse = _safe_metric(winner.get("test_rmse"))
+    else:
+        test_rmse = _safe_metric(test_metrics.get("rmse"))
 
     test_r2 = _safe_metric(test_metrics.get("r2"))
     if test_r2 is None and winner.get("winner") == serving_model_key:
@@ -703,7 +732,7 @@ def _serving_scale_cols():
     return SCALE_COLS
 
 
-SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "catboost", "rf"}
+SHAP_SUPPORTED_MODEL_KEYS = {"xgboost", "lgbm", "catboost", "rf", "ensemble"}
 _SHAP_EXPLAINER = None
 _SHAP_IMPORT_ERROR = None
 
@@ -2034,6 +2063,23 @@ def _get_shap_explainer():
 def _compute_feature_contributions(feature_frame):
     model_key = ARTEFACTS.get("model_key")
     model = ARTEFACTS.get("model")
+
+    if isinstance(model, EnsembleModel):
+        shap_mod = _load_shap_module()
+        if shap_mod is None:
+            return None, None
+        try:
+            sv = model.shap_values(feature_frame)
+            sv = np.asarray(sv, dtype=float).reshape(-1)
+            # Derive expected_value from the SHAP consistency property:
+            # f(x) = expected_value + sum(shap_values)
+            # This avoids CatBoost's TreeExplainer returning ~0 for expected_value
+            # when no background data is provided.
+            pred_log_val = float(np.atleast_1d(model.predict(feature_frame))[0])
+            ev = pred_log_val - float(np.sum(sv))
+            return sv, ev
+        except Exception:
+            return None, None
 
     if model_key == "xgboost" and model is not None:
         booster = model.get_booster() if hasattr(model, "get_booster") else model

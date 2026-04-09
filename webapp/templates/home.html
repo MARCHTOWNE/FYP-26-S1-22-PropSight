@@ -2,26 +2,42 @@
 {% block title %}PropSight — Home{% endblock %}
 
 {% block content %}
-<section class="hero-editorial">
-    <div class="hero-overlay"></div>
-    <div class="container-fluid px-lg-5">
-        <div class="hero-inner glass-hero-panel">
-            <p class="section-eyebrow text-light">AI-Driven Proptech Platform</p>
-            <h1>Predict Singapore HDB resale values with spatial intelligence and market analytics.</h1>
-            <p class="hero-lead">
-                A data-first workflow combining machine learning, transaction heatmaps, and location-level analytics
-                to support confident property decisions.
-            </p>
-            <div class="cta-row">
-                {% if g.user %}
-                <a href="{{ url_for('predict') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
-                <a href="{{ url_for('comparison') }}" class="btn btn-outline-light btn-lg px-4">Compare Properties</a>
-                <a href="{{ url_for('analytics') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
-                {% else %}
-                <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg px-4">Start Prediction</a>
-                <a href="{{ url_for('comparison') }}" class="btn btn-outline-light btn-lg px-4">Compare Properties</a>
-                <a href="{{ url_for('login') }}" class="btn btn-outline-light btn-lg px-4">Explore Analytics</a>
-                {% endif %}
+<section id="onboarding" class="position-relative overflow-hidden py-5 mb-n5">
+    <div class="aurora-glow-1 onboarding-aurora onboarding-aurora--1 opacity-50" aria-hidden="true"></div>
+    <div class="aurora-glow-2 onboarding-aurora onboarding-aurora--2 opacity-50" aria-hidden="true"></div>
+
+    <div class="container text-center py-4 py-md-5 position-relative z-1">
+        <h2 class="section-title onboarding-section-heading text-gradient-custom mb-2">Predict Singapore HDB resale value</h2>
+        <p class="onboarding-section-subtitle text-muted mb-5 mx-auto">How would you like to start?</p>
+
+        <div class="row g-4 justify-content-center">
+            <div class="col-lg-3 col-md-6">
+                <a href="{% if g.user %}{{ url_for('predict') }}{% else %}{{ url_for('login', next=url_for('predict')) }}{% endif %}" class="elite-nav-card ps-glass-card h-100">
+                    <div class="icon-blob blob-blue"><i class="bi bi-calculator"></i></div>
+                    <h5 class="mb-1">Predict</h5>
+                    <span class="small text-muted">AI-driven valuations</span>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{% if g.user %}{{ url_for('map_view') }}{% else %}{{ url_for('login', next=url_for('map_view')) }}{% endif %}" class="elite-nav-card ps-glass-card h-100">
+                    <div class="icon-blob blob-green"><i class="bi bi-map-fill"></i></div>
+                    <h5 class="mb-1">Map</h5>
+                    <span class="small text-muted">Spatial market trends</span>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{% if g.user %}{{ url_for('comparison') }}{% else %}{{ url_for('login', next=url_for('comparison')) }}{% endif %}" class="elite-nav-card ps-glass-card h-100">
+                    <div class="icon-blob blob-violet"><i class="bi bi-arrow-left-right"></i></div>
+                    <h5 class="mb-1">Compare</h5>
+                    <span class="small text-muted">Side-by-side units</span>
+                </a>
+            </div>
+            <div class="col-lg-3 col-md-6">
+                <a href="{% if g.user %}{{ url_for('analytics') }}{% else %}{{ url_for('login', next=url_for('analytics')) }}{% endif %}" class="elite-nav-card ps-glass-card h-100">
+                    <div class="icon-blob blob-cyan"><i class="bi bi-bar-chart-fill"></i></div>
+                    <h5 class="mb-1">Analytics</h5>
+                    <span class="small text-muted">Depth dashboards &amp; metrics</span>
+                </a>
             </div>
         </div>
     </div>
@@ -36,6 +52,134 @@
         <a href="#faq-section">FAQ</a>
     </div>
 </nav>
+
+{% if g.user %}
+{% set dash_trend_volume = namespace(v=0) %}
+{% for p in popular_predictions %}
+{% if p.count is defined and p.count %}
+{% set dash_trend_volume.v = dash_trend_volume.v + p.count %}
+{% endif %}
+{% endfor %}
+<section id="member-activity-dashboard" class="story-section member-activity-dashboard bg-soft accent-insights" data-reveal aria-labelledby="member-dashboard-heading">
+    <div class="container">
+        <header class="member-dashboard-header mb-4 pb-2">
+            <p class="section-eyebrow member-dash-eyebrow">Your workspace</p>
+            <h2 id="member-dashboard-heading" class="section-title member-dash-title mb-1">Welcome back, {{ g.user['username'] }}</h2>
+            <p class="section-subtitle member-dash-subtitle mb-0">
+                {% if is_personalized %}
+                Here is a snapshot of your latest saved valuations and activity.
+                {% elif popular_predictions %}
+                You are seeing what the community is exploring most—save a prediction to personalize this board.
+                {% else %}
+                Run a prediction or open My Predictions to build your activity timeline.
+                {% endif %}
+            </p>
+        </header>
+
+        <div class="metric-grid member-dashboard-metrics mb-4" role="group" aria-label="Quick stats">
+            <div class="metric-tile ps-glass-card member-dashboard-metric">
+                <small class="member-dash-label">{% if is_personalized %}Saved flats{% else %}Community predictions{% endif %}</small>
+                <span class="member-dash-value">{% if is_personalized %}{{ popular_predictions|length }}{% elif dash_trend_volume.v %}{{ dash_trend_volume.v }}{% else %}0{% endif %}</span>
+                <span class="meta member-dash-hint">{% if is_personalized %}Recent on this feed (up to 3){% else %}Totals from trending sample{% endif %}</span>
+            </div>
+            <div class="metric-tile ps-glass-card member-dashboard-metric">
+                <small class="member-dash-label">{% if is_personalized %}Latest estimate{% else %}Top combo avg.{% endif %}</small>
+                <span class="member-dash-value">
+                    {% if popular_predictions and is_personalized %}
+                    ${{ "{:,.0f}".format(popular_predictions[0].predicted_price) }}
+                    {% elif popular_predictions and popular_predictions[0].avg_price is defined %}
+                    ${{ "{:,.0f}".format(popular_predictions[0].avg_price or 0) }}
+                    {% else %}—{% endif %}
+                </span>
+                <span class="meta member-dash-hint">{% if popular_predictions %}Leading card in the grid{% else %}No feed items yet{% endif %}</span>
+            </div>
+            <div class="metric-tile ps-glass-card member-dashboard-metric">
+                <small class="member-dash-label">Member plan</small>
+                <span class="member-dash-value">{{ (g.user.subscription_tier or 'general')|replace('_', ' ')|title }}</span>
+                <span class="meta member-dash-hint">Logged-in account</span>
+            </div>
+            <div class="metric-tile ps-glass-card member-dashboard-metric">
+                <small class="member-dash-label">{% if is_personalized %}Last saved{% else %}Trending locales{% endif %}</small>
+                <span class="member-dash-value">
+                    {% if popular_predictions and is_personalized %}
+                    {{ popular_predictions[0].created_at_date_display }}
+                    {% elif popular_predictions %}
+                    {{ popular_predictions|length }}
+                    {% else %}—{% endif %}
+                </span>
+                <span class="meta member-dash-hint">{% if is_personalized %}Newest valuation on this board{% else %}Distinct hot picks shown{% endif %}</span>
+            </div>
+        </div>
+
+        <div class="member-dashboard-activity">
+            <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
+                <div>
+                    <p class="section-eyebrow member-dash-eyebrow mb-1">{{ "Your recent activity" if is_personalized else "What others are exploring" }}</p>
+                    <h3 class="h5 member-dash-section-title mb-0">{{ "Saved valuations" if is_personalized else "Trending predictions" }}</h3>
+                </div>
+                <div class="d-flex flex-wrap gap-2">
+                    <a href="{{ url_for('my_predictions') }}" class="btn btn-outline-primary btn-sm">My predictions</a>
+                    <a href="{{ url_for('predict') }}" class="btn btn-primary btn-sm">New prediction</a>
+                </div>
+            </div>
+
+            {% if popular_predictions %}
+            <div class="popular-grid member-activity-grid">
+                {% for pred in popular_predictions %}
+                <a href="{{ url_for('predict', town=pred.town, flat_type=pred.flat_type, flat_model=pred.get('flat_model', ''), floor_area=pred.get('floor_area', ''), storey_range=pred.get('storey_range', ''), lease_commence=pred.get('lease_commence', ''), street_name=pred.get('street_name', ''), block=pred.get('block', '')) }}" class="popular-card-link member-activity-card-link">
+                    <div class="panel-card ps-glass-card popular-card member-activity-card h-100">
+                        <div class="card-map" id="memberActMap{{ loop.index }}"
+                             data-lat="{{ town_coords.get(pred.town, {}).get('lat', 1.3521) }}"
+                             data-lng="{{ town_coords.get(pred.town, {}).get('lng', 103.8198) }}"></div>
+                        <div class="popular-card-body member-activity-card-body">
+                            <div class="member-activity-card-top">
+                                <span class="member-activity-badge">{% if is_personalized %}Saved valuation{% else %}Trending{% endif %}</span>
+                                <h6 class="popular-card-town member-activity-town">{{ pred.town | title }}</h6>
+                            </div>
+                            {% if is_personalized %}
+                                {% if pred.get('street_name') or pred.get('block') %}
+                                <span class="popular-card-address member-activity-address">{% if pred.get('block') %}{{ pred.block }} {% endif %}{{ pred.get('street_name', '') }}</span>
+                                {% endif %}
+                                <span class="popular-card-type member-activity-type">{{ pred.flat_type }} · {{ pred.flat_model }}</span>
+                                <div class="member-activity-detail-row">
+                                    {% if pred.get('floor_area') %}
+                                    <span class="member-activity-pill"><i class="bi bi-rulers" aria-hidden="true"></i> {{ pred.floor_area }} sqm</span>
+                                    {% endif %}
+                                    {% if pred.get('storey_range') %}
+                                    <span class="member-activity-pill"><i class="bi bi-building" aria-hidden="true"></i> {{ pred.storey_range }}</span>
+                                    {% endif %}
+                                    {% if pred.get('lease_commence') %}
+                                    <span class="member-activity-pill"><i class="bi bi-calendar3" aria-hidden="true"></i> Lease {{ pred.lease_commence }}</span>
+                                    {% endif %}
+                                </div>
+                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(pred.predicted_price) }}</div>
+                                {% if pred.get('price_low') is not none and pred.get('price_high') is not none %}
+                                <div class="member-activity-range">
+                                    Range ${{ "{:,.0f}".format(pred.price_low) }} – ${{ "{:,.0f}".format(pred.price_high) }}
+                                </div>
+                                {% endif %}
+                                <small class="text-muted member-activity-date">Saved {{ pred.created_at_date_display }}</small>
+                            {% else %}
+                                <span class="popular-card-type member-activity-type">{{ pred.flat_type }}</span>
+                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(pred.avg_price or 0) }}</div>
+                                <small class="text-muted member-activity-date">{{ pred.count }} prediction{{ "s" if pred.count != 1 }} in sample</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="panel-card ps-glass-card member-activity-empty text-center py-5 px-3">
+                <p class="member-dash-label mb-2">No activity to show yet</p>
+                <p class="text-muted mb-3">Save a valuation or explore trending areas—your personalized feed will appear here.</p>
+                <a href="{{ url_for('predict') }}" class="btn btn-primary">Run a prediction</a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+{% endif %}
 
 <section id="predict-section" class="story-section bg-white accent-predict" data-reveal>
     <div class="container">
@@ -104,7 +248,7 @@
                         {% if g.user %}
                         <button class="btn btn-primary" type="submit" id="homeSubmitBtn">Predict Estimated Price</button>
                         {% else %}
-                        <a href="{{ url_for('predict') }}" class="btn btn-primary">Predict Estimated Price</a>
+                        <a href="{{ url_for('login', next=url_for('predict')) }}" class="btn btn-primary">Predict Estimated Price</a>
                         {% endif %}
                     </div>
                 </form>
@@ -134,7 +278,7 @@
     </div>
 </section>
 
-{% if popular_predictions %}
+{% if popular_predictions and not g.user %}
 <section id="popular-predictions-section" class="story-section bg-soft" data-reveal>
     <div class="container">
         <p class="section-eyebrow">{{ "Your Predictions" if is_personalized else "Trending" }}</p>
@@ -172,7 +316,7 @@
             {% if is_personalized %}
                 <a href="{{ url_for('my_predictions') }}" class="btn btn-outline-primary">View All Predictions</a>
             {% else %}
-                <a href="{{ url_for('predict') }}" class="btn btn-outline-primary">Try Predicting</a>
+                <a href="{{ url_for('login', next=url_for('predict')) }}" class="btn btn-outline-primary">Try Predicting</a>
             {% endif %}
         </div>
     </div>
@@ -290,7 +434,7 @@
                 {% if g.user %}
                 <a href="{{ url_for('analytics') }}" class="btn btn-primary">Explore Market Insights</a>
                 {% else %}
-                <a href="{{ url_for('register') }}" class="btn btn-primary">Sign Up to See Your Area</a>
+                <a href="{{ url_for('login', next=url_for('analytics')) }}" class="btn btn-primary">Sign in or register to explore</a>
                 {% endif %}
             </div>
         </div>
@@ -465,7 +609,7 @@
                     filters, and detailed transaction layers.
                 </p>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url_for('login') }}" class="btn btn-primary">Sign In</a>
+                    <a href="{{ url_for('login', next=url_for('map_view')) }}" class="btn btn-primary">Sign In</a>
                     <a href="{{ url_for('register') }}" class="btn btn-outline-primary">Register</a>
                     <button type="button" class="btn btn-light" data-bs-dismiss="modal">Close</button>
                 </div>

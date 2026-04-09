@@ -163,7 +163,7 @@ def load_data() -> tuple[pd.DataFrame, str]:
 
     print(f"  Loaded {len(df):,} rows.")
 
-    min_year = 2000
+    min_year = 2015
     before = len(df)
     df = df[df["year"] >= min_year].copy()
     dropped = before - len(df)
@@ -249,11 +249,38 @@ def engineer_features(
     # so each row only sees market information that would have been available
     # at prediction time. Use town + flat_type granularity to better capture
     # segment-specific price momentum.
+    #
+    # Exclude the last 6 months (val + test window) from the yearly average
+    # so no future transactions contaminate the appreciation signal.
+    # A placeholder row for the current year is then injected so that
+    # shift(1) carries the most recent clean annual average forward to
+    # current-year rows, giving them a real signal instead of 0.0.
+    _max_ym = int((df["year"] * 100 + df["month_num"]).max())
+    _max_ym_year, _max_ym_month = _max_ym // 100, _max_ym % 100
+    _cutoff_ym = (
+        _max_ym_year * 100 + (_max_ym_month - 6)
+        if _max_ym_month > 6
+        else (_max_ym_year - 1) * 100 + (_max_ym_month + 6)
+    )
+    _yearly_avg_df = df[(df["year"] * 100 + df["month_num"]) <= _cutoff_ym]
     yearly_avg = (
-        df.groupby(["town", "flat_type", "year"], as_index=False)["resale_price"]
+        _yearly_avg_df.groupby(["town", "flat_type", "year"], as_index=False)["resale_price"]
         .mean()
         .rename(columns={"resale_price": "avg_resale_price"})
     )
+    # Inject a placeholder for the current year when the cutoff excluded it
+    # entirely, so shift(1) can propagate the last clean avg to current-year rows.
+    if _max_ym_year not in yearly_avg["year"].values:
+        _placeholder = (
+            yearly_avg[["town", "flat_type"]]
+            .drop_duplicates()
+            .assign(year=_max_ym_year, avg_resale_price=np.nan)
+        )
+        yearly_avg = (
+            pd.concat([yearly_avg, _placeholder], ignore_index=True)
+            .sort_values(["town", "flat_type", "year"])
+            .reset_index(drop=True)
+        )
     yearly_avg["prev_avg_1y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(1)
     yearly_avg["prev_avg_2y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(2)
     yearly_avg["prev_avg_6y"] = yearly_avg.groupby(["town", "flat_type"])["avg_resale_price"].shift(6)
@@ -330,9 +357,9 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
     df["_psf"] = df["resale_price"] / df["floor_area_sqm"]
 
     def _fill_nan(s: pd.Series) -> pd.Series:
-        """Fill NaN with expanding mean within the group, then group mean."""
+        """Fill NaN with expanding mean within the group, then 0.0."""
         filled = s.fillna(s.expanding(min_periods=1).mean())
-        return filled.fillna(s.mean())
+        return filled.fillna(0.0)
 
     # ---- Features 1 & 2: town_flattype_median_3m / 6m --------------------
     tf_monthly = (
@@ -448,7 +475,7 @@ def add_rolling_market_features(df: pd.DataFrame) -> pd.DataFrame:
     nat_monthly["national_median_psf_3m"] = (
         nat_monthly["national_median_psf_3m"]
         .fillna(nat_monthly["national_median_psf_3m"].expanding(min_periods=1).mean())
-        .fillna(nat_monthly["nat_psf_med"].mean())
+        .fillna(0.0)
     )
     df = df.merge(
         nat_monthly[["year_month", "national_median_psf_3m"]],

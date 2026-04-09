@@ -154,6 +154,28 @@ def run_feature_engineering() -> None:
 
 
 def run_model_training() -> None:
+    # Auto-trigger fresh Optuna tuning once a month so hyperparameters stay
+    # current as the market evolves.  We check the timestamp of the most recent
+    # Optuna study file; if it is older than FRESH_TUNING_INTERVAL_DAYS days we
+    # set FRESH_TUNING=1 for this run only.
+    FRESH_TUNING_INTERVAL_DAYS = int(
+        os.environ.get("FRESH_TUNING_INTERVAL_DAYS", "30")
+    )
+    if not _env_flag("FRESH_TUNING"):
+        study_path = os.path.join(
+            MODEL_ASSETS_DIR, "optuna_study_catboost.pkl"
+        )
+        if os.path.exists(study_path):
+            age_days = (
+                time.time() - os.path.getmtime(study_path)
+            ) / 86400
+            if age_days >= FRESH_TUNING_INTERVAL_DAYS:
+                print(
+                    f"  Optuna studies are {age_days:.0f} days old "
+                    f"(>= {FRESH_TUNING_INTERVAL_DAYS}d threshold) — "
+                    f"enabling FRESH_TUNING for this run."
+                )
+                os.environ["FRESH_TUNING"] = "1"
     _run_module_main(ML_DIR, "model_training")
 
 

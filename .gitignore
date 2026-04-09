@@ -32,3 +32,4 @@ ML/model_assets/latest.txt
 ML/model_assets/*/
 webapp/model_assets/
 ML/catboost_info/
+catboost_info/

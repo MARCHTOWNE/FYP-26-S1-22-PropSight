@@ -106,7 +106,8 @@ TUNING_SAMPLE_SIZE = int(os.environ.get("TUNING_SAMPLE_SIZE", "250000"))
 N_RF_ESTIMATORS = int(os.environ.get("RF_ESTIMATORS", "300"))
 MODEL_N_JOBS   = int(os.environ.get("MODEL_N_JOBS", "-1"))
 FRESH_TUNING   = _env_flag("FRESH_TUNING", False)
-DECAY_RATE     = float(os.environ.get("DECAY_RATE", "0.003"))
+DECAY_RATE     = float(os.environ.get("DECAY_RATE", "0.006"))
+COMPUTE_SHAP   = _env_flag("COMPUTE_SHAP", False)
 
 DEFAULT_TRAINING_CONFIG = {
     "xgb_trials": 25,
@@ -310,6 +311,76 @@ def _inv_transform(
     return np.expm1(y_log) * price_index
 
 
+class EnsembleModel:
+    """Weighted average of two trained regressors, optimised on val MAPE."""
+
+    def __init__(self, models: list, weights: np.ndarray) -> None:
+        self.models = models
+        self.weights = weights  # shape (n_models,), sums to 1
+
+    def predict(self, X: pd.DataFrame) -> np.ndarray:
+        preds = np.stack([m.predict(X) for m in self.models], axis=1)
+        return preds @ self.weights
+
+    def shap_values(self, X: pd.DataFrame) -> np.ndarray:
+        """
+        Compute weighted SHAP values for the ensemble.
+
+        SHAP values are additive, so blending them by ensemble weight gives
+        the correct attribution for the blended prediction.
+
+        Requires `shap` to be installed:  pip install shap
+        """
+        try:
+            import shap as shap_lib
+        except ImportError:
+            raise ImportError("pip install shap")
+
+        blended = None
+        for model, w in zip(self.models, self.weights):
+            explainer = shap_lib.TreeExplainer(model)
+            sv = explainer.shap_values(X)
+            blended = sv * w if blended is None else blended + sv * w
+        return blended
+
+
+def build_ensemble(
+    models_dict: dict,
+    X_val: pd.DataFrame,
+    y_val_sgd: np.ndarray,
+    y_val_pi: np.ndarray | None = None,
+    eligible: tuple = ("catboost", "lgbm"),
+) -> tuple["EnsembleModel | None", dict]:
+    """
+    Grid-search the optimal blend weight (w) for two models on val MAPE.
+
+    Returns:
+        (EnsembleModel, weights_dict) or (None, {}) if fewer than 2 are present.
+    """
+    present = [n for n in eligible if n in models_dict]
+    if len(present) < 2:
+        return None, {}
+
+    name_a, name_b = present[0], present[1]
+    pred_a = _inv_transform(models_dict[name_a].predict(X_val), y_val_pi)
+    pred_b = _inv_transform(models_dict[name_b].predict(X_val), y_val_pi)
+
+    best_mape, best_w = float("inf"), 0.5
+    for w in np.linspace(0.0, 1.0, 101):
+        blend = w * pred_a + (1.0 - w) * pred_b
+        mape = float(np.mean(np.abs((y_val_sgd - blend) / y_val_sgd)) * 100)
+        if mape < best_mape:
+            best_mape, best_w = mape, float(w)
+
+    weights = np.array([best_w, 1.0 - best_w])
+    ensemble = EnsembleModel([models_dict[name_a], models_dict[name_b]], weights)
+    print(
+        f"\n  Ensemble ({name_a}×{best_w:.2f} + {name_b}×{1-best_w:.2f}) "
+        f"→ val MAPE {best_mape:.2f}%"
+    )
+    return ensemble, {name_a: round(best_w, 4), name_b: round(1.0 - best_w, 4)}
+
+
 def _compute_metrics(y_true_sgd: np.ndarray, y_pred_sgd: np.ndarray) -> dict:
     """
     Compute RMSE, MAE, R-squared, and MAPE in actual SGD.
@@ -351,6 +422,11 @@ def _check_study_meta_invalidation(saved: dict, current: dict) -> str | None:
         )
     if saved.get("feature_cols") != current.get("feature_cols"):
         return "feature_cols list changed"
+    if saved.get("optuna_objective") != current.get("optuna_objective"):
+        return (
+            f"optuna_objective changed "
+            f"({saved.get('optuna_objective')} → {current.get('optuna_objective')})"
+        )
     saved_n = saved.get("n_train_rows", 0)
     current_n = current.get("n_train_rows", 0)
     if saved_n > 0 and abs(current_n - saved_n) / saved_n > 0.05:
@@ -714,7 +790,7 @@ def train_xgboost(
         Tuple of (trained model, best params dict).
     """
     print("\n  Tuning XGBoost with Optuna ...")
-    study_path = os.path.join(run_dir, "optuna_study_xgb.pkl")
+    study_path = os.path.join(OUTPUT_DIR, "optuna_study_xgb.pkl")
 
     def objective(trial):
         params = {
@@ -824,7 +900,7 @@ def train_lightgbm(
         Tuple of (trained model, best params dict).
     """
     print("\n  Tuning LightGBM with Optuna ...")
-    study_path = os.path.join(run_dir, "optuna_study_lgbm.pkl")
+    study_path = os.path.join(OUTPUT_DIR, "optuna_study_lgbm.pkl")
 
     def objective(trial):
         params = {
@@ -939,7 +1015,7 @@ def train_catboost(
         Tuple of (trained model, best params dict).
     """
     print("\n  Tuning CatBoost with Optuna ...")
-    study_path = os.path.join(run_dir, "optuna_study_catboost.pkl")
+    study_path = os.path.join(OUTPUT_DIR, "optuna_study_catboost.pkl")
 
     cat_features = [
         i for i, col in enumerate(X_train.columns)
@@ -955,6 +1031,7 @@ def train_catboost(
             "bagging_temperature": trial.suggest_float("bagging_temperature", 0.0, 1.0),
             "cat_features": cat_features,
             "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
+            "allow_writing_files": False,
             "random_seed": SEED,
             "verbose": 0,
         }
@@ -981,6 +1058,7 @@ def train_catboost(
         "iterations": CATBOOST_N_ESTIMATORS,
         "cat_features": cat_features,
         "early_stopping_rounds": EARLY_STOPPING_ROUNDS,
+        "allow_writing_files": False,
         "random_seed": SEED,
         "verbose": 0,
     })
@@ -1117,29 +1195,29 @@ def determine_winner(results: dict) -> dict:
         Dict with winner name, selection metrics, and test metrics.
     """
     eligible_models = [
-        name for name in ("xgboost", "lgbm", "catboost")
+        name for name in ("xgboost", "lgbm", "catboost", "ensemble")
         if name in results
     ]
     if not eligible_models:
-        raise ValueError("No tuned model (xgboost, lgbm, catboost) found in results for winner selection.")
+        raise ValueError("No tuned model found in results for winner selection.")
 
     ranked = sorted(
-        ((name, results[name]["val"]["rmse"]) for name in eligible_models),
+        ((name, results[name]["val"]["mape"]) for name in eligible_models),
         key=lambda item: item[1],
     )
-    best_name, best_val_rmse = ranked[0]
+    best_name, best_val_mape = ranked[0]
     best_test = results[best_name]["test"]
 
     justification = (
-        f"{best_name} achieved the lowest validation RMSE of SGD {best_val_rmse:,.0f}. "
+        f"{best_name} achieved the lowest validation MAPE of {best_val_mape:.2f}%. "
         f"Its locked test metrics are RMSE={best_test['rmse']:,.0f}, "
         f"R2={best_test['r2']:.4f}, "
         f"MAPE={best_test['mape']:.2f}%. "
     )
     if len(ranked) > 1:
-        runner_up_name, runner_up_rmse = ranked[1]
+        runner_up_name, runner_up_mape = ranked[1]
         justification += (
-            f"Runner-up on validation: {runner_up_name} at SGD {runner_up_rmse:,.0f}. "
+            f"Runner-up on validation: {runner_up_name} at {runner_up_mape:.2f}% MAPE. "
         )
     if "future_holdout" in results[best_name]:
         future_metrics = results[best_name]["future_holdout"]
@@ -1151,8 +1229,9 @@ def determine_winner(results: dict) -> dict:
 
     return {
         "winner": best_name,
-        "selection_metric": "val_rmse",
-        "val_rmse": round(best_val_rmse, 2),
+        "selection_metric": "val_mape",
+        "val_mape": round(best_val_mape, 4),
+        "val_rmse": round(results[best_name]["val"]["rmse"], 2),
         "test_rmse": round(best_test["rmse"], 2),
         "test_r2": round(best_test["r2"], 6),
         "test_mape": round(best_test["mape"], 4),
@@ -1172,6 +1251,7 @@ def save_outputs(
     xgb_params: dict,
     lgbm_params: dict,
     catboost_params: dict | None = None,
+    ensemble_weights: dict | None = None,
 ) -> None:
     """
     Save all training artefacts to the run directory.
@@ -1189,7 +1269,7 @@ def save_outputs(
     training_config = _training_config_snapshot()
     training_config_notes = _training_config_notes(training_config)
 
-    # Base models
+    # Base models (ensemble stores references to base models — pickle the whole object)
     for name, model in models.items():
         path = os.path.join(run_dir, f"{name}_model.pkl")
         with open(path, "wb") as f:
@@ -1226,6 +1306,9 @@ def save_outputs(
             for k, v in catboost_params.items()
             if k != "cat_features"  # list of ints, not JSON-unsafe but noisy
         }
+
+    if ensemble_weights:
+        metrics["ensemble_weights"] = ensemble_weights
 
     with open(metrics_path, "w") as f:
         json.dump(metrics, f, indent=2)
@@ -1324,6 +1407,31 @@ def save_outputs(
         f.write("\n".join(report_lines))
     print("    training_report.txt")
 
+    # Optional SHAP values for winner model on test set (set COMPUTE_SHAP=1)
+    if COMPUTE_SHAP:
+        winner_name = winner.get("winner", "")
+        winner_model = models.get(winner_name)
+        if winner_model is not None:
+            try:
+                import shap as shap_lib
+
+                X_test_path = os.path.join(run_dir, "X_test.parquet")
+                X_test_shap = pd.read_parquet(X_test_path)
+
+                if isinstance(winner_model, EnsembleModel):
+                    sv = winner_model.shap_values(X_test_shap)
+                else:
+                    explainer = shap_lib.TreeExplainer(winner_model)
+                    sv = explainer.shap_values(X_test_shap)
+
+                shap_path = os.path.join(run_dir, "shap_values_test.npy")
+                np.save(shap_path, sv)
+                print(f"    shap_values_test.npy  ({winner_name}, shape {sv.shape})")
+            except ImportError:
+                print("    SHAP skipped — run: pip install shap")
+            except Exception as exc:
+                print(f"    SHAP computation failed: {exc}")
+
 
 # ---------------------------------------------------------------------------
 # Flat type lookup for error breakdown
@@ -1358,6 +1466,84 @@ def _load_flat_type_series(
         results[name] = ft_series
 
     return results
+
+
+# ---------------------------------------------------------------------------
+# Final refit on train+val
+# ---------------------------------------------------------------------------
+
+def _refit_on_trainval(
+    name: str,
+    model,
+    best_params: dict,
+    X_train: pd.DataFrame,
+    y_train: np.ndarray,
+    X_val: pd.DataFrame,
+    y_val: np.ndarray,
+    sample_weight: np.ndarray | None = None,
+) -> object:
+    """
+    Refit a trained gradient-boosted model on the combined train+val set.
+
+    n_estimators is taken from the early-stopping result of the phase-1
+    train-only fit, so the model does not overfit by running indefinitely.
+    Val rows receive weight 1.0 (they are the most recent data).
+
+    Parameters:
+        name:          One of 'xgboost', 'lgbm', 'catboost'.
+        model:         Phase-1 trained model (used only to read best_iteration).
+        best_params:   Optuna best hyperparameters dict.
+        X_train / y_train: Training split features / log-price target.
+        X_val / y_val:     Validation split features / log-price target.
+        sample_weight: Per-row weights for X_train rows (val rows get 1.0).
+
+    Returns:
+        New model instance fitted on train+val, or the original model if the
+        name is not a supported gradient booster.
+    """
+    X_tv = pd.concat([X_train, X_val], ignore_index=True)
+    y_tv = np.concatenate([y_train, y_val])
+    sw_tv = (
+        np.concatenate([sample_weight, np.ones(len(X_val))])
+        if sample_weight is not None
+        else None
+    )
+
+    if name == "xgboost":
+        raw = getattr(model, "best_iteration", None)
+        n_trees = (raw + 1) if (raw is not None and raw > 0) else XGB_N_ESTIMATORS
+        params = {k: v for k, v in best_params.items()}
+        params["n_estimators"] = n_trees
+        params.pop("early_stopping_rounds", None)
+        refitted = xgb.XGBRegressor(**params)
+        refitted.fit(X_tv, y_tv, verbose=False, sample_weight=sw_tv)
+
+    elif name == "lgbm":
+        raw = getattr(model, "best_iteration_", None)
+        n_trees = raw if (raw is not None and raw > 0) else LGBM_N_ESTIMATORS
+        params = {k: v for k, v in best_params.items()}
+        params["n_estimators"] = n_trees
+        refitted = lgb.LGBMRegressor(**params)
+        refitted.fit(X_tv, y_tv, sample_weight=sw_tv)
+
+    elif name == "catboost":
+        n_trees = getattr(model, "tree_count_", None) or CATBOOST_N_ESTIMATORS
+        params = {k: v for k, v in best_params.items()}
+        params["iterations"] = n_trees
+        params.pop("early_stopping_rounds", None)
+        params["cat_features"] = [
+            i for i, col in enumerate(X_tv.columns)
+            if col in {"flat_type_ordinal", "is_mature_estate"}
+        ]
+        params["allow_writing_files"] = False
+        refitted = cb.CatBoostRegressor(**params)
+        refitted.fit(X_tv, y_tv, sample_weight=sw_tv)
+
+    else:
+        return model  # RF: skip refit
+
+    print(f"  {name}: refit on train+val ({len(X_tv):,} rows, {n_trees} trees).")
+    return refitted
 
 
 # ---------------------------------------------------------------------------
@@ -1423,6 +1609,7 @@ def main() -> None:
         "split_strategy": split_strategy,
         "feature_cols": sorted(X_train.columns),
         "n_train_rows": len(X_train),
+        "optuna_objective": "rmse",
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
     }
 
@@ -1480,6 +1667,14 @@ def main() -> None:
 
     base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "catboost": catboost_model, "rf": rf_model}
 
+    # Step 4b: Build ensemble (CatBoost + LGBM, val-MAPE optimised blend)
+    print("\n--- STEP 4b: ENSEMBLE ---")
+    ensemble_model, ensemble_weights = build_ensemble(
+        base_models, X_val, y_val_sgd, y_val_pi
+    )
+    if ensemble_model is not None:
+        base_models["ensemble"] = ensemble_model
+
     # Step 5: Evaluate all
     print("\n--- STEP 5: EVALUATION ---")
     evaluation_splits = {
@@ -1515,10 +1710,78 @@ def main() -> None:
     print(f"\n  WINNER: {winner['winner'].upper()}")
     print(f"  {winner['justification']}")
 
+    # Step 6b: Final refit of winner on train+val
+    # Val metrics above were computed on train-only models (unbiased).
+    # We now refit the winner using those same hyperparameters but with the val
+    # period included in training, giving the model 3 extra months of context
+    # before the test window.  We re-evaluate only on test and update the winner.
+    print("\n--- STEP 6b: FINAL REFIT (TRAIN+VAL) ---")
+    winner_name = winner["winner"]
+    params_map = {
+        "xgboost": xgb_params,
+        "lgbm": lgbm_params,
+        "catboost": catboost_params,
+    }
+    model_map = {
+        "xgboost": xgb_model,
+        "lgbm": lgbm_model,
+        "catboost": catboost_model,
+    }
+
+    if winner_name == "ensemble":
+        # Refit both base components; keep the blend weights unchanged.
+        for comp in ("catboost", "lgbm"):
+            refitted_comp = _refit_on_trainval(
+                comp, model_map[comp], params_map[comp],
+                X_train, y_train_log, X_val, y_val_log, sample_weight,
+            )
+            base_models[comp] = refitted_comp
+        old_weights = base_models["ensemble"].weights
+        base_models["ensemble"] = EnsembleModel(
+            [base_models["catboost"], base_models["lgbm"]], old_weights
+        )
+    elif winner_name in params_map:
+        refitted = _refit_on_trainval(
+            winner_name, model_map[winner_name], params_map[winner_name],
+            X_train, y_train_log, X_val, y_val_log, sample_weight,
+        )
+        base_models[winner_name] = refitted
+
+    # Re-evaluate the refitted winner on test
+    refitted_winner = base_models[winner_name]
+    pred_log_test = refitted_winner.predict(X_test)
+    pred_sgd_test = _inv_transform(
+        pred_log_test,
+        y_test_df["price_index"].values if "price_index" in y_test_df else None,
+    )
+    refit_test = _compute_metrics(y_test_df["resale_price"].values, pred_sgd_test)
+    print(
+        f"\n  {winner_name} after train+val refit — "
+        f"Test: {_fmt_metrics(refit_test)}"
+    )
+    print(
+        f"  MAPE change: {winner['test_mape']:.2f}% → {refit_test['mape']:.2f}% "
+        f"({'↓' if refit_test['mape'] < winner['test_mape'] else '↑'}"
+        f"{abs(refit_test['mape'] - winner['test_mape']):.2f}pp)"
+    )
+    # Preserve pre-refit metrics for audit, then update the primary test fields
+    # so downstream systems (Supabase sync, pipeline summary) see the correct
+    # metrics for the actually deployed model.
+    winner["pre_refit_test_mape"] = winner["test_mape"]
+    winner["pre_refit_test_rmse"] = winner["test_rmse"]
+    winner["pre_refit_test_r2"] = winner["test_r2"]
+    winner["refit_test_mape"] = round(refit_test["mape"], 4)
+    winner["refit_test_rmse"] = round(refit_test["rmse"], 2)
+    winner["refit_test_r2"] = round(refit_test["r2"], 6)
+    winner["test_mape"] = winner["refit_test_mape"]
+    winner["test_rmse"] = winner["refit_test_rmse"]
+    winner["test_r2"] = winner["refit_test_r2"]
+
     # Step 7: Save outputs
     print("\n--- STEP 7: SAVING OUTPUTS ---")
     save_outputs(
         run_dir, base_models, results, winner, xgb_params, lgbm_params, catboost_params,
+        ensemble_weights=ensemble_weights,
     )
 
     # Final comparison table

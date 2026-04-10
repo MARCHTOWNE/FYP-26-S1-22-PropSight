@@ -3,6 +3,10 @@
 
 {% block extra_head %}
 <style>
+    html.propsight-root {
+        zoom: 1;
+    }
+
     /* ─── PRESERVED EXISTING STYLES ──────────────────────────────────── */
     .dashboard-hero {
         background: linear-gradient(118deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.08));
@@ -1147,10 +1151,16 @@ function switchSection(sectionId) {
     const pill = document.querySelector('.nav-pill-item[data-section="' + sectionId + '"]');
     if (pill) pill.classList.add('active');
     // Trigger chart resize after panel becomes visible
-    setTimeout(() => {
+    setTimeout(async () => {
         [priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart, futurePredChart].forEach(c => {
             if (c) { try { c.resize(); } catch(e) {} }
         });
+        // Rebuild these charts once visible so Chart.js recalculates hitboxes
+        // against the final canvas size instead of the hidden panel layout.
+        if (sectionId === 'district') {
+            await loadLocationComparison();
+            await loadPSF();
+        }
     }, 60);
 }
 
@@ -1605,6 +1615,11 @@ async function loadLocationComparison() {
                 responsive: true,
                 maintainAspectRatio: false,
                 indexAxis: 'y',
+                interaction: {
+                    mode: 'index',
+                    axis: 'y',
+                    intersect: false,
+                },
                 plugins: {
                     legend:  { display: false },
                     tooltip: { callbacks: { label: ctx => ' ' + formatMoney(ctx.parsed.x) } }
@@ -1731,6 +1746,11 @@ async function loadPSF() {
                 responsive: true,
                 maintainAspectRatio: false,
                 indexAxis: 'y',
+                interaction: {
+                    mode: 'index',
+                    axis: 'y',
+                    intersect: false,
+                },
                 plugins: { legend: { display: false } },
                 scales: { x: { ticks: { callback: v => '$' + Number(v || 0).toLocaleString() } } }
             }

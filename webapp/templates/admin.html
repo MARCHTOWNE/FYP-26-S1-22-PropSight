@@ -1,0 +1,801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PropSight | Admin Dashboard</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    :root {
+      --primary: #111827;
+      --dark-soft: #1f2937;
+      --light: #f9fafb;
+      --gray: #6b7280;
+      --border: #e5e7eb;
+      --accent: #10b981;
+      --accent-blue: #2563eb;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --brand-gradient: linear-gradient(90deg, #10b981 0%, #2563eb 100%);
+      --radius-xl: 20px;
+      --radius-lg: 14px;
+      --radius-md: 10px;
+      --shadow-float: 0 25px 50px -12px rgba(0,0,0,0.12);
+      --shadow-card: 0 4px 24px rgba(0,0,0,0.06);
+      --transition-smooth: all .35s ease;
+      --sidebar-w: 260px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:'Plus Jakarta Sans',sans-serif;background:var(--light);color:var(--primary);overflow-x:hidden}
+    .ico{display:inline-flex;align-items:center;justify-content:center;flex-shrink:0}
+    .ico svg{width:1em;height:1em;fill:currentColor}
+    .aurora-1{position:fixed;top:-10%;left:20%;width:40vw;height:40vw;background:radial-gradient(circle,rgba(37,99,235,.12) 0%,transparent 70%);filter:blur(100px);z-index:0;pointer-events:none}
+    .aurora-2{position:fixed;bottom:5%;right:5%;width:35vw;height:35vw;background:radial-gradient(circle,rgba(16,185,129,.15) 0%,transparent 70%);filter:blur(100px);z-index:0;pointer-events:none}
+
+    #login-page{min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative}
+    .login-card{background:rgba(255,255,255,.94);backdrop-filter:blur(24px);border-radius:var(--radius-xl);border:1px solid rgba(255,255,255,.8);box-shadow:var(--shadow-float);padding:56px 48px;width:100%;max-width:460px;position:relative;z-index:2}
+    .login-brand{font-weight:800;font-size:2rem;letter-spacing:-.5px;margin-bottom:8px;display:flex;align-items:center;gap:0}
+    .brand-prop{color:var(--primary)}
+    .brand-sight{color:inherit;background:none;-webkit-text-fill-color:currentColor}
+    .brand-dot{color:var(--primary)}
+    .login-subtitle{color:var(--gray);font-size:.95rem;font-weight:500;margin-bottom:40px}
+    .admin-badge{display:inline-flex;align-items:center;gap:6px;background:var(--light);border:1px solid var(--border);border-radius:50px;padding:6px 14px;font-size:.75rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:1px;margin-bottom:24px}
+    .admin-badge .ico{color:var(--accent)}
+    .login-label{font-weight:600;font-size:.85rem;color:var(--primary);margin-bottom:8px;display:block}
+    .login-input{width:100%;padding:14px 18px;border:1.5px solid var(--border);border-radius:var(--radius-md);font-size:.95rem;color:var(--primary);background:white;outline:none;transition:var(--transition-smooth)}
+    .login-input:focus{border-color:var(--accent);box-shadow:0 0 0 4px rgba(16,185,129,.2)}
+    .input-group-login{margin-bottom:24px}
+    .btn-login{width:100%;padding:16px;background:var(--primary);color:white;border:none;border-radius:50px;font-weight:700;font-size:1rem;cursor:pointer;transition:var(--transition-smooth);margin-top:8px;display:flex;align-items:center;justify-content:center;gap:8px}
+    .btn-login:hover{transform:translateY(-2px);box-shadow:0 15px 25px -10px rgba(0,0,0,.25)}
+    .login-error{background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--danger);border-radius:var(--radius-md);padding:12px 16px;font-size:.875rem;font-weight:500;margin-bottom:20px;display:none;align-items:center;gap:8px}
+
+    #dashboard-page{display:none;width:100vw;min-height:100vh}
+    .sidebar{position:fixed;top:0;left:0;width:var(--sidebar-w);height:100vh;background:#111827;z-index:100;display:flex;flex-direction:column;overflow:hidden}
+    .sidebar-brand{padding:28px 28px 20px;border-bottom:1px solid rgba(255,255,255,.07)}
+    .sidebar-brand-name{font-weight:800;font-size:1.4rem;letter-spacing:-.5px;display:flex;align-items:center;gap:0}
+    .sidebar-brand .brand-prop,.sidebar-brand .brand-sight,.sidebar-brand .brand-dot{color:white}
+    .sidebar-tag{font-size:.7rem;font-weight:700;color:rgba(255,255,255,.3);text-transform:uppercase;letter-spacing:1.5px;margin-top:4px}
+    .sidebar-nav{flex:1;padding:20px 16px;overflow-y:auto}
+    .nav-section-label{font-size:.65rem;font-weight:700;color:rgba(255,255,255,.22);text-transform:uppercase;letter-spacing:2px;padding:0 12px;margin:20px 0 8px}
+    .sidebar-link{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--radius-md);color:rgba(255,255,255,.5);text-decoration:none;font-weight:600;font-size:.88rem;transition:var(--transition-smooth);cursor:pointer;border:none;background:none;width:100%;text-align:left;margin-bottom:2px}
+    .sidebar-link:hover{background:rgba(255,255,255,.07);color:rgba(255,255,255,.9)}
+    .sidebar-link.active{background:white;color:var(--primary);box-shadow:0 4px 16px rgba(0,0,0,.15)}
+    .badge-count{margin-left:auto;background:rgba(255,255,255,.12);color:rgba(255,255,255,.65);font-size:.68rem;padding:2px 8px;border-radius:50px;font-weight:700}
+    .sidebar-link.active .badge-count{background:rgba(17,24,39,.1);color:var(--primary)}
+    .sidebar-footer{padding:16px;border-top:1px solid rgba(255,255,255,.07)}
+    .sidebar-user{display:flex;align-items:center;gap:12px;padding:12px;border-radius:var(--radius-md);background:rgba(255,255,255,.05)}
+    .user-avatar{width:36px;height:36px;background:var(--brand-gradient);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.8rem;color:white}
+    .user-name{font-weight:700;font-size:.84rem;color:white}
+    .user-role{font-size:.7rem;color:rgba(255,255,255,.35);font-weight:500}
+    .btn-logout{margin-left:auto;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.35);border-radius:8px;padding:6px 8px;cursor:pointer;transition:var(--transition-smooth)}
+    .btn-logout:hover{background:rgba(239,68,68,.15);border-color:rgba(239,68,68,.3);color:#fca5a5}
+
+    .main-content{margin-left:var(--sidebar-w);min-height:100vh;width:calc(100vw - var(--sidebar-w));background:var(--light)}
+    .topbar{background:rgba(255,255,255,.85);backdrop-filter:blur(20px);border-bottom:1px solid var(--border);padding:16px 36px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:50}
+    .topbar-title{font-weight:800;font-size:1.3rem;color:var(--primary);letter-spacing:-.3px}
+    .topbar-sub{font-size:.8rem;color:var(--gray);font-weight:500;margin-top:2px}
+    .topbar-actions{display:flex;gap:10px;align-items:center}
+    .btn-icon{width:40px;height:40px;border-radius:var(--radius-md);border:1px solid var(--border);background:white;color:var(--gray);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:var(--transition-smooth);font-size:1rem;position:relative}
+    .btn-icon:hover{border-color:var(--accent);color:var(--accent)}
+    .status-pill{display:inline-flex;align-items:center;gap:8px;padding:10px 14px;border-radius:999px;background:white;border:1px solid var(--border);font-size:.82rem;font-weight:700;color:var(--gray)}
+    .dot{width:10px;height:10px;border-radius:50%;background:#cbd5e1}
+    .dot-online{background:var(--accent);box-shadow:0 0 0 4px rgba(16,185,129,.16)}
+    .notif-dot{width:8px;height:8px;background:var(--danger);border-radius:50%;position:absolute;top:7px;right:7px;border:2px solid white}
+    .page-content{padding:36px}
+    .dash-section{display:none}
+    .dash-section.active{display:block}
+    .content-card,.stat-card{background:white;border-radius:var(--radius-xl);border:1px solid var(--border);box-shadow:var(--shadow-card)}
+    .stat-card{padding:24px;height:100%}
+    .stat-value{font-size:2rem;font-weight:800;color:var(--primary);line-height:1;margin-bottom:8px}
+    .stat-label{font-size:.82rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.4px}
+    .stat-sub{font-size:.78rem;color:var(--gray);margin-top:8px}
+    .card-header-custom{padding:24px 28px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .card-title-custom{font-weight:800;font-size:1rem;color:var(--primary)}
+    .card-sub-custom{font-size:.8rem;color:var(--gray);font-weight:500;margin-top:2px}
+    .card-body-custom{padding:28px}
+    .metric-chip{display:inline-flex;flex-direction:column;align-items:flex-start;padding:18px 20px;background:white;border-radius:var(--radius-lg);border:1px solid var(--border);box-shadow:var(--shadow-card);min-width:180px}
+    .metric-chip-val{font-size:1.7rem;font-weight:800;color:var(--primary)}
+    .metric-chip-label{font-size:.72rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;margin-top:6px}
+    .metric-chip-sub{font-size:.72rem;color:var(--gray);margin-top:2px}
+    .winner-chip{border-color:#c7f9e5;background:rgba(16,185,129,.04)}
+    .chart-wrap{position:relative;height:280px}
+    .admin-table{width:100%;border-collapse:collapse}
+    .admin-table th{font-size:.75rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:.5px;padding:12px 16px;background:var(--light);border-bottom:1px solid var(--border)}
+    .admin-table td{padding:14px 16px;border-bottom:1px solid var(--border);font-size:.88rem;color:var(--primary);vertical-align:middle}
+    .admin-table tr:last-child td{border-bottom:none}
+    .admin-table tr:hover td{background:rgba(37,99,235,.02)}
+    .status-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:50px;font-size:.75rem;font-weight:700}
+    .status-badge::before{content:'';width:6px;height:6px;border-radius:50%}
+    .badge-active{background:rgba(16,185,129,.1);color:#059669}.badge-active::before{background:#10b981}
+    .badge-suspended{background:rgba(239,68,68,.1);color:#dc2626}.badge-suspended::before{background:#ef4444}
+    .badge-pending{background:rgba(245,158,11,.1);color:#d97706}.badge-pending::before{background:#f59e0b}
+    .badge-online{background:rgba(37,99,235,.1);color:#2563eb}.badge-online::before{background:#2563eb}
+    .role-badge{display:inline-flex;align-items:center;padding:4px 10px;border-radius:50px;font-size:.72rem;font-weight:700}
+    .role-registered{background:rgba(37,99,235,.08);color:#2563eb}
+    .role-premium{background:rgba(16,185,129,.08);color:#059669}
+    .role-admin{background:rgba(17,24,39,.08);color:#111827}
+    .btn-action{padding:7px 12px;border-radius:8px;font-size:.78rem;font-weight:700;border:1px solid var(--border);background:white;color:var(--gray);cursor:pointer;transition:var(--transition-smooth)}
+    .btn-action:hover{border-color:var(--accent);color:var(--accent)}
+    .btn-action.danger:hover{border-color:var(--danger);color:var(--danger)}
+    .btn-action.success:hover{border-color:var(--accent);color:var(--accent)}
+    .filter-bar{display:flex;gap:12px;align-items:center;margin-bottom:24px;flex-wrap:wrap}
+    .search-input-wrap{position:relative;flex:1;min-width:220px}
+    .search-input-wrap .ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--gray)}
+    .search-input{width:100%;padding:11px 16px 11px 40px;border:1.5px solid var(--border);border-radius:var(--radius-md);font-size:.9rem;color:var(--primary);background:white;outline:none}
+    .filter-select,.form-input-m,.settings-input{padding:11px 16px;border:1.5px solid var(--border);border-radius:var(--radius-md);font-size:.88rem;font-weight:600;color:var(--primary);background:white;outline:none;width:100%}
+    .search-input:focus,.filter-select:focus,.form-input-m:focus,.settings-input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(16,185,129,.15)}
+    .form-label-m{font-size:.82rem;font-weight:700;color:var(--primary);display:block;margin-bottom:8px}
+    .btn-primary-sm{padding:11px 20px;background:var(--primary);color:white;border:none;border-radius:50px;font-weight:700;font-size:.88rem;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+    .btn-primary-sm:hover{background:#1f2937}
+    .btn-cancel{padding:12px 24px;border:1.5px solid var(--border);border-radius:50px;background:white;color:var(--gray);font-weight:700;font-size:.88rem;cursor:pointer}
+    .info-banner{background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.2);border-radius:var(--radius-md);padding:14px 18px;font-size:.84rem;color:#065f46;font-weight:500;display:flex;align-items:flex-start;gap:10px;margin-bottom:24px}
+    .usage-bar-wrap{margin-bottom:20px}.usage-bar-label{display:flex;justify-content:space-between;margin-bottom:8px}.usage-bar-name{font-size:.85rem;font-weight:600;color:var(--primary)}.usage-bar-val{font-size:.85rem;font-weight:700;color:var(--gray)}.usage-bar-bg{height:8px;background:var(--light);border-radius:50px;overflow:hidden}.usage-bar-fill{height:100%;border-radius:50px;background:var(--brand-gradient)}
+    .activity-item{display:flex;gap:14px;padding:14px 0;border-bottom:1px solid var(--border)}.activity-item:last-child{border-bottom:none}.activity-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;margin-top:2px}.activity-dot.green{background:rgba(16,185,129,.1);color:var(--accent)}.activity-dot.orange{background:rgba(245,158,11,.1);color:var(--warning)}.activity-dot.red{background:rgba(239,68,68,.1);color:var(--danger)}
+    .topbar-panel{position:absolute;top:calc(100% + 12px);background:white;border-radius:var(--radius-xl);border:1px solid var(--border);box-shadow:0 20px 60px -10px rgba(0,0,0,.18);z-index:200;width:360px;overflow:hidden;display:none}
+    .panel-header{display:flex;align-items:center;justify-content:space-between;padding:20px 20px 14px;border-bottom:1px solid var(--border)}
+    .panel-title{font-weight:800;font-size:1rem;color:var(--primary)}
+    .panel-sub{font-size:.75rem;color:var(--gray);font-weight:500;margin-top:2px}
+    .notif-item{display:flex;gap:12px;padding:14px 20px;border-bottom:1px solid var(--border)} .notif-item:last-child{border-bottom:none}.notif-item.unread{background:rgba(16,185,129,.03)} .notif-dot-item{width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:5px}.notif-dot-item.green{background:#10b981}.notif-dot-item.orange{background:#f59e0b}.notif-dot-item.blue{background:#2563eb}.notif-dot-item.red{background:#ef4444}.notif-text{font-size:.85rem;color:var(--primary);font-weight:500;line-height:1.5}.notif-time{font-size:.75rem;color:var(--gray);margin-top:3px}
+    .settings-section-label{font-size:.68rem;font-weight:700;color:var(--gray);text-transform:uppercase;letter-spacing:1.5px;padding:14px 20px 6px}.settings-row{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 20px}.settings-row-title{font-size:.85rem;font-weight:600;color:var(--primary)}.settings-row-sub{font-size:.75rem;color:var(--gray)}
+    .toggle-switch{position:relative;width:40px;height:22px;flex-shrink:0;cursor:pointer}.toggle-switch input{opacity:0;width:0;height:0;position:absolute}.toggle-knob{position:absolute;inset:0;background:#cbd5e1;border-radius:50px;transition:.3s}.toggle-knob::before{content:'';position:absolute;width:16px;height:16px;left:3px;top:3px;background:white;border-radius:50%;transition:.3s;box-shadow:0 1px 4px rgba(0,0,0,.2)}.toggle-switch input:checked + .toggle-knob{background:#10b981}.toggle-switch input:checked + .toggle-knob::before{transform:translateX(18px)}
+    .toast-container{position:fixed;top:24px;right:24px;z-index:300;display:flex;flex-direction:column;gap:10px}.toast-msg{background:var(--primary);color:white;padding:14px 20px;border-radius:var(--radius-md);font-size:.88rem;font-weight:600;box-shadow:var(--shadow-float);display:flex;align-items:center;gap:10px;min-width:260px}.toast-msg.success{border-left:3px solid var(--accent)}.toast-msg.error{border-left:3px solid var(--danger)}
+    .modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.6);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center}.modal-overlay.open{display:flex}.modal-box{background:white;border-radius:var(--radius-xl);box-shadow:var(--shadow-float);padding:40px;width:100%;max-width:500px}
+    #panel-overlay{display:none;position:fixed;inset:0;z-index:49}
+    .chart-toolbar{display:flex;justify-content:flex-end;margin-bottom:10px}
+    .time-toggle{display:inline-flex;background:var(--light);border:1px solid var(--border);border-radius:50px;padding:3px;gap:2px}
+    .time-toggle-btn{padding:5px 12px;border-radius:50px;font-size:.72rem;font-weight:700;color:var(--gray);background:none;border:none;cursor:pointer;transition:var(--transition-smooth)}
+    .time-toggle-btn.active{background:var(--primary);color:white;box-shadow:0 2px 8px rgba(0,0,0,.15)}
+    .time-toggle-btn:hover:not(.active){color:var(--primary);background:rgba(17,24,39,.06)}
+    @media (max-width: 992px){.sidebar{position:relative;width:100%;height:auto}.main-content{margin-left:0;width:100%}.topbar{padding:16px 20px}.page-content{padding:20px}.metric-chip{min-width:150px}.chart-wrap{height:240px}}
+  </style>
+</head>
+<body data-admin-auth="{{ 1 if admin_authenticated else 0 }}">
+  <svg style="display:none" xmlns="http://www.w3.org/2000/svg">
+    <symbol id="ic-shield" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></symbol>
+    <symbol id="ic-calc" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.93 0 3.5 1.57 3.5 3.5S13.93 13 12 13s-3.5-1.57-3.5-3.5S10.07 6 12 6zm7 13H5v-.23c0-.62.28-1.2.76-1.58C7.47 15.82 9.64 15 12 15s4.53.82 6.24 2.19c.48.38.76.97.76 1.58V19z"/></symbol>
+    <symbol id="ic-people" viewBox="0 0 24 24"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></symbol>
+    <symbol id="ic-cpu" viewBox="0 0 24 24"><path d="M9 3H7v2H5v2H3v2h2v2H3v2h2v2H3v2h2v2h2v2h2v-2h2v2h2v-2h2v2h2v-2h2v-2h2v-2h-2v-2h2v-2h-2V9h2V7h-2V5h-2V3h-2v2h-2V3H9zm-2 4h10v10H7V7zm2 2v6h6V9H9z"/></symbol>
+    <symbol id="ic-trophy" viewBox="0 0 24 24"><path d="M19 5h-2V3H7v2H5c-1.1 0-2 .9-2 2v1c0 2.55 1.92 4.63 4.39 4.94.63 1.5 1.98 2.63 3.61 2.96V19H7v2h10v-2h-4v-3.1a5.002 5.002 0 0 0 3.61-2.96C19.08 12.63 21 10.55 21 8V7c0-1.1-.9-2-2-2z"/></symbol>
+    <symbol id="ic-person-add" viewBox="0 0 24 24"><path d="M15 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm-9-2V7H4v3H1v2h3v3h2v-3h3v-2H6zm9 4c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></symbol>
+    <symbol id="ic-search" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.47 6.47 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></symbol>
+    <symbol id="ic-logout" viewBox="0 0 24 24"><path d="M17 7l-1.41 1.41L18.17 11H8v2h10.17l-2.58 2.58L17 17l5-5zM4 5h8V3H4c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h8v-2H4V5z"/></symbol>
+    <symbol id="ic-bell" viewBox="0 0 24 24"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></symbol>
+    <symbol id="ic-gear" viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.05 7.05 0 0 0-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96a.48.48 0 0 0-.59.22L2.74 8.87a.47.47 0 0 0 .12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.47.47 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.47.47 0 0 0-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></symbol>
+    <symbol id="ic-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></symbol>
+    <symbol id="ic-x" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></symbol>
+  </svg>
+
+  <div class="aurora-1"></div>
+  <div class="aurora-2"></div>
+  <div class="toast-container" id="toast-container"></div>
+
+  <div id="login-page">
+    <div class="login-card">
+      <div class="admin-badge"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-shield"></use></svg></span> Platform Manager</div>
+      <div class="login-brand"><span class="brand-prop">Prop<span class="brand-sight">Sight</span><span class="brand-dot">.</span></span></div>
+      <div class="login-subtitle">Admin dashboard for the real estate price prediction platform.</div>
+      <div class="login-error" id="login-error"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-x"></use></svg></span> Invalid login credentials.</div>
+      <div class="input-group-login">
+        <label class="login-label">Email address</label>
+        <input type="email" class="login-input" id="login-email" value="admin@propsight.sg">
+      </div>
+      <div class="input-group-login">
+        <label class="login-label">Password</label>
+        <input type="password" class="login-input" id="login-password" value="admin123">
+      </div>
+      <button class="btn-login" id="btn-sign-in" onclick="doLogin()"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-logout"></use></svg></span> Sign In</button>
+      <p style="font-size:.78rem;color:var(--gray);text-align:center;margin-top:24px;font-weight:500;">Demo: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="c8a9aca5a1a688b8baa7b8bba1afa0bce6bbaf">[email&#160;protected]</a> / admin123</p>
+    </div>
+  </div>
+
+  <div id="dashboard-page">
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-name"><span class="brand-prop">Prop<span class="brand-sight">Sight</span><span class="brand-dot">.</span></span></div>
+        <div class="sidebar-tag">Platform Manager</div>
+      </div>
+      <nav class="sidebar-nav">
+        <div class="nav-section-label">Overview</div>
+        <button class="sidebar-link active" onclick="showSection('overview',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-calc"></use></svg></span> Dashboard Overview</button>
+        <div class="nav-section-label">Operations</div>
+        <button class="sidebar-link" onclick="showSection('model',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-cpu"></use></svg></span> Model Performance</button>
+        <button class="sidebar-link" onclick="showSection('accounts',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-people"></use></svg></span> Manage Accounts <span class="badge-count" id="suspended-count" title="Suspended accounts">0</span></button>
+        <button class="sidebar-link" onclick="showSection('create-account',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-person-add"></use></svg></span> Create Account</button>
+        <button class="sidebar-link" onclick="showSection('subscriptions',this)"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-trophy"></use></svg></span> Subscription Revenue</button>
+</nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">
+          <div class="user-avatar">PM</div>
+          <div><div class="user-name">Platform Manager</div><div class="user-role"><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="3c5d585155527c4c4e534c4f555b5448124f5b">[email&#160;protected]</a></div></div>
+          <button class="btn-logout" onclick="doLogout()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><use href="#ic-logout"></use></svg></button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title" id="topbar-title">Dashboard Overview</div>
+          <div class="topbar-sub" id="topbar-sub">Core admin view for your real estate price prediction platform.</div>
+        </div>
+        <div class="topbar-actions" style="position:relative;">
+          <div class="status-pill"><span id="realtimePillDot" class="dot dot-online"></span><span id="realtimePillText">Realtime: Connected</span></div>
+          <div class="btn-icon" onclick="togglePanel('notif-panel')"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><use href="#ic-bell"></use></svg><div class="notif-dot" id="notif-dot"></div></div>
+          <div class="btn-icon" onclick="togglePanel('settings-panel')"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><use href="#ic-gear"></use></svg></div>
+
+          <div class="topbar-panel" id="notif-panel" style="right:52px;">
+            <div class="panel-header"><div><div class="panel-title">Notifications</div><div class="panel-sub">Recent admin events</div></div><button class="btn-action" onclick="clearNotifs()">Mark all read</button></div>
+            <div id="notif-list">
+              <div class="notif-item unread"><div class="notif-dot-item green"></div><div><div class="notif-text">New account created for <strong><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4e3e3c27372f60202f273c7c7e7c7b0e29232f2722602d2123">[email&#160;protected]</a></strong></div><div class="notif-time">2 minutes ago</div></div></div>
+              <div class="notif-item unread"><div class="notif-dot-item orange"></div><div><div class="notif-text">Resale dataset updated for April 2026 batch</div><div class="notif-time">1 hour ago</div></div></div>
+              <div class="notif-item unread"><div class="notif-dot-item red"></div><div><div class="notif-text">Flagged prediction requires manual review</div><div class="notif-time">3 hours ago</div></div></div>
+              <div class="notif-item"><div class="notif-dot-item blue"></div><div><div class="notif-text">XGBoost model remains active for live predictions</div><div class="notif-time">Yesterday</div></div></div>
+            </div>
+          </div>
+
+          <div class="topbar-panel" id="settings-panel" style="right:0;width:320px;">
+            <div class="panel-header"><div><div class="panel-title">Settings</div><div class="panel-sub">Platform preferences</div></div></div>
+            <div class="settings-section-label">Account</div>
+            <div class="settings-row"><div><div class="settings-row-title">Display Name</div><div class="settings-row-sub">Shown in sidebar</div></div><input class="settings-input" value="Platform Manager"></div>
+            <div class="settings-row"><div><div class="settings-row-title">Email Notifications</div><div class="settings-row-sub">Receive admin alerts</div></div><label class="toggle-switch"><input type="checkbox" checked><span class="toggle-knob"></span></label></div>
+            <div class="settings-row"><div><div class="settings-row-title">Auto-refresh Dashboard</div><div class="settings-row-sub">Refresh every 30 seconds</div></div><label class="toggle-switch"><input type="checkbox" checked><span class="toggle-knob"></span></label></div>
+            <div style="padding:14px 20px 20px;"><button class="btn-primary-sm" style="width:100%;justify-content:center;" onclick="showToast('Settings saved.','success');closeAllPanels();">Save Changes</button></div>
+          </div>
+        </div>
+      </div>
+      <div id="panel-overlay" onclick="closeAllPanels()"></div>
+
+      <div class="page-content">
+        <div class="dash-section active" id="section-overview">
+          <div class="info-banner"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-check"></use></svg></span><span><strong>Merged admin dashboard:</strong> keeps the PropSight UI shell and adds the most useful features from the other admin page, including live status KPIs, income tracking, user filters and quick account actions.</span></div>
+          <div class="d-flex gap-3 flex-wrap mb-4">
+            <div class="metric-chip winner-chip"><div class="metric-chip-val" id="kpiTotalUsers">0</div><div class="metric-chip-label">Total Users</div><div class="metric-chip-sub">All account types</div></div>
+            <div class="metric-chip"><div class="metric-chip-val" id="kpiOnlineUsers">0</div><div class="metric-chip-label">Online Now</div><div class="metric-chip-sub">Live status</div></div>
+            <div class="metric-chip"><div class="metric-chip-val" id="kpiPredictionCount">0</div><div class="metric-chip-label">Predictions Run</div><div class="metric-chip-sub">All users</div></div>
+            <div class="metric-chip"><div class="metric-chip-val" id="kpiMonthlyRevenue">$0</div><div class="metric-chip-label">Monthly Revenue</div><div class="metric-chip-sub">Premium subscriptions</div></div>
+            <div class="metric-chip winner-chip"><div class="metric-chip-val">XGBoost</div><div class="metric-chip-label">Active Model</div><div class="metric-chip-sub">Production predictor</div></div>
+          </div>
+          <div class="row g-4">
+            <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Online User Trend</div><div class="card-sub-custom">Active user sessions over time.</div></div></div><div class="card-body-custom"><div class="chart-toolbar"><div class="time-toggle"><button class="time-toggle-btn active" onclick="switchOnlineTrend('hour',this)">Hour</button><button class="time-toggle-btn" onclick="switchOnlineTrend('day',this)">Day</button><button class="time-toggle-btn" onclick="switchOnlineTrend('week',this)">Week</button><button class="time-toggle-btn" onclick="switchOnlineTrend('month',this)">Month</button></div></div><div class="chart-wrap"><canvas id="onlineTrendChart"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Prediction Activity</div><div class="card-sub-custom">Price prediction request volume over time.</div></div></div><div class="card-body-custom"><div class="chart-toolbar"><div class="time-toggle"><button class="time-toggle-btn active" onclick="switchPredTrend('hour',this)">Hour</button><button class="time-toggle-btn" onclick="switchPredTrend('day',this)">Day</button><button class="time-toggle-btn" onclick="switchPredTrend('week',this)">Week</button><button class="time-toggle-btn" onclick="switchPredTrend('month',this)">Month</button></div></div><div class="chart-wrap"><canvas id="predictionTrendChart"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">User Role Split</div><div class="card-sub-custom">Registered and Premium user distribution.</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="roleSplitChart"></canvas></div></div></div></div>
+            <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Top Queried Towns</div><div class="card-sub-custom">Most searched towns from prediction requests.</div></div></div><div class="card-body-custom">
+              <div id="top-towns-wrap"></div>
+            </div></div></div></div>
+          </div>
+        </div>
+
+        <div class="dash-section" id="section-model">
+          <div class="row g-4 mb-4">
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Active Model</div><div class="stat-value" style="font-size:1.4rem;">XGBoost</div><div class="stat-sub">Optuna-tuned</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test MAPE</div><div class="stat-value" style="color:#10b981;">6.49%</div><div class="stat-sub">Lower is better</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test RMSE</div><div class="stat-value" style="font-size:1.5rem;">$44,790</div><div class="stat-sub">SGD</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test R²</div><div class="stat-value" style="color:#2563eb;">0.8877</div><div class="stat-sub">Closer to 1 is better</div></div></div>
+          </div>
+          <div class="row g-4 mb-4">
+            <div class="col-lg-7"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">MAPE Over Model Versions</div><div class="card-sub-custom">Track if prediction error is improving or worsening over time.</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="mapeTrendChart"></canvas></div></div></div></div>
+            <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Overfitting Check</div><div class="card-sub-custom">Compare train vs test MAPE. Large gap = overfitting risk.</div></div></div><div class="card-body-custom">
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Train MAPE</span><span class="usage-bar-val" style="color:#10b981;">4.21%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:42%;background:#10b981;"></div></div></div>
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Validation MAPE</span><span class="usage-bar-val" style="color:#f59e0b;">5.87%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:58%;background:#f59e0b;"></div></div></div>
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Test MAPE</span><span class="usage-bar-val" style="color:#2563eb;">6.49%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:65%;background:#2563eb;"></div></div></div>
+              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:14px 16px;margin-top:8px;">
+                <div style="font-size:.78rem;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.5px;">✓ No Overfitting Detected</div>
+                <div style="font-size:.82rem;color:var(--gray);margin-top:4px;">Train-test MAPE gap is within acceptable range (2.28%).</div>
+              </div>
+            </div></div></div>
+          </div>
+          <div class="content-card">
+            <div class="card-header-custom"><div><div class="card-title-custom">Model Version History</div><div class="card-sub-custom">All trained model versions and their evaluation metrics.</div></div></div>
+            <div style="overflow-x:auto">
+              <table class="admin-table">
+                <thead><tr><th>Version</th><th>Algorithm</th><th>Train MAPE</th><th>Val MAPE</th><th>Test MAPE</th><th>RMSE</th><th>R²</th><th>Trained On</th><th>Status</th></tr></thead>
+                <tbody id="model-versions-tbody">
+                  <tr><td><strong>v2.4</strong></td><td>XGBoost (Optuna)</td><td style="color:#10b981;font-weight:700;">4.21%</td><td style="color:#f59e0b;font-weight:700;">5.87%</td><td style="color:#2563eb;font-weight:700;">6.49%</td><td>$44,790</td><td>0.8877</td><td style="color:var(--gray);">Mar 2026</td><td><span class="status-badge badge-active">Active</span></td></tr>
+                  <tr><td><strong>v2.3</strong></td><td>XGBoost</td><td style="color:#10b981;font-weight:700;">4.85%</td><td style="color:#f59e0b;font-weight:700;">6.54%</td><td style="color:var(--gray);font-weight:700;">7.12%</td><td>$48,210</td><td>0.8741</td><td style="color:var(--gray);">Jan 2026</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
+                  <tr><td><strong>v2.2</strong></td><td>XGBoost</td><td style="color:#10b981;font-weight:700;">5.10%</td><td style="color:#f59e0b;font-weight:700;">7.23%</td><td style="color:var(--gray);font-weight:700;">7.89%</td><td>$51,430</td><td>0.8612</td><td style="color:var(--gray);">Nov 2025</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
+                  <tr><td><strong>v2.1</strong></td><td>LightGBM</td><td style="color:#10b981;font-weight:700;">5.44%</td><td style="color:#f59e0b;font-weight:700;">7.91%</td><td style="color:var(--gray);font-weight:700;">8.34%</td><td>$54,900</td><td>0.8490</td><td style="color:var(--gray);">Sep 2025</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-section" id="section-accounts">
+          <div class="row g-3 mb-4">
+            <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Total Users</div><div class="stat-value" id="stat-total">0</div><div class="stat-sub">All accounts</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Registered Users</div><div class="stat-value" id="stat-registered" style="color:#2563eb">0</div><div class="stat-sub">Standard access</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Premium Users</div><div class="stat-value" id="stat-premium" style="color:#10b981">0</div><div class="stat-sub">Paid users</div></div></div>
+            <div class="col-6 col-md-3"><div class="stat-card"><div class="stat-label">Suspended</div><div class="stat-value" id="stat-suspended" style="color:#ef4444">0</div><div class="stat-sub">Restricted access</div></div></div>
+          </div>
+          <div class="content-card">
+            <div class="card-header-custom"><div><div class="card-title-custom">Manage Accounts</div><div class="card-sub-custom">Combines PropSight account management with the stronger filtering ideas from the other page.</div></div></div>
+            <div class="card-body-custom">
+              <div class="filter-bar">
+                <div class="search-input-wrap"><span class="ico"><svg viewBox="0 0 24 24"><use href="#ic-search"></use></svg></span><input type="text" class="search-input" id="account-search" placeholder="Search name or email..." oninput="filterAccounts()"></div>
+                <select class="filter-select" id="account-filter" onchange="filterAccounts()" style="max-width:160px"><option value="all">All Status</option><option value="active">Active</option><option value="suspended">Suspended</option><option value="pending">Pending</option></select>
+                <select class="filter-select" id="role-filter" onchange="filterAccounts()" style="max-width:180px"><option value="all">All Roles</option><option value="Registered User">Registered User</option><option value="Premium User">Premium User</option></select>
+                
+              </div>
+              <div style="overflow-x:auto"><table class="admin-table"><thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Predictions</th><th>Status</th><th>Actions</th></tr></thead><tbody id="accounts-tbody"></tbody></table></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-section" id="section-create-account">
+          <div class="row g-4 justify-content-center">
+            <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Create New Account</div><div class="card-sub-custom">Create an account for a new platform user.</div></div></div><div class="card-body-custom">
+              <label class="form-label-m">Full Name</label><input type="text" class="form-input-m" id="new-name" placeholder="e.g. Tan Bee Lee">
+              <label class="form-label-m">Email Address</label><input type="email" class="form-input-m" id="new-email" placeholder="e.g. tanbeelee@gmail.com">
+              <label class="form-label-m">Temporary Password</label><input type="password" class="form-input-m" id="new-password" placeholder="Minimum 8 characters">
+              <label class="form-label-m">Role</label><select class="form-input-m" id="new-role"><option>Registered User</option><option>Premium User</option></select>
+              <div style="display:flex;gap:12px;margin-top:8px;"><button class="btn-primary-sm" style="flex:1;justify-content:center;" onclick="createAccount()"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><use href="#ic-person-add"></use></svg> Create Account</button><button class="btn-cancel" onclick="clearCreateForm()">Clear</button></div>
+              <div id="create-error" style="display:none;margin-top:16px;padding:12px 16px;background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.2);color:var(--danger);border-radius:var(--radius-md);font-size:.85rem;font-weight:600;"></div>
+            </div></div></div>
+            <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Access Levels</div><div class="card-sub-custom">Simple admin-facing explanation.</div></div></div><div class="card-body-custom"><div class="mb-3"><span class="role-badge role-registered">Registered User</span><p class="mt-2 mb-0" style="font-size:.84rem;color:var(--gray)">Can run property price predictions and view history.</p></div><div class="mb-3"><span class="role-badge role-premium">Premium User</span><p class="mt-2 mb-0" style="font-size:.84rem;color:var(--gray)">Gets advanced trends, more exports and richer insights.</p></div></div></div></div>
+          </div>
+        </div>
+
+        <div class="dash-section" id="section-subscriptions">
+          <div class="row g-4 mb-4">
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Premium Subscribers</div><div class="stat-value" id="sub-premium">0</div><div class="stat-sub">Active paid users</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Monthly Revenue</div><div class="stat-value" id="sub-monthly">$0</div><div class="stat-sub">Premium price: $4.90</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Weekly Revenue</div><div class="stat-value" id="sub-weekly">$0</div><div class="stat-sub">Estimated value</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Unsubscribed (Registered)</div><div class="stat-value" id="sub-unsubscribed">0</div><div class="stat-sub">Users not on premium plan</div></div></div>
+          </div>
+          <div class="row g-4">
+            <div class="col-lg-7"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Income Trend</div><div class="card-sub-custom">Feature kept from the second admin page.</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="incomeChart"></canvas></div></div></div></div>
+            <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Manage Plans</div><div class="card-sub-custom">Upgrade or downgrade user subscriptions.</div></div></div><div class="card-body-custom" style="padding-top:0;"><table class="admin-table"><thead><tr><th>User</th><th>Plan</th><th>Action</th></tr></thead><tbody id="sub-tbody"></tbody></table></div></div></div>
+          </div>
+        </div>
+</div>
+    </main>
+  </div>
+
+  <div class="modal-overlay" id="suspend-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Suspend Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">This user will lose platform access immediately.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="suspend-user-name" style="color:var(--danger);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('suspend-modal')">Cancel</button><button class="btn-primary-sm" style="background:var(--danger);" onclick="confirmSuspend()">Suspend</button></div></div></div>
+  <div class="modal-overlay" id="reinstate-modal"><div class="modal-box"><div style="font-size:1.3rem;font-weight:800;color:var(--primary);margin-bottom:8px;">Reinstate Account</div><div style="font-size:.88rem;color:var(--gray);margin-bottom:28px;">Restore full platform access to the user.</div><p style="font-size:.9rem;color:var(--primary);font-weight:600;margin-bottom:24px;">User: <span id="reinstate-user-name" style="color:var(--accent);"></span></p><div style="display:flex;gap:12px;justify-content:flex-end;"><button class="btn-cancel" onclick="closeModal('reinstate-modal')">Cancel</button><button class="btn-primary-sm" onclick="confirmReinstate()">Reinstate</button></div></div></div>
+
+  <script>
+    const ADMIN_AUTHENTICATED = document.body?.dataset?.adminAuth === '1';
+    let accounts = [];
+    let charts = {};
+    let suspendTargetId = null;
+    let reinstateTargetId = null;
+    let unreadCount = 3;
+    const onlineHistory = [5,6,5,7,6,8,7,6,8,7,9,8];
+    let autoRefreshTimer = null;
+    let statsLoading = false;
+    let accountsLoading = false;
+    let modelsLoading = false;
+    let overviewLoading = false;
+    let lastAccountsSignature = '';
+    let lastModelsSignature = '';
+    let overviewData = {
+      online_trend: { hour:{labels:[],data:[]}, day:{labels:[],data:[]}, week:{labels:[],data:[]}, month:{labels:[],data:[]} },
+      prediction_trend: { hour:{labels:[],data:[]}, day:{labels:[],data:[]}, week:{labels:[],data:[]}, month:{labels:[],data:[]} },
+      role_split: { registered:0, premium:0, admin:0 },
+      top_towns: [],
+    };
+    let currentOnlineRange = 'hour';
+    let currentPredRange = 'hour';
+    let notificationsLoading = false;
+    let lastStatsData = null;
+
+    // --- Helpers ---
+    function getRoleBadge(role){ const map={'Registered User':'role-registered','Premium User':'role-premium','Admin':'role-admin'}; return `<span class="role-badge ${map[role]||'role-registered'}">${role}</span>`; }
+    function formatDate(str){ if(!str) return '—'; return new Date(str).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}); }
+    function showLoading(id){ const el=document.getElementById(id); if(el) el.innerHTML='<tr><td colspan="10" class="text-center p-4 text-muted">Loading...</td></tr>'; }
+
+    async function fetchJson(url, options = {}){
+      const res = await fetch(url, options);
+      const data = await res.json().catch(()=>({}));
+      if(!res.ok){
+        const msg = data?.error || `Request failed (${res.status})`;
+        throw new Error(msg);
+      }
+      return data;
+    }
+
+    // --- Auth ---
+    async function doLogin(){
+      const email = document.getElementById('login-email').value.trim();
+      const pass = document.getElementById('login-password').value.trim();
+      const errEl = document.getElementById('login-error');
+      try {
+        const data = await fetchJson('/admin/auth', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({email, password: pass})
+        });
+        if(data.success){
+          errEl.style.display='none';
+          document.getElementById('login-page').style.display='none';
+          document.getElementById('dashboard-page').style.display='flex';
+          setTimeout(()=>initDashboard(), 200);
+        } else {
+          errEl.style.display='flex';
+        }
+      } catch(e){
+        errEl.style.display='flex';
+      }
+    }
+
+    async function doLogout(){
+      await fetchJson('/admin/logout', {method:'POST'});
+      document.getElementById('dashboard-page').style.display='none';
+      document.getElementById('login-page').style.display='flex';
+      showToast('Logged out successfully.','success');
+    }
+
+    document.addEventListener('DOMContentLoaded', ()=>{
+      document.getElementById('login-password').addEventListener('keydown', e=>{ if(e.key==='Enter') doLogin(); });
+      if(ADMIN_AUTHENTICATED){
+        document.getElementById('login-page').style.display='none';
+        document.getElementById('dashboard-page').style.display='flex';
+        setTimeout(()=>initDashboard(), 200);
+      }
+    });
+
+    const META = {
+      overview:{title:'Dashboard Overview', sub:'Core admin view for your real estate price prediction platform.'},
+      model:{title:'Model Performance', sub:'Monitor XGBoost model accuracy, overfitting indicators and version history.'},
+      accounts:{title:'Manage Accounts', sub:'Search, filter and control platform user accounts with live status.'},
+      'create-account':{title:'Create Account', sub:'Create a user profile on behalf of a customer.'},
+      subscriptions:{title:'Subscription Revenue', sub:'Track premium plans, monthly income and plan changes.'},
+    };
+    // --- Fetch stats from Supabase via Flask ---
+    async function loadStats(){
+      if(statsLoading) return;
+      statsLoading = true;
+      try {
+        const d = await fetchJson('/api/admin/stats');
+        lastStatsData = d;
+        document.getElementById('kpiTotalUsers').textContent = d.total_users ?? 0;
+        document.getElementById('kpiOnlineUsers').textContent = d.online_users ?? 0;
+        document.getElementById('kpiPredictionCount').textContent = d.total_predictions ?? 0;
+        document.getElementById('kpiMonthlyRevenue').textContent = '$' + (d.monthly_revenue ?? 0).toFixed(2);
+        document.getElementById('stat-total').textContent = d.total_users ?? 0;
+        document.getElementById('stat-registered').textContent = d.general_users ?? 0;
+        document.getElementById('stat-premium').textContent = d.premium_users ?? 0;
+        document.getElementById('stat-suspended').textContent = d.suspended_users ?? 0;
+        document.getElementById('suspended-count').textContent = d.suspended_users ?? 0;
+        document.getElementById('sub-premium').textContent = d.premium_users ?? 0;
+        document.getElementById('sub-monthly').textContent = '$' + (d.monthly_revenue ?? 0).toFixed(2);
+        document.getElementById('sub-weekly').textContent = '$' + (d.weekly_revenue ?? 0).toFixed(2);
+        document.getElementById('sub-unsubscribed').textContent = d.unsubscribed_premium ?? 0;
+        if(charts.income){
+          if(Array.isArray(d.income_trend_labels) && Array.isArray(d.income_trend_data) && d.income_trend_labels.length && d.income_trend_data.length){
+            charts.income.data.labels = d.income_trend_labels;
+            charts.income.data.datasets[0].data = d.income_trend_data;
+          } else {
+            charts.income.data.datasets[0].data[11] = d.monthly_revenue??0;
+          }
+          charts.income.update();
+        }
+      } catch(e){
+        console.error('Stats load failed', e);
+        showToast(e.message || 'Failed to load dashboard stats.','error');
+      } finally {
+        statsLoading = false;
+      }
+    }
+
+    function isSectionActive(id){
+      return document.getElementById('section-'+id)?.classList.contains('active');
+    }
+
+    async function loadAccounts(silent=false){
+      if(accountsLoading) return;
+      accountsLoading = true;
+      const tbody = document.getElementById('accounts-tbody');
+      if(tbody && !silent) tbody.innerHTML = '<tr><td colspan="7" class="text-center p-4" style="color:var(--gray)">Loading...</td></tr>';
+      try {
+        const users = await fetchJson('/api/admin/users');
+        const nextAccounts = Array.isArray(users) ? users : [];
+        const nextSig = JSON.stringify(nextAccounts);
+        const changed = nextSig !== lastAccountsSignature;
+        accounts = nextAccounts;
+        if(changed || !silent){
+          renderAccounts();
+          renderSubTable();
+          lastAccountsSignature = nextSig;
+        }
+      } catch(e){
+        accounts = [];
+        renderAccounts();
+        renderSubTable();
+        console.error('Accounts load failed', e);
+        showToast(e.message || 'Failed to load user accounts.','error');
+      } finally {
+        accountsLoading = false;
+      }
+    }
+
+    function renderAccounts(){
+      const search = document.getElementById('account-search')?.value.toLowerCase().trim() || '';
+      const statusFilter = document.getElementById('account-filter')?.value || 'all';
+      const roleFilter = document.getElementById('role-filter')?.value || 'all';
+      const filtered = accounts.filter(a=>{
+        const matchSearch = !search || (a.name||'').toLowerCase().includes(search) || (a.email||'').toLowerCase().includes(search);
+        const matchStatus = statusFilter==='all' || a.status===statusFilter;
+        const matchRole = roleFilter==='all' || a.role===roleFilter;
+        return matchSearch && matchStatus && matchRole;
+      });
+      const tbody = document.getElementById('accounts-tbody');
+      if(!tbody) return;
+      tbody.innerHTML = filtered.map(a=>`<tr>
+        <td><div style="display:flex;align-items:center;gap:10px;"><div style="width:34px;height:34px;border-radius:50%;background:var(--brand-gradient);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:.75rem;color:white;">${(a.name||'?').charAt(0).toUpperCase()}</div><div style="font-weight:700;font-size:.88rem;">${a.name||'—'}</div></div></td>
+        <td style="color:var(--gray);font-size:.85rem;">${a.email||'—'}</td>
+        <td>${getRoleBadge(a.role)}</td>
+        <td style="font-size:.85rem;color:var(--gray);">${formatDate(a.joined)}</td>
+        <td style="font-size:.85rem;font-weight:600;">${a.predictions??0}</td>
+        <td><span class="status-badge ${a.status==='active'?'badge-active':a.status==='suspended'?'badge-suspended':'badge-pending'}">${(a.status||'active').charAt(0).toUpperCase()+(a.status||'active').slice(1)}</span></td>
+        <td style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${a.status!=='suspended'?`<button class="btn-action danger" onclick="openSuspend('${a.id}','${a.name}','${a.email}')">Suspend</button>`:`<button class="btn-action success" onclick="openReinstate('${a.id}','${a.name}','${a.email}')">Reinstate</button>`}
+          ${a.role!=='Premium User'?`<button class="btn-action success" onclick="upgradeUser('${a.id}','${a.name}')">Upgrade</button>`:`<button class="btn-action danger" onclick="downgradeUser('${a.id}','${a.name}')">Downgrade</button>`}
+        </td></tr>`).join('');
+    }
+    function filterAccounts(){ renderAccounts(); }
+
+    function renderSubTable(){
+      const tbody = document.getElementById('sub-tbody');
+      if(!tbody) return;
+      tbody.innerHTML = accounts.map(a=>`<tr><td><strong>${a.name||'—'}</strong></td><td>${getRoleBadge(a.role)}</td><td>${a.role!=='Premium User'?`<button class="btn-action success" onclick="upgradeUser('${a.id}','${a.name}')">To Premium</button>`:`<button class="btn-action danger" onclick="downgradeUser('${a.id}','${a.name}')">To Registered</button>`}</td></tr>`).join('');
+    }
+
+    function formatNotifTime(iso){
+      if(!iso) return 'Just now';
+      const raw = String(iso).trim();
+      const hasZone = /(?:Z|[+-]\d{2}:\d{2})$/.test(raw);
+      const normalized = hasZone ? raw : `${raw}Z`;
+      const t = new Date(normalized).getTime();
+      if(Number.isNaN(t)) return 'Just now';
+      const sec = Math.max(1, Math.floor((Date.now() - t)/1000));
+      if(sec < 60) return `${sec}s ago`;
+      const min = Math.floor(sec/60);
+      if(min < 60) return `${min}m ago`;
+      const hr = Math.floor(min/60);
+      if(hr < 24) return `${hr}h ago`;
+      const day = Math.floor(hr/24);
+      return `${day}d ago`;
+    }
+
+    function renderNotifications(items){
+      const list = document.getElementById('notif-list');
+      if(!list) return;
+      if(!Array.isArray(items) || !items.length){
+        list.innerHTML = '<div class="notif-item"><div class="notif-dot-item blue"></div><div><div class="notif-text">No recent admin activity.</div><div class="notif-time">Now</div></div></div>';
+        unreadCount = 0;
+        document.getElementById('notif-dot').style.display='none';
+        return;
+      }
+      list.innerHTML = items.map((n, idx)=>{
+        const color = n.action==='create' ? 'green' : n.action==='suspend' ? 'red' : n.action==='upgrade' ? 'orange' : 'blue';
+        const unreadCls = idx < 5 ? ' unread' : '';
+        return `<div class="notif-item${unreadCls}"><div class="notif-dot-item ${color}"></div><div><div class="notif-text">${n.text||'Admin activity'}</div><div class="notif-time">${formatNotifTime(n.created_at)}</div></div></div>`;
+      }).join('');
+      unreadCount = Math.min(5, items.length);
+      document.getElementById('notif-dot').style.display = unreadCount > 0 ? 'block' : 'none';
+    }
+
+    async function loadNotifications(){
+      if(notificationsLoading) return;
+      notificationsLoading = true;
+      try{
+        const rows = await fetchJson('/api/admin/notifications');
+        renderNotifications(Array.isArray(rows) ? rows : []);
+      } catch(e){
+        console.error('Notifications load failed', e);
+      } finally {
+        notificationsLoading = false;
+      }
+    }
+
+    function updateOverviewCharts(){
+      const online = overviewData.online_trend?.[currentOnlineRange] || {labels:[],data:[]};
+      const pred = overviewData.prediction_trend?.[currentPredRange] || {labels:[],data:[]};
+      if(charts.onlineTrend){
+        charts.onlineTrend.data.labels = online.labels || [];
+        charts.onlineTrend.data.datasets[0].data = online.data || [];
+        charts.onlineTrend.update();
+      }
+      if(charts.predictionTrend){
+        charts.predictionTrend.data.labels = pred.labels || [];
+        charts.predictionTrend.data.datasets[0].data = pred.data || [];
+        charts.predictionTrend.update();
+      }
+      if(charts.roleSplit){
+        charts.roleSplit.data.datasets[0].data = [
+          overviewData.role_split?.registered ?? 0,
+          overviewData.role_split?.premium ?? 0,
+        ];
+        charts.roleSplit.update();
+      }
+      renderTopTowns();
+    }
+
+    function renderTopTowns(){
+      const wrap = document.getElementById('top-towns-wrap');
+      if(!wrap) return;
+      const towns = Array.isArray(overviewData.top_towns) ? overviewData.top_towns : [];
+      if(!towns.length){
+        wrap.innerHTML = '<div style="font-size:.85rem;color:var(--gray);">No prediction data yet.</div>';
+        return;
+      }
+      const maxVal = Math.max(...towns.map(t=>Number(t.count)||0), 1);
+      wrap.innerHTML = towns.map(t=>{
+        const count = Number(t.count)||0;
+        const width = Math.max(8, Math.round((count/maxVal)*100));
+        return `<div class="usage-bar-wrap"><div class="usage-bar-label"><span class="usage-bar-name">${t.name}</span><span class="usage-bar-val">${count.toLocaleString()}</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:${width}%"></div></div></div>`;
+      }).join('');
+    }
+
+    async function loadOverviewData(){
+      if(overviewLoading) return;
+      overviewLoading = true;
+      try{
+        const d = await fetchJson('/api/admin/overview');
+        overviewData = d || overviewData;
+        updateOverviewCharts();
+      } catch(e){
+        console.error('Overview load failed', e);
+      } finally {
+        overviewLoading = false;
+      }
+    }
+
+    async function upgradeUser(id, name){
+      try { await fetchJson('/api/admin/users/'+id+'/upgrade',{method:'POST'}); showToast(name+' upgraded to Premium.','success'); loadAccounts(); loadStats(); }
+      catch(e){ showToast('Upgrade failed.','error'); }
+    }
+    async function downgradeUser(id, name){
+      try { await fetchJson('/api/admin/users/'+id+'/downgrade',{method:'POST'}); showToast(name+' downgraded to General.','success'); loadAccounts(); loadStats(); }
+      catch(e){ showToast('Downgrade failed.','error'); }
+    }
+    function openSuspend(id,name,email){ suspendTargetId=id; document.getElementById('suspend-user-name').textContent=name+' ('+email+')'; document.getElementById('suspend-modal').classList.add('open'); }
+    async function confirmSuspend(){
+      try { await fetchJson('/api/admin/users/'+suspendTargetId+'/suspend',{method:'POST'}); closeModal('suspend-modal'); showToast('Account suspended.','error'); loadAccounts(); loadStats(); }
+      catch(e){ showToast(e.message || 'Suspend failed.','error'); }
+    }
+    function openReinstate(id,name,email){ reinstateTargetId=id; document.getElementById('reinstate-user-name').textContent=name+' ('+email+')'; document.getElementById('reinstate-modal').classList.add('open'); }
+    async function confirmReinstate(){
+      try { await fetchJson('/api/admin/users/'+reinstateTargetId+'/reinstate',{method:'POST'}); closeModal('reinstate-modal'); showToast('Account reinstated.','success'); loadAccounts(); loadStats(); }
+      catch(e){ showToast(e.message || 'Reinstate failed.','error'); }
+    }
+    function closeModal(id){ document.getElementById(id).classList.remove('open'); }
+
+    async function createAccount(){
+      const name=document.getElementById('new-name').value.trim();
+      const email=document.getElementById('new-email').value.trim();
+      const pass=document.getElementById('new-password').value.trim();
+      const role=document.getElementById('new-role').value;
+      const err=document.getElementById('create-error');
+      if(!name||!email||!pass){ err.style.display='block'; err.textContent='All fields are required.'; return; }
+      if(pass.length<8){ err.style.display='block'; err.textContent='Password must be at least 8 characters.'; return; }
+      try {
+        const data = await fetchJson('/api/admin/users/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name,email,password:pass,role})});
+        if(data.error){ err.style.display='block'; err.textContent=data.error; return; }
+        clearCreateForm();
+        showToast('Account created for '+email,'success');
+        showSection('accounts', document.querySelector('[onclick*=\'accounts\']'));
+        loadAccounts(); loadStats();
+      } catch(e){ err.style.display='block'; err.textContent = e.message || 'Failed to create account.'; }
+    }
+    function clearCreateForm(){ ['new-name','new-email','new-password'].forEach(id=>document.getElementById(id).value=''); document.getElementById('create-error').style.display='none'; }
+
+    async function loadModelVersions(){
+      if(modelsLoading) return;
+      modelsLoading = true;
+      try {
+        const versions = await fetchJson('/api/admin/model_versions');
+        if(!versions||versions.error) return;
+        const nextSig = JSON.stringify(versions);
+        if(nextSig === lastModelsSignature) return;
+        lastModelsSignature = nextSig;
+        const tbody = document.getElementById('model-versions-tbody');
+        if(!tbody) return;
+        tbody.innerHTML = versions.map((v,i)=>`<tr>
+          <td><strong>${v.label||v.version||'v'+v.id}</strong></td>
+          <td>${v.algorithm||'XGBoost'}</td>
+          <td style="color:#10b981;font-weight:700;">${v.train_mape_display!=null?v.train_mape_display+'%':v.train_mape!=null?v.train_mape+'%':'—'}</td>
+          <td style="color:#f59e0b;font-weight:700;">${v.val_mape_display!=null?v.val_mape_display+'%':v.val_mape!=null?v.val_mape+'%':'—'}</td>
+          <td style="color:#2563eb;font-weight:700;">${v.test_mape_display!=null?v.test_mape_display+'%':v.test_mape!=null?v.test_mape+'%':'—'}</td>
+          <td>${v.test_rmse!=null?'$'+Number(v.test_rmse).toLocaleString():'—'}</td>
+          <td>${v.test_r2??'—'}</td>
+          <td style="color:var(--gray);">${formatDate(v.created_at)}</td>
+          <td><span class="status-badge ${i===0?'badge-active':'badge-pending'}">${i===0?'Active':'Retired'}</span></td>
+        </tr>`).join('');
+      } catch(e){
+        console.error('Model versions load failed',e);
+        showToast(e.message || 'Failed to load model versions.','error');
+      } finally {
+        modelsLoading = false;
+      }
+    }
+
+    function renderPredictions(){ /* no predictions section */ }
+
+    function togglePanel(id){ const panel=document.getElementById(id); const overlay=document.getElementById('panel-overlay'); const isOpen=panel.style.display==='block'; closeAllPanels(); if(!isOpen){ panel.style.display='block'; overlay.style.display='block'; } }
+    function closeAllPanels(){ document.getElementById('notif-panel').style.display='none'; document.getElementById('settings-panel').style.display='none'; document.getElementById('panel-overlay').style.display='none'; }
+    function clearNotifs(){ document.querySelectorAll('.notif-item.unread').forEach(el=>el.classList.remove('unread')); unreadCount=0; document.getElementById('notif-dot').style.display='none'; showToast('All notifications marked as read.','success'); }
+    function showToast(msg,type='success'){ const t=document.createElement('div'); t.className='toast-msg '+type; t.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><use href="#'+(type==='success'?'ic-check':'ic-x')+'"></use></svg> '+msg; document.getElementById('toast-container').appendChild(t); setTimeout(()=>t.remove(),3000); }
+
+    function makeChart(id,config){ const el=document.getElementById(id); if(!el) return null; const old=Chart.getChart(el); if(old) old.destroy(); return new Chart(el,config); }
+
+    function initCharts(){
+      Chart.defaults.font.family = "'Plus Jakarta Sans', sans-serif";
+      const cg={color:'#e5e7eb',drawBorder:false}, ct={color:'#9ca3af',font:{size:11,weight:'600'}};
+      charts.onlineTrend = makeChart('onlineTrendChart',{type:'line',data:{labels:['09:00','10:00','11:00','12:00','13:00','14:00','15:00','16:00','17:00','18:00','19:00','20:00'],datasets:[{data:onlineHistory,borderColor:'#10b981',backgroundColor:'rgba(16,185,129,.08)',fill:true,tension:.35,borderWidth:2,pointRadius:3,pointHoverRadius:6,pointHitRadius:14}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:true}},scales:{x:{grid:{display:false},ticks:ct},y:{grid:cg,ticks:{...ct,stepSize:1,precision:0,callback:v=>Number.isInteger(v)?v:''},suggestedMin:0}}}});
+      charts.predictionTrend = makeChart('predictionTrendChart',{type:'line',data:{labels:['8AM','10AM','12PM','2PM','4PM','6PM','8PM'],datasets:[{data:[92,121,148,136,164,118,76],borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.10)',fill:true,tension:.35,borderWidth:2,pointRadius:3,pointHoverRadius:6,pointHitRadius:14}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:true}},scales:{x:{grid:{display:false},ticks:ct},y:{grid:cg,ticks:{...ct,stepSize:1,precision:0,callback:v=>Number.isInteger(v)?v:''},suggestedMin:0}}}});
+      charts.roleSplit = makeChart('roleSplitChart',{type:'doughnut',data:{labels:['Registered','Premium'],datasets:[{data:[0,0],backgroundColor:['rgba(37,99,235,.8)','rgba(16,185,129,.8)'],borderWidth:0}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{color:'#6b7280',font:{size:11,weight:'600'}}}},cutout:'65%'}});
+      const incomeLabels = (lastStatsData && Array.isArray(lastStatsData.income_trend_labels) && lastStatsData.income_trend_labels.length)
+        ? lastStatsData.income_trend_labels
+        : ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+      const incomeValues = (lastStatsData && Array.isArray(lastStatsData.income_trend_data) && lastStatsData.income_trend_data.length)
+        ? lastStatsData.income_trend_data
+        : [0,0,0,0,0,0,0,0,0,0,0,0];
+      charts.income = makeChart('incomeChart',{type:'line',data:{labels:incomeLabels,datasets:[{data:incomeValues,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.08)',fill:true,tension:.35,borderWidth:2,pointRadius:3,pointHoverRadius:6,pointHitRadius:14}]},options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'nearest',intersect:false},plugins:{legend:{display:false},tooltip:{enabled:true,callbacks:{label:(ctx)=>'$'+Number(ctx.parsed.y||0).toFixed(2)}}},scales:{x:{grid:{display:false},ticks:ct},y:{grid:cg,ticks:{...ct,callback:v=>'$'+v}}}}});
+      charts.mapeTrend = makeChart('mapeTrendChart',{type:'line',data:{labels:['v2.1','v2.2','v2.3','v2.4'],datasets:[{label:'Train MAPE',data:[5.44,5.10,4.85,4.21],borderColor:'#10b981',fill:false,tension:.35,borderWidth:2,pointRadius:5},{label:'Val MAPE',data:[7.91,7.23,6.54,5.87],borderColor:'#f59e0b',fill:false,tension:.35,borderWidth:2,pointRadius:5},{label:'Test MAPE',data:[8.34,7.89,7.12,6.49],borderColor:'#2563eb',fill:false,tension:.35,borderWidth:2,pointRadius:5}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'top',labels:{color:'#6b7280',font:{size:11,weight:'600'}}}},scales:{x:{grid:{display:false},ticks:ct},y:{grid:cg,ticks:{...ct,callback:v=>v+'%'},suggestedMin:3,suggestedMax:10}}}});
+    }
+
+    function showSection(id,el){
+      document.querySelectorAll('.dash-section').forEach(s=>s.classList.remove('active'));
+      const sec=document.getElementById('section-'+id); if(sec) sec.classList.add('active');
+      document.querySelectorAll('.sidebar-link').forEach(l=>l.classList.remove('active'));
+      if(el) el.classList.add('active');
+      if(META[id]){ document.getElementById('topbar-title').textContent=META[id].title; document.getElementById('topbar-sub').textContent=META[id].sub; }
+      if(id==='accounts') loadAccounts();
+      if(id==='subscriptions'){ loadAccounts(false); loadStats(); }
+      if(id==='model') loadModelVersions();
+      if(id==='overview') loadOverviewData();
+      requestAnimationFrame(()=>requestAnimationFrame(()=>{
+        initCharts();
+        if(id==='overview') updateOverviewCharts();
+      }));
+    }
+
+    async function initDashboard(){
+      requestAnimationFrame(()=>requestAnimationFrame(()=>initCharts()));
+      await Promise.all([loadStats(), loadAccounts(false), loadOverviewData(), loadNotifications()]);
+      loadModelVersions();
+      startAutoRefresh();
+    }
+
+
+    function startAutoRefresh(){
+      if(autoRefreshTimer) clearInterval(autoRefreshTimer);
+      autoRefreshTimer = setInterval(()=>{
+        if(document.hidden) return;
+        if(document.getElementById('dashboard-page').style.display !== 'flex') return;
+        loadStats();
+        loadNotifications();
+        if(isSectionActive('overview')){
+          loadOverviewData();
+        }
+        if(isSectionActive('accounts') || isSectionActive('subscriptions')){
+          loadAccounts(true);
+        }
+        if(isSectionActive('model')){
+          loadModelVersions();
+        }
+      }, 5000);
+    }
+
+    function switchOnlineTrend(range, btn){
+      btn.closest('.time-toggle').querySelectorAll('.time-toggle-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentOnlineRange = range;
+      updateOverviewCharts();
+    }
+
+    function switchPredTrend(range, btn){
+      btn.closest('.time-toggle').querySelectorAll('.time-toggle-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      currentPredRange = range;
+      updateOverviewCharts();
+    }
+
+  </script>
+</body>
+</html>

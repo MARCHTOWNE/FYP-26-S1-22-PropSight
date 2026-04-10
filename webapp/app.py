@@ -17,6 +17,9 @@ import os
 import pickle
 import re
 from datetime import datetime, timedelta, timezone
+SGT = timezone(timedelta(hours=8))
+SUSPEND_MARKER_PREFIX = "__SUSPENDED__::"
+
 from functools import wraps
 from socket import timeout as SocketTimeout
 import time as _time_mod
@@ -2989,6 +2992,12 @@ def login():
             session.clear()
             flash("Your account authenticated with Supabase, but the app user profile is missing. Please contact support.", "danger")
             return render_template("login.html", next_url=next_url)
+        is_tier_suspended = str(db_user.get("subscription_tier", "")).strip().lower() == "suspended"
+        is_marker_suspended = str(db_user.get("password_hash", "") or "").startswith(SUSPEND_MARKER_PREFIX)
+        if is_tier_suspended or is_marker_suspended:
+            session.clear()
+            flash("Your account has been suspended. Please contact support.", "danger")
+            return render_template("login.html", next_url=next_url)
         session["user_id"] = db_user.get("id")
         session["username"] = db_user.get("username") or auth_user.get("user_metadata", {}).get("username", email.split("@")[0])
         session["email"] = email
@@ -3449,6 +3458,10 @@ def predict():
 
     if prediction_input is not None:
         form_data, result, _ = _run_prediction_form(prediction_input)
+        try:
+            _log_feature_view(session["user_id"], "predict")
+        except Exception:
+            app.logger.warning("Could not log predict view", exc_info=True)
 
         block_distances = None
         if form_data["block"] and form_data["street_name"]:
@@ -4438,6 +4451,714 @@ def api_ai_chat():
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
     return jsonify({"reply": text.strip()})
+
+
+
+# ---------------------------------------------------------------------------
+# Admin Routes
+# ---------------------------------------------------------------------------
+
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@propsight.sg")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("is_admin"):
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def api_admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("is_admin"):
+            return jsonify({"error": "Admin authentication required"}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.route("/admin", methods=["GET"])
+def admin_login():
+    if session.get("is_admin"):
+        return redirect(url_for("admin_dashboard"))
+    return render_template("admin.html", admin_authenticated=False)
+
+
+@app.route("/admin/auth", methods=["POST"])
+def admin_auth():
+    data = request.get_json() or {}
+    email = data.get("email", "").strip()
+    password = data.get("password", "").strip()
+    if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
+        session["is_admin"] = True
+        return jsonify({"success": True})
+    return jsonify({"success": False, "error": "Invalid credentials"}), 401
+
+
+@app.route("/admin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("is_admin", None)
+    return jsonify({"success": True})
+
+
+@app.route("/admin/dashboard")
+@admin_required
+def admin_dashboard():
+    return render_template("admin.html", admin_authenticated=True)
+
+
+@app.route("/api/admin/stats")
+@api_admin_required
+def api_admin_stats():
+    try:
+        online_cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=15)
+        ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+        recent_activity = _supabase_request(
+            "feature_view_log",
+            filters={
+                "select": "user_id",
+                "created_at": f"gte.{online_cutoff}",
+                "limit": "2000",
+            },
+        ) or []
+        online_users = len(
+            {
+                str(r.get("user_id"))
+                for r in recent_activity
+                if r.get("user_id") is not None
+            }
+        )
+        prediction_events = _supabase_count(
+            "feature_view_log", {"feature": "eq.predict"}
+        )
+        users = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "id,subscription_tier,created_at,password_hash", "limit": "5000"},
+        ) or []
+        total_users = len(users)
+        premium_users = sum(1 for u in users if str(u.get("subscription_tier", "")).strip().lower() == "premium")
+        general_users = sum(1 for u in users if str(u.get("subscription_tier", "")).strip().lower() == "general")
+        suspended_users = sum(
+            1
+            for u in users
+            if str(u.get("password_hash", "") or "").startswith(SUSPEND_MARKER_PREFIX)
+            or str(u.get("subscription_tier", "")).strip().lower() == "suspended"
+        )
+        user_by_id = {}
+        for u in users:
+            try:
+                uid = int(u.get("id"))
+            except Exception:
+                continue
+            user_by_id[uid] = u
+
+        # Project definition: unsubscribed means currently on registered/general tier.
+        unsubscribed_premium = general_users
+        total_predictions = prediction_events or _supabase_count(
+            SUPABASE_PREDICTIONS_TABLE
+        )
+        monthly_revenue = round(premium_users * 4.90, 2)
+        weekly_revenue = round(monthly_revenue / 4.345, 2)
+
+        # Real monthly revenue trend from user creation timeline:
+        # cumulative premium users over last 12 months * plan price.
+        now_sgt = datetime.now(SGT)
+        month_starts = []
+        for i in range(11, -1, -1):
+            mm = now_sgt.month - i
+            yy = now_sgt.year
+            while mm <= 0:
+                mm += 12
+                yy -= 1
+            month_starts.append(datetime(yy, mm, 1, tzinfo=SGT))
+        month_labels = [m.strftime("%b") for m in month_starts]
+        premium_signup_by_month = {m: 0 for m in month_starts}
+        for u in users:
+            if str(u.get("subscription_tier", "")).strip().lower() != "premium":
+                continue
+            dt = _parse_iso_datetime(u.get("created_at"))
+            if dt is None:
+                continue
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            dt_sgt = dt.astimezone(SGT)
+            key = datetime(dt_sgt.year, dt_sgt.month, 1, tzinfo=SGT)
+            if key in premium_signup_by_month:
+                premium_signup_by_month[key] += 1
+        cumulative = 0
+        income_trend = []
+        for m in month_starts:
+            cumulative += premium_signup_by_month[m]
+            income_trend.append(round(cumulative * 4.90, 2))
+
+        return jsonify({
+            "online_users": online_users,
+            "total_users": total_users,
+            "premium_users": premium_users,
+            "general_users": general_users,
+            "suspended_users": suspended_users,
+            "unsubscribed_premium": unsubscribed_premium,
+            "total_predictions": total_predictions,
+            "monthly_revenue": monthly_revenue,
+            "weekly_revenue": weekly_revenue,
+            "income_trend_labels": month_labels,
+            "income_trend_data": income_trend,
+        })
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+def _parse_iso_datetime(value):
+    if not value:
+        return None
+    try:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        return datetime.fromisoformat(text)
+    except Exception:
+        return None
+
+
+def _build_buckets(range_key, now_sgt):
+    if range_key == "hour":
+        # 12 hourly buckets
+        starts = [
+            (now_sgt - timedelta(hours=i)).replace(minute=0, second=0, microsecond=0)
+            for i in range(11, -1, -1)
+        ]
+        labels = [dt.strftime("%H:00") for dt in starts]
+        key_fn = lambda dt: dt.replace(minute=0, second=0, microsecond=0)
+    elif range_key == "day":
+        # 7 daily buckets
+        starts = [
+            (now_sgt - timedelta(days=i)).replace(hour=0, minute=0, second=0, microsecond=0)
+            for i in range(6, -1, -1)
+        ]
+        labels = [dt.strftime("%a") for dt in starts]
+        key_fn = lambda dt: dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif range_key == "week":
+        # 5 weekly buckets (Monday start)
+        current_week_start = (
+            now_sgt - timedelta(days=now_sgt.weekday())
+        ).replace(hour=0, minute=0, second=0, microsecond=0)
+        starts = [current_week_start - timedelta(weeks=i) for i in range(4, -1, -1)]
+        labels = [f"Wk {i+1}" for i in range(len(starts))]
+        key_fn = lambda dt: (
+            dt - timedelta(days=dt.weekday())
+        ).replace(hour=0, minute=0, second=0, microsecond=0)
+    else:
+        # month: 12 monthly buckets
+        starts = []
+        y = now_sgt.year
+        m = now_sgt.month
+        for i in range(11, -1, -1):
+            mm = m - i
+            yy = y
+            while mm <= 0:
+                mm += 12
+                yy -= 1
+            starts.append(datetime(yy, mm, 1, tzinfo=SGT))
+        labels = [dt.strftime("%b") for dt in starts]
+        key_fn = lambda dt: datetime(dt.year, dt.month, 1, tzinfo=SGT)
+
+    return starts, labels, key_fn
+
+
+def _series_from_rows(rows, range_key, distinct_users=False):
+    now_sgt = datetime.now(SGT)
+    starts, labels, key_fn = _build_buckets(range_key, now_sgt)
+    if distinct_users:
+        acc = {s: set() for s in starts}
+    else:
+        acc = {s: 0 for s in starts}
+
+    for r in rows:
+        dt = _parse_iso_datetime(r.get("created_at"))
+        if dt is None:
+            continue
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.astimezone(SGT)
+        key = key_fn(dt)
+        if key not in acc:
+            continue
+        if distinct_users:
+            uid = r.get("user_id")
+            if uid is not None:
+                acc[key].add(str(uid))
+        else:
+            acc[key] += 1
+
+    if distinct_users:
+        data = [len(acc[s]) for s in starts]
+    else:
+        data = [acc[s] for s in starts]
+    return {"labels": labels, "data": data}
+
+
+def _read_user_status(user_row):
+    """Normalize status across different schema variants."""
+    if "status" in user_row and user_row.get("status") is not None:
+        return str(user_row.get("status")).strip().lower()
+    if "account_status" in user_row and user_row.get("account_status") is not None:
+        return str(user_row.get("account_status")).strip().lower()
+    if "is_active" in user_row and user_row.get("is_active") is not None:
+        return "active" if bool(user_row.get("is_active")) else "suspended"
+    if "suspended" in user_row and user_row.get("suspended") is not None:
+        return "suspended" if bool(user_row.get("suspended")) else "active"
+    pw_hash = str(user_row.get("password_hash", "") or "")
+    if pw_hash.startswith(SUSPEND_MARKER_PREFIX):
+        return "suspended"
+    if str(user_row.get("subscription_tier", "")).strip().lower() == "suspended":
+        return "suspended"
+    return "active"
+
+
+def _set_user_suspend_state(user_id, suspended):
+    """Update user suspension status with schema fallbacks."""
+    def _clear_marker_if_present():
+        try:
+            rows = _supabase_request(
+                SUPABASE_USERS_TABLE,
+                filters={
+                    "select": "password_hash",
+                    "id": f"eq.{user_id}",
+                    "limit": "1",
+                },
+            ) or []
+            current_hash = str((rows[0] if rows else {}).get("password_hash", "") or "")
+            if current_hash.startswith(SUSPEND_MARKER_PREFIX):
+                next_hash = current_hash[len(SUSPEND_MARKER_PREFIX):] or "supabase-auth"
+                _supabase_request(
+                    SUPABASE_USERS_TABLE,
+                    method="PATCH",
+                    filters={"id": f"eq.{user_id}"},
+                    payload={"password_hash": next_hash},
+                    prefer="return=minimal",
+                )
+        except Exception:
+            return
+
+    attempts = [
+        {"status": "suspended" if suspended else "active"},
+        {"account_status": "suspended" if suspended else "active"},
+        {"is_active": not suspended},
+        {"suspended": suspended},
+        {"subscription_tier": "suspended" if suspended else "general"},
+    ]
+    last_exc = None
+    for payload in attempts:
+        try:
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                method="PATCH",
+                filters={"id": f"eq.{user_id}"},
+                payload=payload,
+                prefer="return=minimal",
+            )
+            if not suspended:
+                _clear_marker_if_present()
+            return
+        except Exception as exc:
+            last_exc = exc
+            continue
+    # Final fallback for schemas with strict checks: mark password_hash.
+    try:
+        rows = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={
+                "select": "password_hash",
+                "id": f"eq.{user_id}",
+                "limit": "1",
+            },
+        ) or []
+        current_hash = str((rows[0] if rows else {}).get("password_hash", "") or "")
+        if suspended:
+            if not current_hash.startswith(SUSPEND_MARKER_PREFIX):
+                next_hash = f"{SUSPEND_MARKER_PREFIX}{current_hash or 'supabase-auth'}"
+            else:
+                next_hash = current_hash
+        else:
+            next_hash = current_hash[len(SUSPEND_MARKER_PREFIX):] if current_hash.startswith(SUSPEND_MARKER_PREFIX) else current_hash
+            if not next_hash:
+                next_hash = "supabase-auth"
+        _supabase_request(
+            SUPABASE_USERS_TABLE,
+            method="PATCH",
+            filters={"id": f"eq.{user_id}"},
+            payload={"password_hash": next_hash},
+            prefer="return=minimal",
+        )
+        return
+    except Exception as exc:
+        last_exc = exc
+    raise last_exc or RuntimeError("Could not update suspension state.")
+
+
+def _log_admin_event(action, target_user_id=None, target_email=""):
+    """Write an admin activity event for notification feed."""
+    try:
+        uid = int(target_user_id) if target_user_id is not None else None
+    except Exception:
+        uid = None
+    if uid is None:
+        return
+    detail = str(target_email or "").strip().lower()
+    feature = f"admin:{action}:{detail}" if detail else f"admin:{action}"
+    try:
+        _supabase_request(
+            "feature_view_log",
+            method="POST",
+            payload={"user_id": uid, "feature": feature},
+        )
+    except Exception:
+        # Notifications are best-effort only.
+        return
+
+
+@app.route("/api/admin/notifications")
+@api_admin_required
+def api_admin_notifications():
+    try:
+        rows = _supabase_request(
+            "feature_view_log",
+            filters={
+                "select": "user_id,feature,created_at",
+                "feature": "like.admin:%",
+                "order": "created_at.desc",
+                "limit": "30",
+            },
+        ) or []
+        notices = []
+        for r in rows:
+            feature = str(r.get("feature") or "")
+            parts = feature.split(":", 2)
+            action = parts[1] if len(parts) >= 2 else "event"
+            target = parts[2] if len(parts) >= 3 else ""
+            action_map = {
+                "create": "New account created",
+                "suspend": "Account suspended",
+                "reinstate": "Account reinstated",
+                "upgrade": "User upgraded to Premium",
+                "downgrade": "User downgraded to Registered",
+            }
+            text = action_map.get(action, "Admin activity")
+            if target:
+                text = f"{text}: {target}"
+            notices.append(
+                {
+                    "text": text,
+                    "action": action,
+                    "created_at": r.get("created_at"),
+                }
+            )
+        return jsonify(notices)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/overview")
+@api_admin_required
+def api_admin_overview():
+    try:
+        now_utc = datetime.now(timezone.utc)
+        earliest_cutoff = (now_utc - timedelta(days=370)).replace(microsecond=0)
+        cutoff_iso = earliest_cutoff.isoformat().replace("+00:00", "Z")
+
+        feature_rows = _supabase_request(
+            "feature_view_log",
+            filters={
+                "select": "user_id,feature,created_at",
+                "created_at": f"gte.{cutoff_iso}",
+                "limit": "20000",
+            },
+        ) or []
+        pred_rows = [r for r in feature_rows if r.get("feature") == "predict"]
+
+        # Fallback if prediction events are unavailable
+        if not pred_rows:
+            pred_rows = _supabase_request(
+                SUPABASE_PREDICTIONS_TABLE,
+                filters={
+                    "select": "created_at,town",
+                    "created_at": f"gte.{cutoff_iso}",
+                    "limit": "20000",
+                },
+            ) or []
+
+        users = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "email,subscription_tier", "limit": "5000"},
+        ) or []
+        admin_users = sum(
+            1
+            for u in users
+            if str(u.get("email", "")).strip().lower() == ADMIN_EMAIL.strip().lower()
+        )
+        premium_users = sum(1 for u in users if u.get("subscription_tier") == "premium")
+        registered_users = max(0, len(users) - premium_users - admin_users)
+
+        town_rows = _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            filters={"select": "town", "limit": "20000"},
+        ) or []
+        town_counts = {}
+        for r in town_rows:
+            town = (r.get("town") or "").strip()
+            if not town:
+                continue
+            town_counts[town] = town_counts.get(town, 0) + 1
+        top_towns = sorted(
+            [{"name": k, "count": v} for k, v in town_counts.items()],
+            key=lambda x: x["count"],
+            reverse=True,
+        )[:5]
+
+        return jsonify(
+            {
+                "online_trend": {
+                    "hour": _series_from_rows(feature_rows, "hour", distinct_users=True),
+                    "day": _series_from_rows(feature_rows, "day", distinct_users=True),
+                    "week": _series_from_rows(feature_rows, "week", distinct_users=True),
+                    "month": _series_from_rows(feature_rows, "month", distinct_users=True),
+                },
+                "prediction_trend": {
+                    "hour": _series_from_rows(pred_rows, "hour", distinct_users=False),
+                    "day": _series_from_rows(pred_rows, "day", distinct_users=False),
+                    "week": _series_from_rows(pred_rows, "week", distinct_users=False),
+                    "month": _series_from_rows(pred_rows, "month", distinct_users=False),
+                },
+                "role_split": {
+                    "registered": registered_users,
+                    "premium": premium_users,
+                    "admin": admin_users,
+                },
+                "top_towns": top_towns,
+            }
+        )
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users")
+@api_admin_required
+def api_admin_users():
+    try:
+        try:
+            users = _supabase_request(SUPABASE_USERS_TABLE, filters={
+                "select": "id,username,email,subscription_tier,created_at,status,password_hash",
+                "order": "created_at.desc",
+                "limit": "500",
+            })
+        except Exception:
+            # Fallback for schemas that do not have users.status
+            try:
+                users = _supabase_request(SUPABASE_USERS_TABLE, filters={
+                    "select": "id,username,email,subscription_tier,created_at,password_hash",
+                    "order": "created_at.desc",
+                    "limit": "500",
+                })
+            except Exception:
+                users = _supabase_request(SUPABASE_USERS_TABLE, filters={
+                    "select": "id,username,email,subscription_tier,password_hash",
+                    "limit": "500",
+                })
+        if not users:
+            return jsonify([])
+        result = []
+        for u in users:
+            user_id = u.get("id")
+            pred_count = 0
+            try:
+                pred_count = _supabase_count(
+                    "feature_view_log",
+                    {
+                        "user_id": f"eq.{user_id}",
+                        "feature": "eq.predict",
+                    },
+                )
+            except Exception:
+                pred_count = 0
+
+            # Backward-compatible fallback for older data/schemas
+            if not pred_count:
+                pred_count = _supabase_count(
+                    SUPABASE_PREDICTIONS_TABLE, {"user_id": f"eq.{user_id}"}
+                )
+            email = str(u.get("email", "")).strip().lower()
+            if email == ADMIN_EMAIL.strip().lower():
+                role = "Admin"
+            elif u.get("subscription_tier") == "premium":
+                role = "Premium User"
+            else:
+                role = "Registered User"
+            status = _read_user_status(u)
+            result.append({
+                "id": user_id,
+                "name": u.get("username", "Unknown"),
+                "email": u.get("email", ""),
+                "role": role,
+                "joined": u.get("created_at", ""),
+                "predictions": pred_count,
+                "status": status,
+            })
+        return jsonify(result)
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users/<user_id>/suspend", methods=["POST"])
+@api_admin_required
+def api_admin_suspend_user(user_id):
+    try:
+        _set_user_suspend_state(user_id, True)
+        target = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "email", "id": f"eq.{user_id}", "limit": "1"},
+        ) or []
+        _log_admin_event("suspend", user_id, (target[0] if target else {}).get("email", ""))
+        return jsonify({"success": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users/<user_id>/reinstate", methods=["POST"])
+@api_admin_required
+def api_admin_reinstate_user(user_id):
+    try:
+        _set_user_suspend_state(user_id, False)
+        target = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "email", "id": f"eq.{user_id}", "limit": "1"},
+        ) or []
+        _log_admin_event("reinstate", user_id, (target[0] if target else {}).get("email", ""))
+        return jsonify({"success": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users/<user_id>/upgrade", methods=["POST"])
+@api_admin_required
+def api_admin_upgrade_user(user_id):
+    try:
+        _supabase_request(SUPABASE_USERS_TABLE, method="PATCH", filters={"id": f"eq.{user_id}"},
+                          payload={"subscription_tier": "premium"}, prefer="return=minimal")
+        target = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "email", "id": f"eq.{user_id}", "limit": "1"},
+        ) or []
+        _log_admin_event("upgrade", user_id, (target[0] if target else {}).get("email", ""))
+        return jsonify({"success": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users/<user_id>/downgrade", methods=["POST"])
+@api_admin_required
+def api_admin_downgrade_user(user_id):
+    try:
+        _supabase_request(SUPABASE_USERS_TABLE, method="PATCH", filters={"id": f"eq.{user_id}"},
+                          payload={"subscription_tier": "general"}, prefer="return=minimal")
+        target = _supabase_request(
+            SUPABASE_USERS_TABLE,
+            filters={"select": "email", "id": f"eq.{user_id}", "limit": "1"},
+        ) or []
+        _log_admin_event("downgrade", user_id, (target[0] if target else {}).get("email", ""))
+        return jsonify({"success": True})
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/users/create", methods=["POST"])
+@api_admin_required
+def api_admin_create_user():
+    data = request.get_json() or {}
+    name = data.get("name", "").strip()
+    email = data.get("email", "").strip().lower()
+    password = data.get("password", "").strip()
+    role = data.get("role", "Registered User")
+    if role not in {"Registered User", "Premium User"}:
+        return jsonify({"error": "Role must be Registered User or Premium User"}), 400
+    if not name or not email or not password:
+        return jsonify({"error": "All fields are required"}), 400
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    try:
+        auth_result = _supabase_auth(
+            "/signup",
+            payload={
+                "email": email,
+                "password": password,
+                "data": {"username": name},
+            },
+        )
+        uid = auth_result.get("user", {}).get("id")
+        if not uid:
+            return jsonify({"error": "Failed to create auth user"}), 500
+        tier = "premium" if role == "Premium User" else "general"
+        base_payload = {
+            "username": name,
+            "email": email,
+            "subscription_tier": tier,
+            "password_hash": "supabase-auth",
+        }
+        try:
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                method="POST",
+                payload={**base_payload, "status": "active"},
+                prefer="return=minimal",
+            )
+        except Exception:
+            # Fallback for schemas that do not have users.status.
+            _supabase_request(
+                SUPABASE_USERS_TABLE,
+                method="POST",
+                payload=base_payload,
+                prefer="return=minimal",
+            )
+        new_user = _get_supabase_user_by_email(email) or {}
+        if new_user.get("id"):
+            _log_admin_event("create", new_user.get("id"), email)
+        return jsonify({"success": True})
+    except Exception as exc:
+        msg = str(exc)
+        if "already registered" in msg or "already exists" in msg:
+            return jsonify({"error": "This email is already registered."}), 409
+        return jsonify({"error": msg}), 500
+
+
+@app.route("/api/admin/model_versions")
+@api_admin_required
+def api_admin_model_versions():
+    try:
+        try:
+            versions = _supabase_request("model_versions", filters={
+                "select": "*",
+                "order": "created_at.desc",
+                "limit": "20",
+            })
+        except Exception:
+            # Fallback for schemas that do not have model_versions.created_at
+            try:
+                versions = _supabase_request("model_versions", filters={
+                    "select": "*",
+                    "order": "id.desc",
+                    "limit": "20",
+                })
+            except Exception:
+                versions = _supabase_request("model_versions", filters={
+                    "select": "*",
+                    "limit": "20",
+                })
+        return jsonify(versions or [])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
 
 
 # ---------------------------------------------------------------------------

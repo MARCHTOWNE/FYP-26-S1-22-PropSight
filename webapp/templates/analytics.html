@@ -739,7 +739,7 @@
                                     <i class="bi bi-buildings me-2 text-primary"></i>Town Benchmark
                                 </h5>
                                 <p id="locationComparisonSubtitle" class="chart-note">Compare broader town performance side by side.</p>
-                                <div style="height:380px;"><canvas id="districtChart"></canvas></div>
+                                <div style="height:420px;"><canvas id="districtChart"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -751,7 +751,7 @@
                                     <i class="bi bi-cash-stack me-2 text-primary"></i>Price per sqm
                                 </h5>
                                 <p id="psfSubtitle" class="chart-note">Average price per square metre for the current benchmark set.</p>
-                                <div style="height:380px;"><canvas id="psfChart"></canvas></div>
+                                <div style="height:420px;"><canvas id="psfChart"></canvas></div>
                             </div>
                         </div>
                     </div>
@@ -1053,6 +1053,45 @@ function escapeHtml(value) {
 
 function formatMoney(value) {
     return '$' + Number(value || 0).toLocaleString();
+}
+
+function wrapChartLabel(label, maxCharsPerLine = 14) {
+    const value = String(label || '').trim();
+    if (!value) return '';
+    if (!Number.isFinite(maxCharsPerLine) || maxCharsPerLine <= 0 || value.length <= maxCharsPerLine) return value;
+
+    const parts = value.split(/(?<=\/)|\s+/).filter(Boolean);
+    const lines = [];
+    let currentLine = '';
+
+    parts.forEach(part => {
+        const nextLine = currentLine ? currentLine + ' ' + part : part;
+        if (currentLine && nextLine.length > maxCharsPerLine) {
+            lines.push(currentLine);
+            currentLine = part;
+            return;
+        }
+        currentLine = nextLine;
+    });
+
+    if (currentLine) lines.push(currentLine);
+    return lines.length > 1 ? lines : value;
+}
+
+function getHorizontalCategoryAxisOptions(labelField) {
+    const isTown = labelField === 'town';
+    const minWidth = isTown ? 124 : 138;
+
+    return {
+        afterFit(scale) {
+            scale.width = Math.max(scale.width, minWidth);
+        },
+        ticks: {
+            autoSkip: false,
+            padding: 8,
+            font: { size: isTown ? 10 : 11 },
+        }
+    };
 }
 
 function getFilters() {
@@ -1600,7 +1639,10 @@ async function loadLocationComparison() {
         districtChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: chartRows.map(row => row[labelField]),
+                labels: chartRows.map(row => labelField === 'street_name'
+                    ? wrapChartLabel(row[labelField], 14)
+                    : String(row[labelField] || '')
+                ),
                 datasets: [{
                     label: 'Average Price',
                     data:  chartRows.map(row => row.avg_price),
@@ -1614,6 +1656,7 @@ async function loadLocationComparison() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { left: 20, right: 6 } },
                 indexAxis: 'y',
                 interaction: {
                     mode: 'index',
@@ -1624,7 +1667,10 @@ async function loadLocationComparison() {
                     legend:  { display: false },
                     tooltip: { callbacks: { label: ctx => ' ' + formatMoney(ctx.parsed.x) } }
                 },
-                scales: { x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } },
+                scales: {
+                    x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } },
+                    y: getHorizontalCategoryAxisOptions(labelField)
+                },
                 onClick: async (_, activeEls) => {
                     if (!activeEls.length) return;
                     const row = chartRows[activeEls[0].index];
@@ -1731,7 +1777,10 @@ async function loadPSF() {
         psfChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: rows.map(row => row[labelField]),
+                labels: rows.map(row => labelField === 'street_name'
+                    ? wrapChartLabel(row[labelField], 14)
+                    : String(row[labelField] || '')
+                ),
                 datasets: [{
                     label: '$/sqm',
                     data:  rows.map(row => row.psf),
@@ -1745,6 +1794,7 @@ async function loadPSF() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                layout: { padding: { left: 20, right: 6 } },
                 indexAxis: 'y',
                 interaction: {
                     mode: 'index',
@@ -1752,7 +1802,10 @@ async function loadPSF() {
                     intersect: false,
                 },
                 plugins: { legend: { display: false } },
-                scales: { x: { ticks: { callback: v => '$' + Number(v || 0).toLocaleString() } } }
+                scales: {
+                    x: { ticks: { callback: v => '$' + Number(v || 0).toLocaleString() } },
+                    y: getHorizontalCategoryAxisOptions(labelField)
+                }
             }
         });
     } catch (e) {

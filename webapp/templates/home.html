@@ -40,6 +40,51 @@
                 </a>
             </div>
         </div>
+
+        <div class="account-gateway-hub-wrap mx-auto mt-4 mt-md-5 text-md-start{% if not g.user %} account-gateway-hub-wrap--wide{% endif %}" role="region" aria-label="Account gateway">
+            <div class="account-gateway-hub ps-glass-card">
+                <div class="account-gateway-hub-inner{% if g.user %} d-flex flex-column flex-md-row align-items-center justify-content-between gap-3 gap-md-4{% else %} account-gateway-hub-inner--guest{% endif %}">
+                    {% if g.user %}
+                    <div class="d-flex align-items-center gap-3 justify-content-center justify-content-md-start">
+                        <div class="account-gateway-blob" aria-hidden="true">
+                            <i class="bi bi-person-circle"></i>
+                        </div>
+                        <div class="text-center text-md-start">
+                            <p class="account-gateway-title mb-1">Signed in as {{ g.user['username'] }}</p>
+                            <p class="account-gateway-sub mb-0">Your workspace, saved valuations, and full toolkit are one tap away.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-end gap-2 account-gateway-actions">
+                        <a href="{{ url_for('home') }}#member-activity-dashboard" class="btn btn-primary account-gateway-btn-primary">View Dashboard</a>
+                        <a href="{{ url_for('logout') }}" class="account-gateway-logout">Log Out</a>
+                    </div>
+                    {% else %}
+                    <div class="account-gateway-guest-copy text-center text-md-start">
+                        <p class="account-gateway-title mb-1">Sign in to your workspace</p>
+                        <p class="account-gateway-sub mb-0">Access saved valuations and your activity dashboard on this page.</p>
+                    </div>
+                    <form class="account-gateway-login-form" method="POST" action="{{ url_for('login') }}">
+                        <input type="hidden" name="next" value="{{ url_for('home') }}#member-activity-dashboard">
+                        <div class="account-gateway-login-fields">
+                            <div class="account-gateway-field">
+                                <label class="form-label account-gateway-label" for="account-gateway-email">Email</label>
+                                <input id="account-gateway-email" type="email" name="email" class="form-control form-control-sm account-gateway-input" required autocomplete="email" placeholder="you@example.com">
+                            </div>
+                            <div class="account-gateway-field">
+                                <label class="form-label account-gateway-label" for="account-gateway-password">Password</label>
+                                <input id="account-gateway-password" type="password" name="password" class="form-control form-control-sm account-gateway-input" required autocomplete="current-password" placeholder="••••••••">
+                            </div>
+                            <button type="submit" class="btn btn-primary account-gateway-btn-primary">Log in</button>
+                        </div>
+                        <div class="account-gateway-login-meta d-flex flex-wrap align-items-center justify-content-center justify-content-md-between gap-2 mt-2">
+                            <a href="{{ url_for('forgot_password') }}" class="small account-gateway-link">Forgot password?</a>
+                            <span class="small text-muted">New here? <a href="{{ url_for('register') }}" class="account-gateway-link">Register</a></span>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 

@@ -435,6 +435,153 @@ h6,
     color: #0ea5e9;
 }
 
+/* Onboarding account hub — dashboard CTA (signed in) / inline login (guest) */
+#onboarding .account-gateway-hub-wrap {
+    max-width: 640px;
+}
+
+#onboarding .account-gateway-hub-wrap--wide {
+    max-width: min(100%, 920px);
+}
+
+#onboarding .account-gateway-hub {
+    border-radius: 24px !important;
+    padding: 1.25rem 1.35rem !important;
+    background: rgba(255, 255, 255, 0.72) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(1.15);
+    backdrop-filter: blur(20px) saturate(1.15);
+    border: 1px solid rgba(255, 255, 255, 0.55) !important;
+    box-shadow:
+        0 20px 50px -18px rgba(15, 23, 42, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+#onboarding .account-gateway-title {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: var(--dark);
+    font-size: 1.05rem;
+}
+
+#onboarding .account-gateway-sub {
+    font-size: 0.875rem;
+    color: var(--text-soft);
+    line-height: 1.45;
+    max-width: 36rem;
+}
+
+#onboarding .account-gateway-blob {
+    width: 52px;
+    height: 52px;
+    border-radius: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.75rem;
+    color: var(--primary);
+    background: rgba(37, 99, 235, 0.1);
+    border: 1px solid rgba(37, 99, 235, 0.15);
+    flex-shrink: 0;
+}
+
+#onboarding .account-gateway-btn-primary {
+    border-radius: 12px;
+    font-weight: 700;
+    padding: 0.5rem 1.15rem;
+}
+
+#onboarding .account-gateway-logout {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-soft);
+    text-decoration: none;
+    padding: 0.35rem 0.5rem;
+}
+
+#onboarding .account-gateway-logout:hover {
+    color: var(--primary);
+}
+
+#onboarding .account-gateway-hub-inner--guest {
+    display: flex;
+    flex-direction: column;
+    gap: 1.15rem;
+}
+
+@media (min-width: 768px) {
+    #onboarding .account-gateway-hub-inner--guest {
+        flex-direction: row;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1.75rem;
+    }
+
+    #onboarding .account-gateway-guest-copy {
+        flex: 0 1 38%;
+        padding-top: 0.15rem;
+    }
+
+    #onboarding .account-gateway-login-form {
+        flex: 1 1 58%;
+        min-width: 0;
+    }
+}
+
+#onboarding .account-gateway-login-fields {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+}
+
+@media (min-width: 576px) {
+    #onboarding .account-gateway-login-fields {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: 0.65rem 0.75rem;
+    }
+
+    #onboarding .account-gateway-field {
+        flex: 1 1 140px;
+        min-width: 0;
+    }
+
+    #onboarding .account-gateway-login-fields .account-gateway-btn-primary {
+        flex: 0 0 auto;
+    }
+}
+
+#onboarding .account-gateway-label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--text-soft);
+    margin-bottom: 0.25rem;
+}
+
+#onboarding .account-gateway-input {
+    border-radius: 10px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    background: rgba(255, 255, 255, 0.92);
+}
+
+#onboarding .account-gateway-input:focus {
+    border-color: rgba(37, 99, 235, 0.45);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+#onboarding .account-gateway-link {
+    color: var(--primary);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+#onboarding .account-gateway-link:hover {
+    text-decoration: underline;
+}
+
 /* Shared heading gradient utility (onboarding + elsewhere) */
 .text-gradient-custom {
     background: linear-gradient(135deg, var(--dark), var(--primary)) !important;

@@ -3888,12 +3888,44 @@ def api_monthly_volume():
 # API endpoints: Public (no auth required)
 # ---------------------------------------------------------------------------
 
+def _manifest_split_row_total(manifest):
+    """Rows used in train/val/test for the active model run (from run_manifest.json)."""
+    if not isinstance(manifest, dict):
+        return None
+    split_meta = manifest.get("split_metadata") or {}
+    tr = manifest.get("train_rows")
+    vr = manifest.get("val_rows")
+    te = manifest.get("test_rows")
+    if tr is None:
+        tr = split_meta.get("train_rows")
+    if vr is None:
+        vr = split_meta.get("val_rows")
+    if te is None:
+        te = split_meta.get("test_rows")
+    try:
+        total = int(tr or 0) + int(vr or 0) + int(te or 0)
+    except (TypeError, ValueError):
+        return None
+    return total if total > 0 else None
+
+
 def _build_landing_stats():
-    """Stable stats payload used by landing template and public API."""
+    """Stable stats payload used by landing template and public API.
+
+    Tied to the active model artefact run (see latest.txt / ASSETS_DIR). MAPE and
+    model label come from loaded metrics; transaction count prefers live Supabase
+    size, else the manifest split row total for the same training pipeline.
+    """
+    manifest = ARTEFACTS.get("manifest") or {}
+    manifest_txns = _manifest_split_row_total(manifest)
+
     try:
         total_txns = _supabase_count("transactions")
     except Exception:
         total_txns = None
+
+    if total_txns is None or total_txns == 0:
+        total_txns = manifest_txns
 
     town_count = 0
     try:
@@ -3917,13 +3949,19 @@ def _build_landing_stats():
     run_dir = ARTEFACTS.get("run_dir")
     last_updated = os.path.basename(run_dir) if run_dir else None
 
+    data_source = (manifest.get("data_source") or "supabase").strip()
+    if data_source.lower() == "supabase":
+        data_sources = "HDB resale + Supabase"
+    else:
+        data_sources = f"HDB resale ({data_source}) + Supabase"
+
     return {
         "total_txns": total_txns,
         "mape": mape,
         "town_count": town_count,
         "model_label": ARTEFACTS.get("model_label", "Model"),
         "last_updated": last_updated,
-        "data_sources": "HDB resale + Supabase",
+        "data_sources": data_sources,
     }
 
 

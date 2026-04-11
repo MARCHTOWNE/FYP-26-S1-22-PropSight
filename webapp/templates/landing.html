@@ -1681,7 +1681,7 @@
                         {{ landing_stats.model_label }}</span>
                     <span id="landing-meta-updated"><i class="bi bi-calendar-check-fill"></i> Last Updated:
                         {% if landing_stats.last_updated %}{{ landing_stats.last_updated }}{% else %}—{% endif %}</span>
-                    <span><i class="bi bi-database-fill"></i> API: {{ landing_stats.data_sources }}</span>
+                    <span id="landing-meta-api"><i class="bi bi-database-fill"></i> API: {{ landing_stats.data_sources }}</span>
                 </div>
             </div>
         </div>
@@ -2606,6 +2606,7 @@
             const tw = document.getElementById('landing-stat-towns');
             const mm = document.getElementById('landing-meta-model');
             const mu = document.getElementById('landing-meta-updated');
+            const ma = document.getElementById('landing-meta-api');
             if (tx && s.total_txns != null) {
                 tx.textContent = Number(s.total_txns).toLocaleString() + '+';
                 tx.classList.remove('counter');
@@ -2632,6 +2633,13 @@
                 mu.appendChild(ic2);
                 mu.appendChild(document.createTextNode(' Last Updated: ' + s.last_updated));
             }
+            if (ma && s.data_sources) {
+                ma.replaceChildren();
+                const ic3 = document.createElement('i');
+                ic3.className = 'bi bi-database-fill';
+                ma.appendChild(ic3);
+                ma.appendChild(document.createTextNode(' API: ' + s.data_sources));
+            }
         }
         function pollLandingStats() {
             fetch('/api/public/landing-stats')
@@ -2639,7 +2647,7 @@
                 .then(applyLandingStatsFromApi)
                 .catch(() => { });
         }
-        setTimeout(pollLandingStats, 5000);
+        pollLandingStats();
         setInterval(pollLandingStats, 600000);
 
         const slider = document.getElementById('slider');

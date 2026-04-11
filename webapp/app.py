@@ -3156,10 +3156,6 @@ def home():
 
     return render_template(
         "home.html",
-        towns=TOWNS,
-        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
-        flat_models=FLAT_MODELS,
-        storey_ranges=STOREY_RANGES,
         total_txns=total_txns,
         total_txns_display=total_txns_display,
         artefact_mape=artefact_mape,

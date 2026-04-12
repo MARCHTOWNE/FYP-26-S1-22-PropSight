@@ -14,6 +14,8 @@ Run:
 import json
 import math
 import os
+import threading
+from collections import Counter
 import pickle
 import re
 from datetime import datetime, timedelta, timezone
@@ -542,6 +544,50 @@ def inject_runtime_template_globals():
 
 REQUIRED_ARTEFACT_FILES = ("scaler.pkl", "target_encoders.pkl", "metrics.json")
 
+# Run folders under model_assets use YYYYMMDD_HHMMSS (e.g. 20260402_171314).
+RUN_DIR_NAME_RE = re.compile(r"^(?P<ymd>\d{8})_(?P<hms>\d{6})$")
+
+
+def _run_dir_timestamp_sort_key(name):
+    """Return a sortable key for run folder names; None if pattern does not match."""
+    m = RUN_DIR_NAME_RE.match(name or "")
+    if not m:
+        return None
+    return int(m.group("ymd")) * 10**6 + int(m.group("hms"))
+
+
+def _iter_valid_run_dirs(assets_dir):
+    """List paths of complete model runs under assets_dir."""
+    if not assets_dir or not os.path.isdir(assets_dir):
+        return []
+    out = []
+    for name in os.listdir(assets_dir):
+        p = os.path.join(assets_dir, name)
+        if _is_valid_run_dir(p):
+            out.append(p)
+    return out
+
+
+def _pick_newest_valid_run_dir(assets_dir):
+    dirs = _iter_valid_run_dirs(assets_dir)
+    if not dirs:
+        raise FileNotFoundError(
+            f"No valid model artefact run directory found under {assets_dir}"
+        )
+
+    def sort_key(path):
+        base = os.path.basename(path)
+        ts = _run_dir_timestamp_sort_key(base)
+        if ts is not None:
+            return (0, ts, base)
+        try:
+            mt = os.path.getmtime(path)
+        except OSError:
+            mt = 0.0
+        return (1, mt, base)
+
+    return sorted(dirs, key=sort_key)[-1]
+
 
 def _is_valid_run_dir(run_dir):
     if not run_dir or not os.path.isdir(run_dir):
@@ -562,40 +608,45 @@ def _is_valid_run_dir(run_dir):
 
 
 def _resolve_run_dir():
-    latest_file = os.path.join(ASSETS_DIR, "latest.txt")
-    run_dir = None
+    """Pick the directory whose artefacts the app should load.
 
-    if os.path.exists(latest_file):
-        with open(latest_file) as f:
-            configured = f.read().strip()
-        if configured:
-            if os.path.isabs(configured):
-                candidates = [configured]
-            else:
-                candidates = [
-                    os.path.join(PROJECT_DIR, configured),
-                    os.path.join(ASSETS_DIR, configured),
-                    os.path.join(ASSETS_DIR, os.path.basename(configured)),
-                ]
-            run_dir = _first_existing_path(candidates)
-            if not _is_valid_run_dir(run_dir):
-                run_dir = None
+    Resolution order:
+    1. MODEL_ASSETS_RUN — explicit path to one run folder (absolute or under PROJECT_DIR).
+    2. MODEL_USE_LATEST_TXT=1/true — use ML/model_assets/latest.txt (legacy training pipeline).
+    3. Newest valid folder under ASSETS_DIR, preferring names matching YYYYMMDD_HHMMSS,
+       otherwise falling back to filesystem mtime.
+    """
+    explicit = (os.environ.get("MODEL_ASSETS_RUN") or "").strip()
+    if explicit:
+        cand = explicit if os.path.isabs(explicit) else os.path.normpath(
+            os.path.join(PROJECT_DIR, explicit)
+        )
+        if _is_valid_run_dir(cand):
+            return cand
 
-    if run_dir is None:
-        # Fallback: pick the newest valid artefact directory under ASSETS_DIR.
-        dirs = []
-        if os.path.isdir(ASSETS_DIR):
-            for name in os.listdir(ASSETS_DIR):
-                p = os.path.join(ASSETS_DIR, name)
-                if _is_valid_run_dir(p):
-                    dirs.append(p)
-        if not dirs:
-            raise FileNotFoundError(
-                f"No valid model artefact run directory found under {ASSETS_DIR}"
-            )
-        run_dir = sorted(dirs)[-1]
+    use_latest_txt = (os.environ.get("MODEL_USE_LATEST_TXT") or "").strip().lower()
+    if use_latest_txt in ("1", "true", "yes", "on"):
+        latest_file = os.path.join(ASSETS_DIR, "latest.txt")
+        run_dir = None
+        if os.path.exists(latest_file):
+            with open(latest_file, encoding="utf-8") as f:
+                configured = f.read().strip()
+            if configured:
+                if os.path.isabs(configured):
+                    candidates = [configured]
+                else:
+                    candidates = [
+                        os.path.join(PROJECT_DIR, configured),
+                        os.path.join(ASSETS_DIR, configured),
+                        os.path.join(ASSETS_DIR, os.path.basename(configured)),
+                    ]
+                run_dir = _first_existing_path(candidates)
+                if not _is_valid_run_dir(run_dir):
+                    run_dir = None
+        if run_dir is not None:
+            return run_dir
 
-    return run_dir
+    return _pick_newest_valid_run_dir(ASSETS_DIR)
 
 
 def _resolve_serving_feature_cols(artefacts, run_dir):
@@ -689,6 +740,92 @@ def _load_artefacts():
 
 
 ARTEFACTS = _load_artefacts()
+
+_ARTEFACTS_LOCK = threading.Lock()
+_ARTEFACT_CHECK_INTERVAL_SEC = 30.0
+_last_artefact_fs_check_mono = 0.0
+
+
+def _reload_artefacts_if_newer_run(force=False):
+    """Reload pickles/metrics if a newer valid run folder exists (e.g. after training).
+
+    Throttled to every _ARTEFACT_CHECK_INTERVAL_SEC unless force=True (e.g. admin API).
+    """
+    global ARTEFACTS, _last_artefact_fs_check_mono
+    now = _time_mod.monotonic()
+    if not force:
+        if now - _last_artefact_fs_check_mono < _ARTEFACT_CHECK_INTERVAL_SEC:
+            return
+    _last_artefact_fs_check_mono = now
+    try:
+        resolved = _resolve_run_dir()
+    except FileNotFoundError:
+        return
+    if resolved == ARTEFACTS.get("run_dir"):
+        return
+    with _ARTEFACTS_LOCK:
+        try:
+            resolved2 = _resolve_run_dir()
+        except FileNotFoundError:
+            return
+        if resolved2 == ARTEFACTS.get("run_dir"):
+            return
+        ARTEFACTS = _load_artefacts()
+        globals()["_SHAP_EXPLAINER"] = None
+
+
+def _read_training_report_tail(run_dir, max_chars=12000):
+    path = os.path.join(run_dir, "training_report.txt")
+    if not os.path.isfile(path):
+        return ""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            text = f.read()
+    except OSError:
+        return ""
+    if len(text) <= max_chars:
+        return text
+    return text[-max_chars:]
+
+
+@app.before_request
+def _refresh_model_artefacts_periodically():
+    if (request.path or "").startswith("/static"):
+        return
+    try:
+        _reload_artefacts_if_newer_run(force=False)
+    except Exception:
+        pass
+
+
+def _winner_metrics_snapshot(metrics):
+    """Train/val/test MAPE and related fields for the competition winner model."""
+    winner = metrics.get("winner") or {}
+    wkey = winner.get("winner")
+    mr_all = metrics.get("model_results") or {}
+    mdl = mr_all.get(wkey) or {} if wkey else {}
+    val_d = mdl.get("val") or {}
+    test_d = mdl.get("test") or {}
+    train_d = mdl.get("train") or {}
+    test_mape = winner.get("test_mape")
+    if test_mape is None:
+        test_mape = test_d.get("mape")
+    test_rmse = winner.get("test_rmse")
+    if test_rmse is None:
+        test_rmse = test_d.get("rmse")
+    test_r2 = winner.get("test_r2")
+    if test_r2 is None:
+        test_r2 = test_d.get("r2")
+    return {
+        "winner_key": wkey,
+        "algorithm": _format_model_label(wkey) if wkey else "—",
+        "train_mape": train_d.get("mape"),
+        "val_mape": val_d.get("mape"),
+        "test_mape": test_mape,
+        "test_rmse": test_rmse,
+        "test_r2": test_r2,
+        "justification": (winner.get("justification") or "").strip(),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -809,6 +946,65 @@ def _supabase_count(table, filters=None):
     except error.HTTPError as exc:
         details = exc.read().decode("utf-8")
         raise SupabaseError(details or f"Supabase count failed with {exc.code}") from exc
+
+
+def _admin_bulk_prediction_counters():
+    """Load per-user prediction activity for admin stats and account tables.
+
+    Uses the same rules as the manage-accounts PREDICTIONS column: count
+    feature_view_log rows with feature=predict when present, otherwise
+    saved_predictions rows for that user.
+    """
+    log_rows = (
+        _supabase_request(
+            "feature_view_log",
+            filters={
+                "feature": "eq.predict",
+                "select": "user_id",
+                "limit": "100000",
+            },
+        )
+        or []
+    )
+    log_by_user = Counter()
+    for r in log_rows:
+        uid = r.get("user_id")
+        if uid is None:
+            continue
+        try:
+            log_by_user[int(uid)] += 1
+        except (TypeError, ValueError):
+            continue
+
+    pred_rows = (
+        _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            filters={"select": "user_id", "limit": "100000"},
+        )
+        or []
+    )
+    saved_by_user = Counter()
+    for r in pred_rows:
+        uid = r.get("user_id")
+        if uid is None:
+            continue
+        try:
+            saved_by_user[int(uid)] += 1
+        except (TypeError, ValueError):
+            continue
+    return log_by_user, saved_by_user
+
+
+def _admin_prediction_display_count(user_id, log_by_user, saved_by_user):
+    """Per-user prediction total; matches /api/admin/users PREDICTIONS column."""
+    try:
+        uid = int(user_id)
+    except (TypeError, ValueError):
+        return 0
+    lc = int(log_by_user.get(uid, 0))
+    if lc:
+        return lc
+    return int(saved_by_user.get(uid, 0))
 
 
 def _supabase_rpc(function_name, params=None):
@@ -4566,9 +4762,7 @@ def api_admin_stats():
                 if r.get("user_id") is not None
             }
         )
-        prediction_events = _supabase_count(
-            "feature_view_log", {"feature": "eq.predict"}
-        )
+        log_by_user, saved_by_user = _admin_bulk_prediction_counters()
         users = _supabase_request(
             SUPABASE_USERS_TABLE,
             filters={"select": "id,subscription_tier,created_at,password_hash", "limit": "5000"},
@@ -4592,8 +4786,10 @@ def api_admin_stats():
 
         # Project definition: unsubscribed means currently on registered/general tier.
         unsubscribed_premium = general_users
-        total_predictions = prediction_events or _supabase_count(
-            SUPABASE_PREDICTIONS_TABLE
+        # Same per-user definition as manage accounts (log rows, else saved_predictions).
+        total_predictions = sum(
+            _admin_prediction_display_count(u.get("id"), log_by_user, saved_by_user)
+            for u in users
         )
         monthly_revenue = round(premium_users * 4.90, 2)
         weekly_revenue = round(monthly_revenue / 4.345, 2)
@@ -5004,26 +5200,13 @@ def api_admin_users():
                 })
         if not users:
             return jsonify([])
+        log_by_user, saved_by_user = _admin_bulk_prediction_counters()
         result = []
         for u in users:
             user_id = u.get("id")
-            pred_count = 0
-            try:
-                pred_count = _supabase_count(
-                    "feature_view_log",
-                    {
-                        "user_id": f"eq.{user_id}",
-                        "feature": "eq.predict",
-                    },
-                )
-            except Exception:
-                pred_count = 0
-
-            # Backward-compatible fallback for older data/schemas
-            if not pred_count:
-                pred_count = _supabase_count(
-                    SUPABASE_PREDICTIONS_TABLE, {"user_id": f"eq.{user_id}"}
-                )
+            pred_count = _admin_prediction_display_count(
+                user_id, log_by_user, saved_by_user
+            )
             email = str(u.get("email", "")).strip().lower()
             if email == ADMIN_EMAIL.strip().lower():
                 role = "Admin"
@@ -5191,6 +5374,90 @@ def api_admin_model_versions():
                     "limit": "20",
                 })
         return jsonify(versions or [])
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+
+
+@app.route("/api/admin/model_inventory")
+@api_admin_required
+def api_admin_model_inventory():
+    """Filesystem model runs under ML/model_assets: active serving run + history + report tail."""
+    try:
+        _reload_artefacts_if_newer_run(force=True)
+        run_dir = ARTEFACTS.get("run_dir")
+        metrics_data = ARTEFACTS.get("metrics") or {}
+        perf = ARTEFACTS.get("performance") or {}
+        mk = ARTEFACTS.get("model_key")
+        active_snapshot = _winner_metrics_snapshot(metrics_data)
+        mr_active = (metrics_data.get("model_results") or {}).get(mk) or {}
+        val_d = mr_active.get("val") or {}
+        test_d = mr_active.get("test") or {}
+        train_d = mr_active.get("train") or {}
+        train_m = _safe_metric(train_d.get("mape"))
+        test_m = _safe_metric(perf.get("test_mape"))
+        gap = None
+        if train_m is not None and test_m is not None:
+            gap = round(abs(test_m - train_m), 3)
+
+        active = {
+            "run_id": os.path.basename(run_dir) if run_dir else None,
+            "serving_model_key": mk,
+            "model_label": ARTEFACTS.get("model_label") or "",
+            "train_mape": train_d.get("mape"),
+            "val_mape": val_d.get("mape"),
+            "test_mape": perf.get("test_mape"),
+            "test_rmse": perf.get("test_rmse"),
+            "test_r2": perf.get("test_r2"),
+            "test_mape_display": perf.get("test_mape_display"),
+            "test_rmse_display": perf.get("test_rmse_display"),
+            "test_r2_display": perf.get("test_r2_display"),
+            "future_holdout_mape_display": perf.get("future_holdout_mape_display"),
+            "winner": active_snapshot,
+            "training_report_tail": _read_training_report_tail(run_dir) if run_dir else "",
+            "assets_dir": ASSETS_DIR,
+        }
+
+        all_runs = _iter_valid_run_dirs(ASSETS_DIR)
+
+        def _run_sort_key(path):
+            base = os.path.basename(path)
+            ts = _run_dir_timestamp_sort_key(base)
+            return (ts if ts is not None else -1, base)
+
+        all_runs.sort(key=_run_sort_key)
+        history = []
+        for p in reversed(all_runs[-40:]):
+            try:
+                with open(os.path.join(p, "metrics.json"), encoding="utf-8") as f:
+                    m = json.load(f)
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                continue
+            snap = _winner_metrics_snapshot(m)
+            history.append({
+                "run_id": os.path.basename(p),
+                "algorithm": snap["algorithm"],
+                "train_mape": snap["train_mape"],
+                "val_mape": snap["val_mape"],
+                "test_mape": snap["test_mape"],
+                "test_rmse": snap["test_rmse"],
+                "test_r2": snap["test_r2"],
+                "is_active": os.path.basename(p) == os.path.basename(run_dir or ""),
+            })
+
+        chron = list(reversed(history))
+        mape_trend = {
+            "labels": [h["run_id"] for h in chron],
+            "train": [h["train_mape"] for h in chron],
+            "val": [h["val_mape"] for h in chron],
+            "test": [h["test_mape"] for h in chron],
+        }
+
+        return jsonify({
+            "active": active,
+            "history": history,
+            "train_test_mape_gap": gap,
+            "mape_trend": mape_trend,
+        })
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

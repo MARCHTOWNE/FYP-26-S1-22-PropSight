@@ -1492,13 +1492,14 @@ h6,
     padding: 0.6rem 0.75rem;
 }
 .table-comparison td.comparison-best {
-    background-color: rgba(34, 197, 94, 0.1);
-    color: #166534;
-    font-weight: 600;
+    background-color: transparent;
+    color: #10b981;
+    font-weight: 700;
 }
 .table-comparison td.comparison-worst {
-    background-color: rgba(239, 68, 68, 0.06);
-    color: #991b1b;
+    background-color: transparent;
+    color: #94a3b8;
+    font-weight: 500;
 }
 
 .cta-strip {

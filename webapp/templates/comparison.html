@@ -1,6 +1,477 @@
 {% extends "base.html" %}
 {% block title %}Property Comparison — PropSight{% endblock %}
 
+{% block extra_head %}
+<style>
+/* Ported from predict.html — comparison panels */
+.sidebar-card {
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+.sidebar-header {
+  padding: 22px 24px 0;
+  margin-bottom: 18px;
+}
+.sidebar-body { padding: 0 24px 24px; }
+.p-kicker {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+.sidebar-title {
+  font-size: 19px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.pf-group { margin-bottom: 14px; }
+.pf-row { display: flex; gap: 10px; }
+.pf-row .pf-group { flex: 1; min-width: 0; }
+.pf-label {
+  display: block;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 5px;
+}
+.pf-select {
+  width: 100%;
+  padding: 9px 34px 9px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13.5px;
+  color: #0f172a;
+  background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%2364748b' d='m7 10 5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
+  appearance: none;
+  cursor: pointer;
+  transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+}
+.pf-select:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+  background-color: #fff;
+}
+.pf-select option:disabled { color: #94a3b8; }
+.pf-slider-group { display: flex; flex-direction: column; gap: 7px; }
+.slider-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.slider-val {
+  font-size: 22px;
+  font-weight: 800;
+  color: #0f172a;
+  letter-spacing: -0.02em;
+  line-height: 1;
+}
+.slider-unit { font-size: 12px; color: #94a3b8; font-weight: 600; }
+.pf-range {
+  width: 100%;
+  height: 5px;
+  border-radius: 5px;
+  appearance: none;
+  cursor: pointer;
+  outline: none;
+  background: linear-gradient(to right, #2563eb 50%, #e2e8f0 50%);
+  transition: background 0.1s;
+}
+.pf-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px; height: 18px;
+  background: #fff;
+  border: 3px solid #2563eb;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+  cursor: pointer;
+}
+.pf-range::-moz-range-thumb {
+  width: 18px; height: 18px;
+  background: #fff;
+  border: 3px solid #2563eb;
+  border-radius: 50%;
+  box-shadow: 0 2px 6px rgba(37,99,235,0.35);
+  cursor: pointer;
+}
+.addr-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #f8fafc;
+  border: 1.5px dashed #e2e8f0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: border-color 0.2s, color 0.2s, background 0.2s;
+}
+.addr-toggle:hover { border-color: #2563eb; color: #2563eb; background: rgba(37,99,235,0.03); }
+.addr-toggle .chevron { transition: transform 0.25s; }
+.addr-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.btn-estimate {
+  width: 100%;
+  padding: 13px 28px;
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.25s, transform 0.15s, box-shadow 0.25s;
+  text-decoration: none;
+}
+.btn-estimate:hover {
+  background: #2563eb;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(37,99,235,0.32);
+  color: #fff;
+}
+.btn-estimate:active { transform: translateY(0); }
+.btn-estimate:disabled { opacity: 0.55; cursor: not-allowed; transform: none; box-shadow: none; }
+.comparison-form-actions .btn-estimate { width: auto; min-width: 220px; }
+@media (max-width: 767.98px) {
+  .comparison-form-actions .btn-estimate,
+  .comparison-form-actions .btn-add-panel { width: 100%; }
+}
+.btn-add-panel {
+  padding: 12px 26px;
+  border-radius: 50px;
+  border: 1.5px solid #e2e8f0;
+  background: transparent;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: #0f172a;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: border-color 0.2s, color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+.btn-add-panel:hover {
+  border-color: #2563eb;
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.04);
+  box-shadow: 0 4px 14px rgba(37, 99, 235, 0.12);
+}
+.comparison-prefill-note {
+  background: rgba(37, 99, 235, 0.06);
+  border: 1px solid rgba(37, 99, 235, 0.14);
+  border-radius: 10px;
+  padding: 9px 13px;
+  font-size: 12.5px;
+  color: #374151;
+  line-height: 1.5;
+}
+.comparison-panel .remove-panel-btn {
+  border-radius: 10px;
+  flex-shrink: 0;
+}
+
+.comparison-panels-rail {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 24px;
+  padding-bottom: 24px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.comparison-panels-rail::-webkit-scrollbar {
+  display: none;
+}
+.comparison-panel-item {
+  flex: 0 0 450px;
+  scroll-snap-align: center;
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .comparison-panel-item {
+    flex: 0 0 90vw;
+  }
+}
+@media (min-width: 769px) {
+  .comparison-panels-rail--pair {
+    justify-content: center;
+  }
+}
+
+.comparison-charts-rail {
+  display: flex;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  gap: 24px;
+  padding-bottom: 24px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.comparison-charts-rail::-webkit-scrollbar {
+  display: none;
+}
+.comparison-chart-card {
+  flex: 0 0 450px;
+  scroll-snap-align: center;
+  min-width: 0;
+}
+@media (max-width: 768px) {
+  .comparison-chart-card {
+    flex: 0 0 90vw;
+  }
+}
+@media (min-width: 769px) {
+  .comparison-charts-rail--pair {
+    justify-content: center;
+  }
+}
+
+.premium-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 16px 18px 16px 16px;
+  margin-bottom: 1.25rem;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-left: 4px solid var(--primary);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.premium-notice__icon {
+  flex-shrink: 0;
+  font-size: 1.25rem;
+  line-height: 1.2;
+  color: var(--primary);
+  margin-top: 1px;
+}
+.premium-notice__body {
+  min-width: 0;
+  flex: 1;
+}
+.premium-notice__kicker {
+  margin: 0 0 6px;
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #0f172a;
+  line-height: 1.5;
+}
+.premium-notice__kicker strong {
+  font-weight: 700;
+  color: #0f172a;
+}
+.premium-notice__sub {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.45;
+}
+
+/* —— Route 3: Premium enterprise comparison (depth + sliding lift) —— */
+.premium-compare-card.card {
+  border: 1px solid rgba(15, 23, 42, 0.07);
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 4px 12px rgba(0, 0, 0, 0.03);
+  overflow: visible;
+}
+.premium-compare-card .premium-compare-card-body {
+  padding: 0;
+  padding-bottom: 28px;
+  overflow: visible;
+  border-radius: 20px;
+  background: #fff;
+}
+.premium-compare-responsive {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overflow-y: visible;
+}
+/* 路线三：高奢商业风 — 行距堆叠 + 滑动提升 + 列微弱染色 */
+.premium-compare-table {
+  width: 100%;
+  margin-bottom: 0;
+  border-collapse: separate !important;
+  border-spacing: 0 8px !important;
+  background: #fff;
+  --premium-compare-row-line: rgba(15, 23, 42, 0.05);
+  position: relative;
+}
+.premium-compare-table thead th {
+  background: #fafbfc;
+  border: none;
+  border-bottom: 1px solid var(--premium-compare-row-line);
+  vertical-align: top;
+  padding: 22px 24px 18px;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+.premium-compare-table thead .feature-label-col {
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  font-weight: 700;
+}
+.premium-compare-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #ffffff;
+  background: #0f172a;
+  border: none;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 2px 0 rgba(0, 0, 0, 0.18),
+    0 4px 10px rgba(15, 23, 42, 0.2);
+}
+.premium-compare-panel-meta {
+  margin-top: 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #64748b;
+  line-height: 1.4;
+  max-width: 220px;
+  margin-left: auto;
+  margin-right: auto;
+  letter-spacing: -0.01em;
+}
+.premium-compare-panel-address {
+  font-size: 0.75rem;
+  color: #94a3b8;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.premium-compare-table tbody {
+  position: relative;
+  z-index: 0;
+}
+.premium-compare-table tbody tr {
+  position: relative;
+  z-index: 0;
+  transition: all 0.4s cubic-bezier(0.2, 1, 0.3, 1);
+  background: #fdfdfe;
+  border-radius: 12px;
+}
+.premium-compare-table tbody tr td:first-child {
+  border-radius: 12px 0 0 12px;
+}
+.premium-compare-table tbody tr td:last-child {
+  border-radius: 0 12px 12px 0;
+}
+/* 核心：滑动提升效果 */
+.premium-compare-table tbody tr:hover {
+  transform: translateY(-4px) scale(1.005);
+  background: #ffffff !important;
+  box-shadow: 0 15px 45px rgba(15, 23, 42, 0.12) !important;
+  z-index: 50;
+  position: relative;
+}
+.premium-compare-table tbody td {
+  border: 1px solid rgba(0, 0, 0, 0.02);
+  padding: 20px 24px !important;
+  vertical-align: middle;
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease;
+  background: #fdfdfe;
+}
+.premium-compare-table tbody tr:hover td {
+  background: #ffffff !important;
+  border-color: rgba(0, 0, 0, 0.05);
+  color: var(--navy) !important;
+}
+.premium-compare-table tbody tr:hover td.comparison-best {
+  color: #10b981 !important;
+}
+.premium-compare-table tbody tr:hover td.comparison-worst {
+  color: #94a3b8 !important;
+}
+.premium-compare-table tbody tr:hover td.premium-compare-feature {
+  color: #64748b !important;
+}
+.premium-compare-table .feature-label-col.premium-compare-feature {
+  min-width: 140px;
+  white-space: nowrap;
+  font-size: 0.875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #64748b;
+  font-weight: 700;
+  background: #fdfdfe;
+}
+.premium-compare-table .premium-compare-value {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.01em;
+}
+.premium-compare-table td.comparison-best {
+  background: transparent;
+  color: #10b981;
+  font-weight: 700;
+}
+.premium-compare-table td.comparison-worst {
+  background: transparent;
+  color: #94a3b8;
+  font-weight: 500;
+}
+.premium-compare-table .premium-compare-value.comparison-worst {
+  color: #94a3b8;
+  font-weight: 500;
+}
+.premium-compare-best-icon {
+  font-size: 0.65rem;
+  margin-right: 5px;
+  vertical-align: 0.12em;
+  opacity: 0.95;
+}
+.premium-compare-value-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  letter-spacing: -0.01em;
+}
+.premium-compare-table.table > :not(caption) > * > * {
+  box-shadow: none;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
@@ -27,37 +498,51 @@
     </div>
 
     {% if g.user and saved_predictions %}
-    <div class="alert alert-info py-2 px-3 small">
-        You can start from scratch here, or click <strong>Compare</strong> on saved predictions.
-        {% if is_premium %}The latest selections will auto-fill this page (up to {{ max_panels }}).{% else %}The latest two saved selections will auto-fill this page.{% endif %}
+    <div class="premium-notice" role="status">
+        <div class="premium-notice__icon" aria-hidden="true">
+            <i class="bi bi-info-circle-fill"></i>
+        </div>
+        <div class="premium-notice__body">
+            <p class="premium-notice__kicker"><strong>Quick Tip:</strong> You can start from scratch here, or click <strong>Compare</strong> on saved predictions.</p>
+            <p class="premium-notice__sub">
+                {% if is_premium %}The latest selections will auto-fill this page (up to {{ max_panels }}).{% else %}The latest two saved selections will auto-fill this page.{% endif %}
+            </p>
+        </div>
     </div>
     {% endif %}
 
     <form method="POST" action="{{ url_for('comparison') }}" id="comparisonForm">
         <input type="hidden" name="panel_count" id="panelCountInput" value="{{ panel_count }}">
 
-        <div class="row g-4" id="panelsRow">
+        <div class="comparison-panels-rail{% if panels|length == 2 %} comparison-panels-rail--pair{% endif %}" id="panelsRow">
             {% for panel in panels %}
-            <div class="col-xl-6 comparison-panel" data-panel-index="{{ panel.index }}">
-                <div class="card h-100">
-                    <div class="card-body predict-form">
-                        <div class="d-flex justify-content-between align-items-center mb-4">
-                            <h4 class="card-title mb-0">
-                                <i class="bi bi-{{ panel.index + 1 }}-circle me-2 text-primary"></i>Prediction {{ panel.label }}
-                            </h4>
+            <div class="comparison-panel comparison-panel-item" data-panel-index="{{ panel.index }}">
+                <div class="sidebar-card h-100">
+                    <div class="sidebar-header">
+                        <div class="d-flex justify-content-between align-items-start gap-2">
+                            <div class="min-w-0">
+                                <span class="p-kicker">Panel {{ panel.label }}</span>
+                                <h3 class="sidebar-title">
+                                    <i class="bi bi-{{ panel.index + 1 }}-circle" style="color:#2563eb;font-size:18px;"></i>
+                                    Property {{ panel.label }}
+                                </h3>
+                            </div>
                             {% if is_premium and panel.index >= 2 %}
-                            <button type="button" class="btn btn-sm btn-outline-danger remove-panel-btn" data-panel-index="{{ panel.index }}" title="Remove this panel">
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-panel-btn" data-panel-index="{{ panel.index }}" title="Remove this panel" aria-label="Remove this panel">
                                 <i class="bi bi-x-lg"></i>
                             </button>
                             {% endif %}
                         </div>
                         {% if panel.prefilled %}
-                        <div class="alert alert-light border small py-2 px-3">Prefilled from a saved prediction.</div>
+                        <div class="comparison-prefill-note mt-2 mb-0">
+                            <i class="bi bi-bookmark-check me-1" style="color:#2563eb;"></i>Prefilled from a saved prediction.
+                        </div>
                         {% endif %}
-
-                        <div class="mb-3">
-                            <label class="form-label">Town</label>
-                            <select id="{{ panel.prefix }}Town" name="{{ panel.prefix }}_town" class="form-select" required>
+                    </div>
+                    <div class="sidebar-body">
+                        <div class="pf-group">
+                            <label class="pf-label" for="{{ panel.prefix }}Town">Town</label>
+                            <select id="{{ panel.prefix }}Town" name="{{ panel.prefix }}_town" class="pf-select" required>
                                 <option value="">Select town...</option>
                                 {% for t in towns %}
                                 <option value="{{ t }}" {% if panel.form_data.get('town') == t %}selected{% endif %}>{{ t }}</option>
@@ -65,67 +550,83 @@
                             </select>
                         </div>
 
-                        <div class="row">
-                            <div class="col-7 mb-3">
-                                <label class="form-label">Street <small class="text-muted">(optional)</small></label>
-                                <select id="{{ panel.prefix }}Street" name="{{ panel.prefix }}_street_name" class="form-select">
-                                    <option value="">Any street...</option>
-                                </select>
-                            </div>
-                            <div class="col-5 mb-3">
-                                <label class="form-label">Block <small class="text-muted">(optional)</small></label>
-                                <select id="{{ panel.prefix }}Block" name="{{ panel.prefix }}_block" class="form-select">
-                                    <option value="">Any block...</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Flat Type</label>
-                            <select id="{{ panel.prefix }}FlatType" name="{{ panel.prefix }}_flat_type" class="form-select" required>
-                                {% for ft in flat_types %}
-                                <option value="{{ ft }}" {% if panel.form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Flat Model</label>
-                            <select id="{{ panel.prefix }}FlatModel" name="{{ panel.prefix }}_flat_model" class="form-select" required>
-                                {% for fm in flat_models %}
-                                <option value="{{ fm }}" {% if panel.form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Floor Area (sqm)</label>
-                                <div class="slider-wrap">
-                                    <input type="range" id="{{ panel.prefix }}FloorRange" name="{{ panel.prefix }}_floor_area"
-                                           min="30" max="300" value="{{ panel.form_data.get('floor_area', 90) or 90 }}" step="1"
-                                           class="form-range accent-range">
-                                    <div class="slider-display"><span id="{{ panel.prefix }}FloorVal">{{ panel.form_data.get('floor_area', 90) or 90 }}</span> sqm</div>
-                                </div>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <label class="form-label">Lease Start Year</label>
-                                <div class="slider-wrap">
-                                    <input type="range" id="{{ panel.prefix }}LeaseRange" name="{{ panel.prefix }}_lease_commence"
-                                           min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1"
-                                           class="form-range accent-range">
-                                    <div class="slider-display"><span id="{{ panel.prefix }}LeaseVal">{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span></div>
+                        <div class="pf-group">
+                            <button type="button" class="addr-toggle" id="addrToggleBtn_{{ panel.prefix }}"
+                                    data-bs-toggle="collapse" data-bs-target="#addrCollapse_{{ panel.prefix }}"
+                                    aria-expanded="{{ 'true' if (panel.form_data.get('street_name') or panel.form_data.get('block')) else 'false' }}">
+                                <span><i class="bi bi-geo-alt me-1"></i>Street &amp; Block <em style="font-style:normal;font-weight:400;font-size:11.5px;color:#94a3b8;">optional</em></span>
+                                <i class="bi bi-chevron-down chevron" style="font-size:12px;"></i>
+                            </button>
+                            <div class="collapse {{ 'show' if (panel.form_data.get('street_name') or panel.form_data.get('block')) else '' }}" id="addrCollapse_{{ panel.prefix }}" style="margin-top:10px;">
+                                <div class="pf-row">
+                                    <div class="pf-group" style="flex:2;">
+                                        <label class="pf-label" for="{{ panel.prefix }}Street">Street</label>
+                                        <select id="{{ panel.prefix }}Street" name="{{ panel.prefix }}_street_name" class="pf-select">
+                                            <option value="">Any street...</option>
+                                        </select>
+                                    </div>
+                                    <div class="pf-group">
+                                        <label class="pf-label" for="{{ panel.prefix }}Block">Block</label>
+                                        <select id="{{ panel.prefix }}Block" name="{{ panel.prefix }}_block" class="pf-select">
+                                            <option value="">Any block...</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <div>
-                            <label class="form-label">Floor</label>
-                            <select id="{{ panel.prefix }}StoreyRange" name="{{ panel.prefix }}_storey_range" class="form-select" required>
+                        <div class="pf-row">
+                            <div class="pf-group">
+                                <label class="pf-label" for="{{ panel.prefix }}FlatType">Flat Type</label>
+                                <select id="{{ panel.prefix }}FlatType" name="{{ panel.prefix }}_flat_type" class="pf-select" required>
+                                    {% for ft in flat_types %}
+                                    <option value="{{ ft }}" {% if panel.form_data.get('flat_type') == ft %}selected{% endif %}>{{ ft }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                            <div class="pf-group">
+                                <label class="pf-label" for="{{ panel.prefix }}FlatModel">Flat Model</label>
+                                <select id="{{ panel.prefix }}FlatModel" name="{{ panel.prefix }}_flat_model" class="pf-select" required>
+                                    {% for fm in flat_models %}
+                                    <option value="{{ fm }}" {% if panel.form_data.get('flat_model') == fm %}selected{% endif %}>{{ fm }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="pf-group">
+                            <label class="pf-label" for="{{ panel.prefix }}StoreyRange">Floor</label>
+                            <select id="{{ panel.prefix }}StoreyRange" name="{{ panel.prefix }}_storey_range" class="pf-select" required>
                                 {% for sr in storey_ranges %}
                                 <option value="{{ sr }}" {% if panel.form_data.get('storey_range') == sr %}selected{% endif %}>{{ sr }}</option>
                                 {% endfor %}
                             </select>
+                        </div>
+
+                        <div class="pf-group">
+                            <label class="pf-label">Floor Area</label>
+                            <div class="pf-slider-group">
+                                <div class="slider-top">
+                                    <span class="slider-val" id="{{ panel.prefix }}FloorVal">{{ panel.form_data.get('floor_area', 90) or 90 }}</span>
+                                    <span class="slider-unit">sqm</span>
+                                </div>
+                                <input type="range" id="{{ panel.prefix }}FloorRange" name="{{ panel.prefix }}_floor_area"
+                                       min="30" max="300" value="{{ panel.form_data.get('floor_area', 90) or 90 }}" step="1"
+                                       class="pf-range">
+                            </div>
+                        </div>
+
+                        <div class="pf-group">
+                            <label class="pf-label">Lease Start Year</label>
+                            <div class="pf-slider-group">
+                                <div class="slider-top">
+                                    <span class="slider-val" id="{{ panel.prefix }}LeaseVal">{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}</span>
+                                    <span class="slider-unit">year</span>
+                                </div>
+                                <input type="range" id="{{ panel.prefix }}LeaseRange" name="{{ panel.prefix }}_lease_commence"
+                                       min="{{ lease_year_min }}" max="{{ lease_year_max }}" value="{{ panel.form_data.get('lease_commence', default_lease_year) or default_lease_year }}" step="1"
+                                       class="pf-range">
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -133,33 +634,35 @@
             {% endfor %}
         </div>
 
-        <div class="d-grid d-md-flex justify-content-center mt-4 gap-2">
+        <div class="comparison-form-actions d-grid d-md-flex justify-content-center align-items-center mt-4 gap-3">
             {% if is_premium and panel_count < max_panels %}
-            <button type="button" id="addPanelBtn" class="btn btn-outline-primary px-4">
-                <i class="bi bi-plus-circle me-1"></i>Add Property
+            <button type="button" id="addPanelBtn" class="btn-add-panel">
+                <i class="bi bi-plus-circle"></i>Add Property
             </button>
             {% endif %}
-            <button type="submit" class="btn btn-primary px-5">Compare Predictions</button>
+            <button type="submit" class="btn-estimate">
+                <i class="bi bi-columns-gap"></i>Compare Predictions
+            </button>
         </div>
     </form>
 
     {% if comparison_analysis %}
     <!-- Unified Comparison Table -->
-    <div class="card mt-4">
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover table-comparison mb-0">
-                    <thead class="table-light">
+    <div class="card mt-4 premium-compare-card">
+        <div class="card-body premium-compare-card-body">
+            <div class="table-responsive premium-compare-responsive">
+                <table class="table premium-compare-table table-comparison mb-0" id="premiumCompareTable">
+                    <thead>
                         <tr>
-                            <th class="feature-label-col">Feature</th>
+                            <th class="feature-label-col premium-compare-corner" scope="col">Feature</th>
                             {% for label in comparison_analysis['labels'] %}
-                            <th class="text-center">
-                                <span class="badge bg-primary rounded-pill mb-1">{{ label }}</span>
-                                <div class="small text-muted">
+                            <th class="text-center premium-compare-panel-th" scope="col">
+                                <span class="premium-compare-pill">{{ label }}</span>
+                                <div class="premium-compare-panel-meta">
                                     {% set panel = panels[loop.index0] %}
                                     {{ panel.form_data['town'] }}
                                     {% if panel.form_data.get('block') %}
-                                    <br>{{ panel.form_data['block'] }} {{ panel.form_data.get('street_name', '') }}
+                                    <span class="premium-compare-panel-address d-block mt-1">{{ panel.form_data['block'] }} {{ panel.form_data.get('street_name', '') }}</span>
                                     {% endif %}
                                 </div>
                             </th>
@@ -169,10 +672,14 @@
                     <tbody>
                         {% for feature in comparison_analysis['features'] %}
                         <tr>
-                            <td class="feature-label-col fw-semibold text-muted small">{{ feature['label'] }}</td>
+                            <td class="feature-label-col premium-compare-feature" scope="row">{{ feature['label'] }}</td>
                             {% for val in feature['values'] %}
-                            <td class="text-center{% if feature['best_idx'] == loop.index0 %} comparison-best{% elif feature['worst_idx'] == loop.index0 %} comparison-worst{% endif %}">
+                            <td class="text-center premium-compare-value{% if feature['best_idx'] == loop.index0 %} comparison-best{% elif feature['worst_idx'] == loop.index0 %} comparison-worst{% endif %}">
+                                {% if feature['best_idx'] == loop.index0 %}
+                                <span class="premium-compare-value-cell"><i class="bi bi-check2 premium-compare-best-icon" aria-hidden="true"></i>{{ val }}</span>
+                                {% else %}
                                 {{ val }}
+                                {% endif %}
                             </td>
                             {% endfor %}
                         </tr>
@@ -206,9 +713,9 @@
     {% if is_premium %}
     <div id="comparisonChartsSection" class="mt-4">
         <h5 class="mb-3"><i class="bi bi-graph-up me-2 text-primary"></i>Price Trends & Forecasts</h5>
-        <div class="row g-4">
+        <div class="comparison-charts-rail{% if panels|length == 2 %} comparison-charts-rail--pair{% endif %}">
             {% for panel in panels %}
-            <div class="col-xl-6">
+            <div class="comparison-chart-card">
                 <div class="card h-100">
                     <div class="card-body">
                         <h6 class="card-title">
@@ -325,13 +832,24 @@ var currentPanelCount = {{ panel_count }};
 var HAS_RESULTS = {{ 'true' if comparison_analysis else 'false' }};
 var PAYLOADS = {{ payloads_json|safe }};
 
+function updateSliderTrack(el) {
+    if (!el) return;
+    var min = Number(el.min) || 0;
+    var max = Number(el.max) || 100;
+    var span = max - min;
+    var pct = span <= 0 ? 0 : ((Number(el.value) - min) / span * 100).toFixed(1);
+    el.style.background = 'linear-gradient(to right,#2563eb ' + pct + '%,#e2e8f0 ' + pct + '%)';
+}
+
 function bindRange(rangeId, valueId) {
     var range = document.getElementById(rangeId);
     var value = document.getElementById(valueId);
     if (!range || !value) return;
     value.textContent = range.value;
+    updateSliderTrack(range);
     range.addEventListener('input', function() {
         value.textContent = range.value;
+        updateSliderTrack(this);
     });
 }
 
@@ -402,6 +920,7 @@ function bindCascade(prefix) {
                 leaseRange.max = data.max_year;
                 leaseRange.value = data.avg_year;
                 leaseVal.textContent = data.avg_year;
+                updateSliderTrack(leaseRange);
             }
 
             if (responses[1].ok) {
@@ -469,6 +988,7 @@ function bindCascade(prefix) {
                 floorRange.max = data.max_area;
                 floorRange.value = data.avg_area;
                 floorVal.textContent = data.avg_area;
+                updateSliderTrack(floorRange);
             }
             if (responses[1].ok) {
                 var data2 = await responses[1].json();
@@ -512,8 +1032,8 @@ function bindCascade(prefix) {
                 setTimeout(function() {
                     if (prefilledFlatModel) flatModelSelect.value = prefilledFlatModel;
                     if (prefilledStorey) storeyRangeSelect.value = prefilledStorey;
-                    if (prefilledFloor) { floorRange.value = prefilledFloor; floorVal.textContent = prefilledFloor; }
-                    if (prefilledLease) { leaseRange.value = prefilledLease; leaseVal.textContent = prefilledLease; }
+                    if (prefilledFloor) { floorRange.value = prefilledFloor; floorVal.textContent = prefilledFloor; updateSliderTrack(floorRange); }
+                    if (prefilledLease) { leaseRange.value = prefilledLease; leaseVal.textContent = prefilledLease; updateSliderTrack(leaseRange); }
                 }, 500);
             }
         }, 500);
@@ -525,6 +1045,14 @@ PANEL_PREFIXES.forEach(function(prefix) {
     bindRange(prefix + 'FloorRange', prefix + 'FloorVal');
     bindRange(prefix + 'LeaseRange', prefix + 'LeaseVal');
     bindCascade(prefix);
+});
+
+PANEL_PREFIXES.forEach(function(prefix) {
+    var btn = document.getElementById('addrToggleBtn_' + prefix);
+    var col = document.getElementById('addrCollapse_' + prefix);
+    if (!btn || !col) return;
+    col.addEventListener('show.bs.collapse', function() { btn.setAttribute('aria-expanded', 'true'); });
+    col.addEventListener('hide.bs.collapse', function() { btn.setAttribute('aria-expanded', 'false'); });
 });
 
 // Add panel button (premium only)

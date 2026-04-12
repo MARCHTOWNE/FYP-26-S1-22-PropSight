@@ -582,6 +582,134 @@ h6,
     text-decoration: underline;
 }
 
+/* Premium guest login gateway — structured card, quiet inputs */
+#onboarding .account-gateway-hub:has(.premium-gateway-card) {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    -webkit-backdrop-filter: none !important;
+    backdrop-filter: none !important;
+}
+
+.premium-gateway-card {
+    background: rgba(255, 255, 255, 0.68);
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    border-radius: 20px;
+    padding: 32px 40px;
+    -webkit-backdrop-filter: blur(22px) saturate(1.15);
+    backdrop-filter: blur(22px) saturate(1.15);
+    box-shadow:
+        0 4px 24px rgba(15, 23, 42, 0.06),
+        inset 0 1px 0 rgba(255, 255, 255, 0.65);
+}
+
+@media (max-width: 575.98px) {
+    .premium-gateway-card {
+        padding: 24px 20px;
+    }
+}
+
+.premium-gateway-heading {
+    font-family: 'Sora', sans-serif;
+    font-weight: 700;
+    color: var(--navy);
+    font-size: 1.25rem;
+    letter-spacing: -0.5px;
+}
+
+.premium-gateway-lead {
+    font-size: 0.9rem;
+    color: #64748b;
+    line-height: 1.5;
+}
+
+.premium-form-row {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    align-items: stretch;
+}
+
+@media (min-width: 768px) {
+    .premium-form-row {
+        flex-direction: row;
+        align-items: flex-end;
+    }
+
+    .premium-form-row__submit {
+        flex: 0 0 auto;
+    }
+}
+
+.premium-field-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #64748b;
+}
+
+.propsight-app .premium-input.form-control {
+    background: #f8fafc;
+    border: 1px solid rgba(15, 23, 42, 0.1);
+    border-radius: 10px;
+    padding: 12px 16px;
+    font-size: 0.95rem;
+    color: var(--navy);
+    transition: all 0.2s ease;
+}
+
+.propsight-app .premium-input.form-control:focus {
+    background: #ffffff;
+    border-color: var(--navy);
+    box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.05);
+    outline: none;
+}
+
+.premium-forgot-link {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--tech-blue);
+    text-decoration: none;
+}
+
+.premium-forgot-link:hover {
+    color: var(--accent-dark);
+    text-decoration: none;
+}
+
+.premium-gateway-submit {
+    border-radius: 10px !important;
+    padding: 12px 32px !important;
+    font-weight: 600 !important;
+    box-shadow: 0 4px 12px rgba(37, 99, 235, 0.2) !important;
+}
+
+.premium-register-hint {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.premium-register-link {
+    color: var(--navy);
+    font-weight: 700;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(15, 23, 42, 0.2);
+    padding-bottom: 1px;
+}
+
+.premium-register-link:hover {
+    color: var(--navy);
+    border-bottom-color: rgba(15, 23, 42, 0.45);
+}
+
+@media (min-width: 992px) {
+    #onboarding .border-end-lg {
+        border-right: 1px solid rgba(15, 23, 42, 0.08);
+    }
+}
+
 /* Shared heading gradient utility (onboarding + elsewhere) */
 .text-gradient-custom {
     background: linear-gradient(135deg, var(--dark), var(--primary)) !important;

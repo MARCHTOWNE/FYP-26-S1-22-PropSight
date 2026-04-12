@@ -255,7 +255,7 @@
             <div class="metric-chip"><div class="metric-chip-val" id="kpiOnlineUsers">0</div><div class="metric-chip-label">Online Now</div><div class="metric-chip-sub">Live status</div></div>
             <div class="metric-chip"><div class="metric-chip-val" id="kpiPredictionCount">0</div><div class="metric-chip-label">Predictions Run</div><div class="metric-chip-sub">All users</div></div>
             <div class="metric-chip"><div class="metric-chip-val" id="kpiMonthlyRevenue">$0</div><div class="metric-chip-label">Monthly Revenue</div><div class="metric-chip-sub">Premium subscriptions</div></div>
-            <div class="metric-chip winner-chip"><div class="metric-chip-val">XGBoost</div><div class="metric-chip-label">Active Model</div><div class="metric-chip-sub">Production predictor</div></div>
+            <div class="metric-chip winner-chip"><div class="metric-chip-val" id="kpiActiveModelLabel">—</div><div class="metric-chip-label">Active Model</div><div class="metric-chip-sub" id="kpiActiveModelRun">Production predictor</div></div>
           </div>
           <div class="row g-4">
             <div class="col-lg-6"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Online User Trend</div><div class="card-sub-custom">Active user sessions over time.</div></div></div><div class="card-body-custom"><div class="chart-toolbar"><div class="time-toggle"><button class="time-toggle-btn active" onclick="switchOnlineTrend('hour',this)">Hour</button><button class="time-toggle-btn" onclick="switchOnlineTrend('day',this)">Day</button><button class="time-toggle-btn" onclick="switchOnlineTrend('week',this)">Week</button><button class="time-toggle-btn" onclick="switchOnlineTrend('month',this)">Month</button></div></div><div class="chart-wrap"><canvas id="onlineTrendChart"></canvas></div></div></div></div>
@@ -269,33 +269,36 @@
 
         <div class="dash-section" id="section-model">
           <div class="row g-4 mb-4">
-            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Active Model</div><div class="stat-value" style="font-size:1.4rem;">XGBoost</div><div class="stat-sub">Optuna-tuned</div></div></div>
-            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test MAPE</div><div class="stat-value" style="color:#10b981;">6.49%</div><div class="stat-sub">Lower is better</div></div></div>
-            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test RMSE</div><div class="stat-value" style="font-size:1.5rem;">$44,790</div><div class="stat-sub">SGD</div></div></div>
-            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test R²</div><div class="stat-value" style="color:#2563eb;">0.8877</div><div class="stat-sub">Closer to 1 is better</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Active Model</div><div class="stat-value" style="font-size:1.4rem;" id="model-inv-active-label">—</div><div class="stat-sub" id="model-inv-active-sub">From ML/model_assets</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test MAPE</div><div class="stat-value" style="color:#10b981;" id="model-inv-test-mape">—</div><div class="stat-sub">Lower is better</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test RMSE</div><div class="stat-value" style="font-size:1.5rem;" id="model-inv-test-rmse">—</div><div class="stat-sub">SGD</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Test R²</div><div class="stat-value" style="color:#2563eb;" id="model-inv-test-r2">—</div><div class="stat-sub">Closer to 1 is better</div></div></div>
           </div>
           <div class="row g-4 mb-4">
-            <div class="col-lg-7"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">MAPE Over Model Versions</div><div class="card-sub-custom">Track if prediction error is improving or worsening over time.</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="mapeTrendChart"></canvas></div></div></div></div>
-            <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Overfitting Check</div><div class="card-sub-custom">Compare train vs test MAPE. Large gap = overfitting risk.</div></div></div><div class="card-body-custom">
-              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Train MAPE</span><span class="usage-bar-val" style="color:#10b981;">4.21%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:42%;background:#10b981;"></div></div></div>
-              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Validation MAPE</span><span class="usage-bar-val" style="color:#f59e0b;">5.87%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:58%;background:#f59e0b;"></div></div></div>
-              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Test MAPE</span><span class="usage-bar-val" style="color:#2563eb;">6.49%</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" style="width:65%;background:#2563eb;"></div></div></div>
-              <div style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:14px 16px;margin-top:8px;">
-                <div style="font-size:.78rem;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.5px;">✓ No Overfitting Detected</div>
-                <div style="font-size:.82rem;color:var(--gray);margin-top:4px;">Train-test MAPE gap is within acceptable range (2.28%).</div>
+            <div class="col-lg-7"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">MAPE Over Model Versions</div><div class="card-sub-custom">Winner model on each run folder (ML/model_assets/&lt;run_id&gt;).</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="mapeTrendChart"></canvas></div></div></div></div>
+            <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Overfitting Check</div><div class="card-sub-custom">Compare train vs test MAPE for the serving model. Large gap = overfitting risk.</div></div></div><div class="card-body-custom">
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Train MAPE</span><span class="usage-bar-val" style="color:#10b981;" id="model-bar-train-pct">—</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" id="model-bar-train-fill" style="width:0%;background:#10b981;"></div></div></div>
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Validation MAPE</span><span class="usage-bar-val" style="color:#f59e0b;" id="model-bar-val-pct">—</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" id="model-bar-val-fill" style="width:0%;background:#f59e0b;"></div></div></div>
+              <div class="mb-4"><div class="usage-bar-label"><span class="usage-bar-name">Test MAPE</span><span class="usage-bar-val" style="color:#2563eb;" id="model-bar-test-pct">—</span></div><div class="usage-bar-bg"><div class="usage-bar-fill" id="model-bar-test-fill" style="width:0%;background:#2563eb;"></div></div></div>
+              <div id="model-overfit-box" style="background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:14px 16px;margin-top:8px;">
+                <div style="font-size:.78rem;font-weight:800;color:#059669;text-transform:uppercase;letter-spacing:.5px;" id="model-overfit-title">—</div>
+                <div style="font-size:.82rem;color:var(--gray);margin-top:4px;" id="model-overfit-detail">—</div>
               </div>
             </div></div></div>
           </div>
+          <div class="content-card mb-4">
+            <div class="card-header-custom"><div><div class="card-title-custom">Training report (active run)</div><div class="card-sub-custom">End of training_report.txt for the newest loaded run (full file may be longer).</div></div></div>
+            <div class="card-body-custom" style="padding-top:0;">
+              <pre id="model-training-report" style="margin:0;font-size:.78rem;line-height:1.45;white-space:pre-wrap;word-break:break-word;max-height:320px;overflow:auto;background:rgba(15,23,42,.04);border-radius:8px;padding:14px 16px;color:var(--gray);">Loading…</pre>
+            </div>
+          </div>
           <div class="content-card">
-            <div class="card-header-custom"><div><div class="card-title-custom">Model Version History</div><div class="card-sub-custom">All trained model versions and their evaluation metrics.</div></div></div>
+            <div class="card-header-custom"><div><div class="card-title-custom">Model Version History</div><div class="card-sub-custom">Runs discovered under ML/model_assets (timestamp folder names).</div></div></div>
             <div style="overflow-x:auto">
               <table class="admin-table">
-                <thead><tr><th>Version</th><th>Algorithm</th><th>Train MAPE</th><th>Val MAPE</th><th>Test MAPE</th><th>RMSE</th><th>R²</th><th>Trained On</th><th>Status</th></tr></thead>
+                <thead><tr><th>Run ID</th><th>Winner</th><th>Train MAPE</th><th>Val MAPE</th><th>Test MAPE</th><th>RMSE</th><th>R²</th><th>Status</th></tr></thead>
                 <tbody id="model-versions-tbody">
-                  <tr><td><strong>v2.4</strong></td><td>XGBoost (Optuna)</td><td style="color:#10b981;font-weight:700;">4.21%</td><td style="color:#f59e0b;font-weight:700;">5.87%</td><td style="color:#2563eb;font-weight:700;">6.49%</td><td>$44,790</td><td>0.8877</td><td style="color:var(--gray);">Mar 2026</td><td><span class="status-badge badge-active">Active</span></td></tr>
-                  <tr><td><strong>v2.3</strong></td><td>XGBoost</td><td style="color:#10b981;font-weight:700;">4.85%</td><td style="color:#f59e0b;font-weight:700;">6.54%</td><td style="color:var(--gray);font-weight:700;">7.12%</td><td>$48,210</td><td>0.8741</td><td style="color:var(--gray);">Jan 2026</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
-                  <tr><td><strong>v2.2</strong></td><td>XGBoost</td><td style="color:#10b981;font-weight:700;">5.10%</td><td style="color:#f59e0b;font-weight:700;">7.23%</td><td style="color:var(--gray);font-weight:700;">7.89%</td><td>$51,430</td><td>0.8612</td><td style="color:var(--gray);">Nov 2025</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
-                  <tr><td><strong>v2.1</strong></td><td>LightGBM</td><td style="color:#10b981;font-weight:700;">5.44%</td><td style="color:#f59e0b;font-weight:700;">7.91%</td><td style="color:var(--gray);font-weight:700;">8.34%</td><td>$54,900</td><td>0.8490</td><td style="color:var(--gray);">Sep 2025</td><td><span class="status-badge badge-pending">Retired</span></td></tr>
+                  <tr><td colspan="8" style="color:var(--gray);">Loading…</td></tr>
                 </tbody>
               </table>
             </div>
@@ -684,31 +687,120 @@
     }
     function clearCreateForm(){ ['new-name','new-email','new-password'].forEach(id=>document.getElementById(id).value=''); document.getElementById('create-error').style.display='none'; }
 
+    function _fmtModelPct(v){
+      if(v==null||v===''||Number.isNaN(Number(v))) return '—';
+      return Number(v).toFixed(2)+'%';
+    }
+    function _fmtModelMoney(v){
+      if(v==null||v==='') return '—';
+      const n = Number(v);
+      if(Number.isNaN(n)) return '—';
+      return '$'+Math.round(n).toLocaleString();
+    }
+    function _fmtModelR2(v){
+      if(v==null||v==='') return '—';
+      return Number(v).toFixed(4);
+    }
+    function _barPct(mape, cap){
+      if(mape==null||Number.isNaN(Number(mape))) return 0;
+      const c = cap || 12;
+      return Math.min(100, Math.max(2, (Number(mape)/c)*100));
+    }
+    function updateMapeTrendChart(trend){
+      if(!trend||!charts.mapeTrend) return;
+      const labels = trend.labels||[];
+      if(!labels.length) return;
+      charts.mapeTrend.data.labels = labels;
+      const T = trend.train||[], V = trend.val||[], Te = trend.test||[];
+      charts.mapeTrend.data.datasets[0].data = T.map(x=>x==null?null:Number(x));
+      charts.mapeTrend.data.datasets[1].data = V.map(x=>x==null?null:Number(x));
+      charts.mapeTrend.data.datasets[2].data = Te.map(x=>x==null?null:Number(x));
+      charts.mapeTrend.update();
+    }
+
     async function loadModelVersions(){
       if(modelsLoading) return;
       modelsLoading = true;
       try {
-        const versions = await fetchJson('/api/admin/model_versions');
-        if(!versions||versions.error) return;
-        const nextSig = JSON.stringify(versions);
+        const inv = await fetchJson('/api/admin/model_inventory');
+        if(!inv||inv.error) throw new Error((inv&&inv.error)||'Failed to load model inventory');
+        const nextSig = JSON.stringify(inv);
         if(nextSig === lastModelsSignature) return;
         lastModelsSignature = nextSig;
+        const a = inv.active||{};
+        const runLabel = a.run_id||'—';
+        const ml = a.model_label||'—';
+        const kpiL = document.getElementById('kpiActiveModelLabel');
+        if(kpiL) kpiL.textContent = ml;
+        const kpiR = document.getElementById('kpiActiveModelRun');
+        if(kpiR) kpiR.textContent = runLabel;
+        const elL = document.getElementById('model-inv-active-label');
+        if(elL) elL.textContent = ml;
+        const elS = document.getElementById('model-inv-active-sub');
+        if(elS) elS.textContent = 'Run '+runLabel;
+        const tm = document.getElementById('model-inv-test-mape');
+        if(tm) tm.textContent = a.test_mape_display!=null ? (a.test_mape_display+'%') : _fmtModelPct(a.test_mape);
+        const tr = document.getElementById('model-inv-test-rmse');
+        if(tr) tr.textContent = a.test_rmse_display!=null ? a.test_rmse_display : _fmtModelMoney(a.test_rmse);
+        const t2 = document.getElementById('model-inv-test-r2');
+        if(t2) t2.textContent = a.test_r2_display!=null ? String(a.test_r2_display) : _fmtModelR2(a.test_r2);
+
+        const trM = a.train_mape, vM = a.val_mape, teM = a.test_mape;
+        const cap = Math.max(8, trM||0, vM||0, teM||0, 1)*1.15;
+        document.getElementById('model-bar-train-pct').textContent = _fmtModelPct(trM);
+        document.getElementById('model-bar-val-pct').textContent = _fmtModelPct(vM);
+        document.getElementById('model-bar-test-pct').textContent = _fmtModelPct(teM);
+        document.getElementById('model-bar-train-fill').style.width = _barPct(trM, cap)+'%';
+        document.getElementById('model-bar-val-fill').style.width = _barPct(vM, cap)+'%';
+        document.getElementById('model-bar-test-fill').style.width = _barPct(teM, cap)+'%';
+
+        const gap = inv.train_test_mape_gap;
+        const ot = document.getElementById('model-overfit-title');
+        const od = document.getElementById('model-overfit-detail');
+        const ob = document.getElementById('model-overfit-box');
+        if(gap!=null && trM!=null && teM!=null){
+          if(gap <= 2.5){
+            if(ob){ ob.style.borderColor='rgba(16,185,129,.2)'; ob.style.background='rgba(16,185,129,.06)'; }
+            if(ot){ ot.textContent = '✓ Train–test gap looks reasonable'; ot.style.color='#059669'; }
+            if(od) od.textContent = 'Absolute train vs test MAPE gap is about '+gap+'%.';
+          } else {
+            if(ob){ ob.style.borderColor='rgba(245,158,11,.35)'; ob.style.background='rgba(245,158,11,.08)'; }
+            if(ot){ ot.textContent = '⚠ Check generalization'; ot.style.color='#b45309'; }
+            if(od) od.textContent = 'Train vs test MAPE gap is about '+gap+'%. Review features or regularization.';
+          }
+        } else {
+          if(ot) ot.textContent = 'Train / test MAPE';
+          if(od) od.textContent = 'Train MAPE is not always logged; bars show validation vs test when available.';
+        }
+
+        const pre = document.getElementById('model-training-report');
+        if(pre){
+          const txt = (a.training_report_tail||'').trim();
+          pre.textContent = txt || '(No training_report.txt for this run.)';
+        }
+
         const tbody = document.getElementById('model-versions-tbody');
-        if(!tbody) return;
-        tbody.innerHTML = versions.map((v,i)=>`<tr>
-          <td><strong>${v.label||v.version||'v'+v.id}</strong></td>
-          <td>${v.algorithm||'XGBoost'}</td>
-          <td style="color:#10b981;font-weight:700;">${v.train_mape_display!=null?v.train_mape_display+'%':v.train_mape!=null?v.train_mape+'%':'—'}</td>
-          <td style="color:#f59e0b;font-weight:700;">${v.val_mape_display!=null?v.val_mape_display+'%':v.val_mape!=null?v.val_mape+'%':'—'}</td>
-          <td style="color:#2563eb;font-weight:700;">${v.test_mape_display!=null?v.test_mape_display+'%':v.test_mape!=null?v.test_mape+'%':'—'}</td>
-          <td>${v.test_rmse!=null?'$'+Number(v.test_rmse).toLocaleString():'—'}</td>
-          <td>${v.test_r2??'—'}</td>
-          <td style="color:var(--gray);">${formatDate(v.created_at)}</td>
-          <td><span class="status-badge ${i===0?'badge-active':'badge-pending'}">${i===0?'Active':'Retired'}</span></td>
-        </tr>`).join('');
+        if(tbody){
+          const rows = inv.history||[];
+          if(!rows.length){
+            tbody.innerHTML = '<tr><td colspan="8" style="color:var(--gray);">No runs found under ML/model_assets.</td></tr>';
+          } else {
+            tbody.innerHTML = rows.map((h)=>`<tr>
+              <td><strong>${h.run_id||'—'}</strong></td>
+              <td>${h.algorithm||'—'}</td>
+              <td style="color:#10b981;font-weight:700;">${_fmtModelPct(h.train_mape)}</td>
+              <td style="color:#f59e0b;font-weight:700;">${_fmtModelPct(h.val_mape)}</td>
+              <td style="color:#2563eb;font-weight:700;">${_fmtModelPct(h.test_mape)}</td>
+              <td>${_fmtModelMoney(h.test_rmse)}</td>
+              <td>${_fmtModelR2(h.test_r2)}</td>
+              <td><span class="status-badge ${h.is_active?'badge-active':'badge-pending'}">${h.is_active?'Active':'Archive'}</span></td>
+            </tr>`).join('');
+          }
+        }
+        updateMapeTrendChart(inv.mape_trend);
       } catch(e){
-        console.error('Model versions load failed',e);
-        showToast(e.message || 'Failed to load model versions.','error');
+        console.error('Model inventory load failed',e);
+        showToast(e.message || 'Failed to load model inventory.','error');
       } finally {
         modelsLoading = false;
       }
@@ -747,18 +839,20 @@
       if(META[id]){ document.getElementById('topbar-title').textContent=META[id].title; document.getElementById('topbar-sub').textContent=META[id].sub; }
       if(id==='accounts') loadAccounts();
       if(id==='subscriptions'){ loadAccounts(false); loadStats(); }
-      if(id==='model') loadModelVersions();
       if(id==='overview') loadOverviewData();
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         initCharts();
         if(id==='overview') updateOverviewCharts();
+        if(id==='model') loadModelVersions();
       }));
     }
 
     async function initDashboard(){
-      requestAnimationFrame(()=>requestAnimationFrame(()=>initCharts()));
+      await new Promise((resolve)=>{
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{ initCharts(); resolve(); }));
+      });
       await Promise.all([loadStats(), loadAccounts(false), loadOverviewData(), loadNotifications()]);
-      loadModelVersions();
+      await loadModelVersions();
       startAutoRefresh();
     }
 

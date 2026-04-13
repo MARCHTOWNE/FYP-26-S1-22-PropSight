@@ -1,19 +1,112 @@
 {% extends "base.html" %}
 {% block title %}Saved Predictions — PropSight{% endblock %}
 
+{% block extra_head %}
+<style>
+/* ============================================================
+   Premium SaaS List View (The Anti-Excel Pattern)
+   ============================================================ */
+.premium-list-card {
+    border-radius: 16px;
+    border: 1px solid rgba(15,23,42,0.06) !important;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.02) !important;
+    background: #ffffff;
+    overflow: hidden;
+}
+
+.premium-data-table {
+    width: 100%;
+    margin-bottom: 0;
+    border-collapse: collapse;
+}
+
+/* 严谨的表头 */
+.premium-data-table th {
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 16px 20px;
+    border-bottom: 1px solid rgba(15,23,42,0.06);
+    vertical-align: middle;
+}
+
+/* 呼吸感单元格 */
+.premium-data-table td {
+    padding: 18px 20px;
+    border-bottom: 1px solid rgba(15,23,42,0.03);
+    vertical-align: middle;
+    transition: background 0.2s ease;
+}
+
+/* 悬浮聚焦动效 (左侧蓝条指示器) */
+.premium-data-table tbody tr {
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+.premium-data-table tbody tr:hover {
+    background: #fdfdfe;
+    border-left: 3px solid var(--primary);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.02);
+}
+
+.premium-data-table tbody tr:hover td {
+    background: rgba(37,99,235,0.015);
+}
+
+/* 幽灵按钮 (平时隐藏，Hover时浮现) */
+.row-actions {
+    opacity: 1;
+    transform: translateX(0);
+    transition: all 0.3s cubic-bezier(0.2, 1, 0.3, 1);
+}
+
+.premium-data-table tbody tr:hover .row-actions {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.btn-ghost {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border: none; background: transparent;
+    color: #94a3b8;
+    transition: all 0.2s;
+}
+.btn-ghost:hover { background: #f1f5f9; color: #0f172a; transform: translateY(-2px); }
+.btn-ghost.primary:hover { background: rgba(37,99,235,0.1); color: var(--primary); }
+.btn-ghost.danger:hover { background: rgba(239,68,68,0.1); color: #ef4444; }
+
+/* 顶部操作栏高奢化 */
+.action-bar-btn {
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 8px 16px;
+    transition: all 0.2s;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container py-4">
-    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
-        <h4 class="mb-0">
-            <i class="bi bi-bookmark me-2 text-primary"></i>Saved Predictions
-        </h4>
+    <div class="d-flex flex-wrap justify-content-between align-items-end gap-3 mb-4 pb-2 border-bottom border-light">
+        <div>
+            <p class="section-eyebrow mb-1">Your Workspace</p>
+            <h1 class="section-title mb-0 fs-3">Saved Predictions</h1>
+        </div>
+        
         {% if predictions|length >= 1 %}
         <div class="d-flex gap-2">
-            <button id="delete-selected-btn" class="btn btn-outline-danger btn-sm" disabled>
-                <i class="bi bi-trash me-1"></i>Delete Selected (<span id="delete-count">0</span>)
+            <button id="delete-selected-btn" class="btn btn-light text-danger action-bar-btn shadow-sm border-0" disabled>
+                <i class="bi bi-trash me-1"></i>Delete (<span id="delete-count">0</span>)
             </button>
-            <button id="compare-btn" class="btn btn-primary btn-sm" disabled>
-                <i class="bi bi-columns-gap me-1"></i>Compare Selected (<span id="compare-count">0</span>)
+            <button id="compare-btn" class="btn btn-primary action-bar-btn shadow-sm border-0" disabled>
+                <i class="bi bi-columns-gap me-1"></i>Compare (<span id="compare-count">0</span>)
             </button>
         </div>
         {% endif %}
@@ -21,74 +114,77 @@
 
     {% if predictions %}
     <form id="bulkDeleteForm" method="POST" action="{{ url_for('bulk_delete_predictions') }}">
-    <div class="card">
+    <div class="premium-list-card">
         <div class="table-responsive">
-            <table class="table table-hover table-predictions mb-0">
-                <thead class="table-light">
+            <table class="premium-data-table">
+                <thead>
                     <tr>
-                        <th class ="text-center" style="width:50px">Select</th>
-                        <th>Town</th>
-                        <th>Street / Block</th>
-                        <th>Flat Type</th>
-                        <th>Model</th>
-                        <th class="text-end">Area</th>
-                        <th>Storey</th>
-                        <th class="text-end">Predicted</th>
-                        <th class="text-end">Range</th>
+                        <th class="text-center" style="width:50px"><i class="bi bi-check-all fs-6"></i></th>
+                        <th>Property Details</th>
+                        <th>Specifications</th>
+                        <th class="text-end">Valuation</th>
                         <th>Saved On</th>
-                        <th class="text-end">Actions</th>
+                        <th class="text-end pe-4">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for p in predictions %}
                     <tr class="prediction-row" style="cursor:pointer"
                         data-href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}">
+                        
                         <td class="text-center" onclick="event.stopPropagation()">
-                            <input type="checkbox" class="form-check-input compare-check" name="ids" value="{{ p['id'] }}">
+                            <input type="checkbox" class="form-check-input compare-check" name="ids" value="{{ p['id'] }}" style="cursor: pointer;">
                         </td>
-                        <td>{{ p['town'] }}</td>
-                        <td class="small">
+                        
+                        <td>
+                            <div class="fw-bold text-dark" style="font-size: 0.95rem; font-family: 'Sora', sans-serif;">{{ p['town'] }}</div>
+                            <div class="text-muted mt-1" style="font-size: 0.8rem;">
                             {% if p.get('street_name') or p.get('block') %}
-                                {% if p.get('block') %}{{ p['block'] }} {% endif %}{{ p.get('street_name', '') }}
+                                    <i class="bi bi-geo-alt-fill opacity-50 me-1"></i>{% if p.get('block') %}Blk {{ p['block'] }} {% endif %}{{ p.get('street_name', '') }}
                             {% else %}
-                                <span class="text-muted">—</span>
+                                    <span class="opacity-50">—</span>
                             {% endif %}
+                            </div>
                         </td>
-                        <td>{{ p['flat_type'] }}</td>
-                        <td>{{ p['flat_model'] }}</td>
-                        <td class="text-end">{{ "{:,.0f}".format(p['floor_area']) }} sqm</td>
-                        <td>{{ p['storey_range'] }}</td>
-                        <td class="text-end fw-bold text-primary">
-                            ${{ "{:,.0f}".format(p['predicted_price']) }}
+
+                        <td>
+                            <div class="fw-semibold text-dark" style="font-size: 0.9rem;">
+                                {{ p['flat_type'] }} <span class="fw-normal text-muted mx-1">·</span> {{ p['flat_model'] }}
+                            </div>
+                            <div class="text-muted mt-1" style="font-size: 0.8rem;">
+                                {{ "{:,.0f}".format(p['floor_area']) }} sqm <span class="mx-1">|</span> Lvl {{ p['storey_range'] }}
+                            </div>
                         </td>
-                        <td class="text-end text-muted small">
-                            ${{ "{:,.0f}".format(p['price_low']) }} -
-                            ${{ "{:,.0f}".format(p['price_high']) }}
+
+                        <td class="text-end">
+                            <div class="fw-bold text-primary" style="font-size: 1.1rem; font-family: 'Sora', sans-serif; letter-spacing: -0.5px;">
+                                ${{ "{:,.0f}".format(p['predicted_price']) }}
+                            </div>
+                            <div class="text-muted mt-1" style="font-size: 0.75rem; letter-spacing: 0.5px;">
+                                ${{ "{:,.0f}".format(p['price_low']) }} — ${{ "{:,.0f}".format(p['price_high']) }}
+                            </div>
                         </td>
-                        <td class="small saved-date">
-                            <div class="fw-semibold">{{ p['created_at_date_display'] }}</div>
+
+                        <td>
+                            <div class="fw-semibold text-dark" style="font-size: 0.85rem;">{{ p['created_at_date_display'] }}</div>
                             {% if p['created_at_time_display'] %}
-                            <div class="text-muted">{{ p['created_at_time_display'] }}</div>
+                            <div class="text-muted mt-1" style="font-size: 0.75rem;">{{ p['created_at_time_display'] }}</div>
                             {% endif %}
                         </td>
-                        <td onclick="event.stopPropagation()">
-                            <div class="saved-predictions-actions">
-                                <a href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}" class="btn btn-sm btn-outline-secondary" title="Edit in Predict page">
-                                    <i class="bi bi-pencil"></i>
-                                </a>
-                                <a href="{{ url_for('map_view') }}?mode=transactions&town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" class="btn btn-sm btn-outline-success" title="View on Map">
-                                    <i class="bi bi-geo-alt"></i>
-                                </a>
-                                <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" class="btn btn-sm btn-outline-primary">
-                                    <i class="bi bi-columns-gap me-1"></i>Compare
-                                </a>
-                                <form method="POST"
-                                      action="{{ url_for('delete_prediction', pred_id=p['id']) }}"
-                                      onsubmit="return confirm('Delete this prediction?')"
-                                      style="display:inline">
-                                    <button type="submit" class="btn btn-sm btn-outline-danger">
-                                        <i class="bi bi-trash"></i>
-                                    </button>
+
+                        <td class="text-end pe-4" onclick="event.stopPropagation()">
+                            <div class="row-actions d-flex justify-content-end gap-1">
+                                <a href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}" 
+                                   class="btn-ghost" title="Edit Properties"><i class="bi bi-pencil"></i></a>
+                                   
+                                <a href="{{ url_for('map_view') }}?mode=transactions&town={{ p['town']|urlencode }}{% if p.get('street_name') %}&street={{ p['street_name']|urlencode }}{% endif %}{% if p.get('block') %}&block={{ p['block']|urlencode }}{% endif %}" 
+                                   class="btn-ghost" title="View on Map"><i class="bi bi-geo-alt"></i></a>
+                                   
+                                <a href="{{ url_for('comparison_select_saved', pred_id=p['id']) }}" 
+                                   class="btn-ghost primary" title="Compare against others"><i class="bi bi-columns-gap"></i></a>
+                                   
+                                <form method="POST" action="{{ url_for('delete_prediction', pred_id=p['id']) }}" onsubmit="return confirm('Delete this prediction?')" style="display:inline">
+                                    <button type="submit" class="btn-ghost danger" title="Delete"><i class="bi bi-trash"></i></button>
                                 </form>
                             </div>
                         </td>

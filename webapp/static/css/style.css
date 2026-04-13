@@ -127,6 +127,63 @@ h6,
     color: var(--tech-blue) !important;
 }
 
+.propsight-nav .nav-user-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border: 1px solid transparent;
+    border-radius: 50px;
+    padding: 6px 12px 6px 6px;
+    color: #0f172a !important;
+    transform: none !important;
+}
+
+.propsight-nav .nav-user-trigger:hover,
+.propsight-nav .nav-user-trigger:focus {
+    background: #f8fafc;
+    border-color: rgba(15, 23, 42, 0.05);
+    color: #0f172a !important;
+    transform: none !important;
+}
+
+.propsight-nav .nav-user-trigger::after {
+    margin-left: 0.2rem;
+}
+
+.propsight-nav .user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #0f172a;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 32px;
+    font-size: 0.85rem;
+}
+
+.propsight-nav .nav-username {
+    color: #0f172a;
+    font-weight: 600;
+}
+
+.propsight-nav .premium-user-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    color: #b45309;
+    border: 1px solid #fde68a;
+    border-radius: 50px;
+    padding: 3px 10px;
+    font-size: 0.7rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    line-height: 1;
+}
+
 .propsight-nav .navbar-toggler {
     border-color: rgba(15, 23, 42, 0.12);
 }

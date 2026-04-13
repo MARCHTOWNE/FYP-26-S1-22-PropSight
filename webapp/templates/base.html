@@ -74,11 +74,17 @@
                 <ul class="navbar-nav">
                     {% if g.user %}
                     <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" role="button"
+                        <a class="nav-link dropdown-toggle nav-user-trigger" href="#" role="button"
                            data-bs-toggle="dropdown">
-                            <i class="bi bi-person-circle me-1"></i>{{ g.user['username'] }}
+                            <span class="user-avatar" aria-hidden="true">
+                                <i class="bi bi-person-fill"></i>
+                            </span>
+                            <span class="nav-username">{{ g.user['username'] }}</span>
                             {% if g.user.get('subscription_tier') == 'premium' %}
-                            <span class="badge bg-warning text-dark ms-1" style="font-size: 0.65em;">Premium</span>
+                            <span class="premium-user-badge">
+                                <i class="bi bi-gem" aria-hidden="true"></i>
+                                <span>Premium</span>
+                            </span>
                             {% endif %}
                         </a>
                         <ul class="dropdown-menu dropdown-menu-end">

@@ -2780,6 +2780,7 @@ def _get_recent_similar_transactions(
     limit=5,
     street_name="",
     block="",
+    storey_range="",
 ):
     """Return recent transactions for same town + flat_type, optionally scoped."""
     try:
@@ -2789,6 +2790,7 @@ def _get_recent_similar_transactions(
             "p_limit": limit,
             "p_street_name": street_name or None,
             "p_block": block or None,
+            "p_storey_range": storey_range or None,
         }) or []
         return rows
     except SupabaseError:
@@ -4285,6 +4287,7 @@ def api_prediction_context():
     predicted_price = request.args.get("predicted_price", type=float, default=0)
     street_name = request.args.get("street_name", "")
     block = request.args.get("block", "")
+    storey_range = request.args.get("storey_range", "")
 
     try:
         lease_decay = _supabase_rpc("rpc_lease_decay", {
@@ -4296,14 +4299,18 @@ def api_prediction_context():
     except SupabaseError:
         lease_decay = []
 
-    # Recent transactions
+    # Fetch transactions matching the same storey range as the prediction so the
+    # benchmark compares like-for-like. If storey_range yields too few results,
+    # fall back to all storeys so the chart is never empty.
     recent = _get_recent_similar_transactions(
-        town,
-        flat_type,
-        limit=20,
-        street_name=street_name,
-        block=block,
+        town, flat_type, limit=150,
+        street_name=street_name, block=block, storey_range=storey_range,
     )
+    if len(recent) < 5 and storey_range:
+        recent = _get_recent_similar_transactions(
+            town, flat_type, limit=150,
+            street_name=street_name, block=block,
+        )
 
     return jsonify({
         "lease_decay": lease_decay,
@@ -4391,6 +4398,64 @@ def api_future_prediction():
             "assumptions": assumptions,
         },
     })
+
+
+# ---------------------------------------------------------------------------
+# API: Yearly Predictions (benchmark chart — per-year model estimates)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/yearly_predictions")
+@api_login_required
+def api_yearly_predictions():
+    """Run predict_price for a list of years; used by the analytics benchmark chart
+    to build a per-month prediction line that changes as lease remaining decreases."""
+    years_raw = request.args.get("years", "")
+    if not years_raw:
+        return jsonify({}), 400
+    try:
+        years = [int(y.strip()) for y in years_raw.split(",") if y.strip()]
+    except ValueError:
+        return jsonify({"error": "invalid years"}), 400
+
+    form_data = {
+        "town":           request.args.get("town", "").strip(),
+        "flat_type":      request.args.get("flat_type", "").strip(),
+        "flat_model":     request.args.get("flat_model", "").strip(),
+        "floor_area":     request.args.get("floor_area", "").strip(),
+        "storey_range":   request.args.get("storey_range", "").strip(),
+        "lease_commence": request.args.get("lease_commence", "").strip(),
+        "street_name":    request.args.get("street_name", "").strip(),
+        "block":          request.args.get("block", "").strip(),
+    }
+    if not form_data["town"]:
+        return jsonify({"error": "town is required"}), 400
+
+    resolved_form, _ = _complete_prediction_form_data(form_data, infer_flat_type=True)
+    flat_type      = resolved_form["flat_type"]
+    flat_model     = resolved_form["flat_model"]
+    floor_area     = resolved_form["floor_area"]
+    storey_range   = resolved_form["storey_range"]
+    lease_commence = resolved_form["lease_commence"]
+    street_name    = resolved_form["street_name"]
+    block          = resolved_form["block"]
+
+    block_distances = None
+    if street_name and block:
+        block_distances = _get_block_distances(town=form_data["town"],
+                                               street_name=street_name, block=block)
+
+    out = {}
+    for year in years:
+        try:
+            pred = predict_price(
+                form_data["town"], flat_type, flat_model, floor_area, storey_range,
+                lease_commence, override_year=year,
+                override_distances=block_distances,
+            )
+            out[str(year)] = pred.get("predicted_price")
+        except Exception:
+            out[str(year)] = None
+    return jsonify(out)
 
 
 # ---------------------------------------------------------------------------

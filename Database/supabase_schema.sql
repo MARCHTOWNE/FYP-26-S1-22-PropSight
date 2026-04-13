@@ -528,7 +528,8 @@ CREATE OR REPLACE FUNCTION rpc_recent_similar_transactions(
     p_flat_type TEXT,
     p_limit INTEGER DEFAULT 20,
     p_street_name TEXT DEFAULT NULL,
-    p_block TEXT DEFAULT NULL
+    p_block TEXT DEFAULT NULL,
+    p_storey_range TEXT DEFAULT NULL
 )
 RETURNS TABLE(
     block TEXT, street_name TEXT, storey_range TEXT,
@@ -544,6 +545,7 @@ RETURNS TABLE(
       AND ft.name = p_flat_type
       AND (p_street_name IS NULL OR b.street_name = p_street_name)
       AND (p_block IS NULL OR b.block = p_block)
+      AND (p_storey_range IS NULL OR tx.storey_range = p_storey_range)
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT p_limit;
 $$;

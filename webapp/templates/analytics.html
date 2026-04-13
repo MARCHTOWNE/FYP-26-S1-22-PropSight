@@ -500,7 +500,7 @@
         <div class="d-flex flex-wrap gap-2 align-items-end pt-2"
              style="border-top: 1px solid rgba(148,163,184,0.15);">
             <div>
-                <label class="form-label fw-bold small mb-1">Street <small class="text-muted fw-normal">(optional)</small></label>
+                <label class="form-label fw-bold small mb-1">Street</label>
                 <select id="filterStreet" class="form-select form-select-sm" style="min-width:160px;" disabled>
                     <option value="">All Streets</option>
                 </select>
@@ -872,43 +872,10 @@
 
         </div><!-- end .dash-rail -->
 
+        </div><!-- end .dash-center -->
     </div><!-- end .dash-layout -->
 
     <!-- ④ PREDICTION INSIGHTS (shown when launched from Predict page) ───── -->
-    <div id="predictionInsights" class="d-none">
-        <hr class="section-divider">
-        <div class="section-kicker mb-1">Your Prediction in Context</div>
-        <h5 class="mb-3">
-            <i class="bi bi-bullseye me-2 text-primary"></i>Prediction Insights
-        </h5>
-        <div class="row g-3 mb-3">
-            <div class="col-lg-12">
-                <div class="card panel-card">
-                    <div class="card-body">
-                        <div class="section-kicker">Trend vs Prediction</div>
-                        <h6 class="card-title">
-                            <i class="bi bi-graph-up me-1 text-primary"></i>Price Trend vs Your Prediction
-                        </h6>
-                        <div class="chart-container"><canvas id="trendVsPredictionChart"></canvas></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="row g-3">
-            <div class="col-lg-12">
-                <div class="card panel-card">
-                    <div class="card-body">
-                        <div class="section-kicker">Benchmark</div>
-                        <h6 class="card-title">
-                            <i class="bi bi-bar-chart me-1 text-primary"></i>Your Prediction vs Recent Actuals
-                        </h6>
-                        <div class="chart-container"><canvas id="predVsActualsChart"></canvas></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- ⑤ AI FAQ SECTIONS ───────────────────────────────────────────────── -->
     <div class="faq-section mt-4">
         <div class="section-kicker mb-1">AI-Powered Questions</div>
@@ -1190,8 +1157,6 @@ function switchSection(sectionId) {
         [priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart, futurePredChart].forEach(c => {
             if (c) { try { c.resize(); } catch(e) {} }
         });
-        // Rebuild these charts once visible so Chart.js recalculates hitboxes
-        // against the final canvas size instead of the hidden panel layout.
         if (sectionId === 'district') {
             await loadLocationComparison();
             await loadPSF();
@@ -1918,6 +1883,7 @@ async function refreshDashboard() {
     await loadPSF();
     buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
+    // Prediction insight charts use the current filter state for market context
 }
 
 /* ── Event wiring ─────────────────────────────────────────────────────────── */
@@ -1925,6 +1891,7 @@ document.getElementById('refreshDashboardBtn').addEventListener('click', () => {
     refreshDashboard();
     debouncedLoadAiFaq();
 });
+
 document.getElementById('clearLocationBtn').addEventListener('click', clearLocationFilters);
 
 document.getElementById('filterTown').addEventListener('change', async function() {
@@ -1958,114 +1925,8 @@ document.getElementById('filterStreet').addEventListener('change', async functio
     refreshDashboard();
 })();
 
-/* ── Prediction Insights (launched from Predict page) ────────────────────── */
-(function loadPredictionInsights() {
-    const predictedPrice = parseFloat(predictionSeed.predicted_price);
-    const town           = predictionSeed.town;
-    const flatType       = predictionSeed.flat_type;
-    const streetName     = predictionSeed.street_name;
-    const block          = predictionSeed.block;
-    if (!predictedPrice || !town) return;
+let leaseDecChart;
 
-    document.getElementById('predictionInsights').classList.remove('d-none');
-
-    let trendVsPredChart, predVsActChart, leaseDecChart;
-
-    async function loadTrendVsPrediction() {
-        const params = new URLSearchParams();
-        params.set('town', town);
-        if (flatType)    params.set('flat_type', flatType);
-        if (streetName)  params.set('street_name', streetName);
-        if (block)       params.set('block', block);
-        const data = await fetchJSON('/api/price_trend_simple?' + params.toString());
-        if (!data.length) return;
-
-        const ctx = document.getElementById('trendVsPredictionChart').getContext('2d');
-        if (trendVsPredChart) trendVsPredChart.destroy();
-        trendVsPredChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: data.map(d => d.year),
-                datasets: [
-                    { label: 'Average Price', data: data.map(d => d.avg_price), borderColor: '#2563eb', backgroundColor: 'rgba(37,99,235,0.12)', fill: true, tension: 0.28 },
-                    { label: 'Your Prediction', data: data.map(() => predictedPrice), borderColor: '#dc2626', borderDash: [8,4], borderWidth: 2, pointRadius: 0, fill: false }
-                ]
-            },
-            options: {
-                responsive: true, maintainAspectRatio: false,
-                plugins: { tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) } }, legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } },
-                scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
-            }
-        });
-    }
-
-    async function loadPredictionContext() {
-        const params = new URLSearchParams();
-        params.set('town', town);
-        if (flatType)   params.set('flat_type', flatType);
-        if (streetName) params.set('street_name', streetName);
-        if (block)      params.set('block', block);
-        params.set('predicted_price', predictedPrice);
-        const contextData = await fetchJSON('/api/prediction_context?' + params.toString());
-
-        const txns = (contextData.recent_transactions || []).slice(0, 15);
-        if (txns.length) {
-            const labels  = txns.map(t => [t.block, t.street_name].filter(Boolean).join(' '));
-            const prices  = txns.map(t => t.resale_price);
-            const predLine = txns.map(() => predictedPrice);
-            const ctx = document.getElementById('predVsActualsChart').getContext('2d');
-            if (predVsActChart) predVsActChart.destroy();
-            predVsActChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [
-                        { label: 'Actual Price', data: prices, backgroundColor: 'rgba(37,99,235,0.72)', borderRadius: 4 },
-                        { label: 'Your Prediction', data: predLine, type: 'line', borderColor: '#dc2626', borderDash: [8,4], borderWidth: 2, pointRadius: 0, fill: false }
-                    ]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: { tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) } }, legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } } },
-                    scales: { x: { ticks: { maxRotation: 45, font: { size: 9 } } }, y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
-                }
-            });
-        }
-
-        const decay = contextData.lease_decay || [];
-        if (decay.length) {
-            const labels = decay.map(d => d.lease_bucket + '–' + (d.lease_bucket + 9) + ' yrs');
-            const prices = decay.map(d => d.avg_price);
-            const counts = decay.map(d => d.txn_count);
-            const ctx = document.getElementById('leaseDecayChart').getContext('2d');
-            if (leaseDecChart) leaseDecChart.destroy();
-            leaseDecChart = new Chart(ctx, {
-                type: 'bar',
-                data: {
-                    labels,
-                    datasets: [{ label: 'Average Price', data: prices, backgroundColor: decay.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 6 }]
-                },
-                options: {
-                    responsive: true, maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) + ' (' + Number(counts[ctx.dataIndex] || 0).toLocaleString() + ' txns)' } }
-                    },
-                    scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
-                }
-            });
-
-            // Reveal lease section
-            const leasePlaceholder  = document.getElementById('leasePlaceholder');
-            const leaseContent      = document.getElementById('leaseDecayContainer');
-            if (leasePlaceholder) leasePlaceholder.style.display = 'none';
-            if (leaseContent)     leaseContent.classList.remove('d-none');
-        }
-    }
-
-    loadTrendVsPrediction();
-    loadPredictionContext();
-})();
 
 /* ══════════════════════════════════════════════════════════════════════════
    AI FAQ

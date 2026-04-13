@@ -1246,6 +1246,11 @@ let volumeChart;
 let psfChart;
 let futurePredChart;
 let latestTrendData = [];
+let latestForecastData = [];
+let latestForecastMeta = {};
+let latestLeaseDecayData = [];
+let latestComparisonMeta = { rows: [], labelField: 'town' };
+let activeInsightSection = 'trend';
 
 /* ── AI FAQ state ─────────────────────────────────────────────────────────── */
 var IS_PREMIUM = {{ 'true' if is_premium else 'false' }};
@@ -1415,12 +1420,14 @@ function updateBreadcrumb() {
 
 /* ── Section navigation ───────────────────────────────────────────────────── */
 function switchSection(sectionId) {
+    activeInsightSection = sectionId;
     document.querySelectorAll('.section-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.nav-pill-item').forEach(p => p.classList.remove('active'));
     const panel = document.getElementById('section-' + sectionId);
     if (panel) panel.classList.add('active');
     const pill = document.querySelector('.nav-pill-item[data-section="' + sectionId + '"]');
     if (pill) pill.classList.add('active');
+    renderActiveRailInsight();
     // Trigger chart resize after panel becomes visible
     setTimeout(async () => {
         [priceTrendChart, flatTypeChart, districtChart, volumeChart, psfChart, futurePredChart].forEach(c => {
@@ -1429,6 +1436,7 @@ function switchSection(sectionId) {
         if (sectionId === 'district') {
             await loadLocationComparison();
             await loadPSF();
+            renderActiveRailInsight();
         }
     }, 60);
 }
@@ -1595,38 +1603,198 @@ function updateFocusSummary(data) {
 }
 
 /* ── Right rail AI Insight ────────────────────────────────────────────────── */
-function buildInsights(data, comparisonMeta) {
-    const box = document.getElementById('railInsightText');
-    if (!box) return;
-    if (!data.length) {
-        box.innerHTML = '<span class="text-muted">No data in the selected year range.</span>';
-        return;
-    }
-
+function getInsightLocationLabel() {
     const filters = getFilters();
     let locationLabel = filters.town || 'All towns';
     if (filters.street_name) locationLabel += ' > ' + filters.street_name;
     if (filters.block) locationLabel += ' > Blk ' + filters.block;
+    return locationLabel;
+}
 
-    const first = Number(data[0].avg_price || 0);
-    const last  = Number(data[data.length - 1].avg_price || 0);
+function buildTrendInsightHtml() {
+    if (!latestTrendData.length) {
+        return '<span class="text-muted">No price trend data in the selected year range.</span>';
+    }
+    const first = Number(latestTrendData[0].avg_price || 0);
+    const last  = Number(latestTrendData[latestTrendData.length - 1].avg_price || 0);
     const trendPct = first ? ((last - first) / first) * 100 : 0;
     let direction = 'sideways trend';
-    if (trendPct > 3)  direction = 'uptrend';
+    if (trendPct > 3) direction = 'uptrend';
     if (trendPct < -3) direction = 'downtrend';
+    const totalTxns = latestTrendData.reduce((sum, row) => sum + Number(row.txn_count || 0), 0);
 
-    const rows = (comparisonMeta && comparisonMeta.rows) || [];
-    const labelField = (comparisonMeta && comparisonMeta.labelField) || 'town';
-    const high = rows[0] || null;
-    const low  = rows[rows.length - 1] || null;
+    return '<strong>' + escapeHtml(getInsightLocationLabel()) + '</strong> shows a <strong>' +
+        direction + '</strong> of <strong>' + trendPct.toFixed(1) + '%</strong> from ' +
+        escapeHtml(String(latestTrendData[0].year)) + ' to ' +
+        escapeHtml(String(latestTrendData[latestTrendData.length - 1].year)) + '. ' +
+        totalTxns.toLocaleString() + ' transactions are in scope.';
+}
 
-    box.innerHTML =
-        '<strong>' + escapeHtml(locationLabel) + '</strong> shows a ' +
-        '<strong>' + direction + '</strong> of <strong>' + trendPct.toFixed(1) + '%</strong> over the selected window. ' +
-        Number(data.reduce((s, d) => s + Number(d.txn_count || 0), 0)).toLocaleString() + ' transactions in scope.' +
-        (high && low ? ' Benchmark spread: ' + escapeHtml(high[labelField] || '-') + ' leads (' +
-            formatMoney(high.avg_price) + ') vs ' + escapeHtml(low[labelField] || '-') + ' (' +
-            formatMoney(low.avg_price) + ').' : '');
+function buildForecastInsightHtml() {
+    const filters = getFilters();
+    if (!filters.town) {
+        return '<span class="text-muted">Select a town to generate a 5-year forecast insight.</span>';
+    }
+    if (latestForecastData.length < 2) {
+        return '<span class="text-muted">Forecast data is unavailable for the current scope.</span>';
+    }
+
+    const current = latestForecastData[0];
+    const future = latestForecastData[latestForecastData.length - 1];
+    const forecastPct = Number(current.predicted_price || 0)
+        ? ((Number(future.predicted_price || 0) - Number(current.predicted_price || 0)) / Number(current.predicted_price || 0)) * 100
+        : 0;
+    const direction = forecastPct > 3 ? 'rise' : (forecastPct < -3 ? 'soften' : 'hold broadly steady');
+    const resolved = latestForecastMeta.resolvedInputs || {};
+    const flatType = resolved.flat_type || filters.flat_type || 'Representative flat type';
+
+    return '<strong>' + escapeHtml(getInsightLocationLabel()) + '</strong> is forecast to <strong>' +
+        direction + '</strong> by <strong>' + forecastPct.toFixed(1) + '%</strong> through ' +
+        escapeHtml(String(future.year)) + '. Base case ends near <strong>' +
+        formatMoney(future.predicted_price) + '</strong> for <strong>' + escapeHtml(flatType) +
+        '</strong>, with a projected range of ' + formatMoney(future.price_low) + ' to ' +
+        formatMoney(future.price_high) + '.';
+}
+
+function buildFlatTypeInsightHtml() {
+    if (!latestFlatTypeData.length) {
+        return '<span class="text-muted">No flat type mix data is available for the current scope.</span>';
+    }
+    const totalTxns = latestFlatTypeData.reduce((sum, row) => sum + Number(row.txn_count || 0), 0);
+    const topByVolume = latestFlatTypeData.slice().sort((a, b) => Number(b.txn_count || 0) - Number(a.txn_count || 0))[0];
+    const topByPrice = latestFlatTypeData.slice().sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))[0];
+    const share = totalTxns ? (Number(topByVolume.txn_count || 0) / totalTxns) * 100 : 0;
+
+    return '<strong>' + escapeHtml(topByVolume.flat_type || 'Unknown flat type') + '</strong> leads the mix with <strong>' +
+        share.toFixed(1) + '%</strong> of transactions (' + Number(topByVolume.txn_count || 0).toLocaleString() +
+        ' deals). The highest average resale price comes from <strong>' +
+        escapeHtml(topByPrice.flat_type || 'Unknown flat type') + '</strong> at <strong>' +
+        formatMoney(topByPrice.avg_price) + '</strong>.';
+}
+
+function buildDistrictInsightHtml() {
+    const rows = latestComparisonMeta.rows || [];
+    const labelField = latestComparisonMeta.labelField || 'town';
+    if (!rows.length) {
+        return '<span class="text-muted">No benchmark data is available for the current comparison.</span>';
+    }
+
+    const filters = getFilters();
+    const high = rows[0];
+    const low = rows[rows.length - 1];
+    const selectedLabel = labelField === 'street_name' ? (filters.street_name || '') : (filters.town || '');
+    const selectedIndex = selectedLabel
+        ? rows.findIndex(row => String(row[labelField] || '') === selectedLabel)
+        : -1;
+    const topPsfRow = latestPsfData[0] || null;
+    const spreadPct = Number(low.avg_price || 0)
+        ? ((Number(high.avg_price || 0) - Number(low.avg_price || 0)) / Number(low.avg_price || 0)) * 100
+        : 0;
+
+    if (selectedIndex >= 0) {
+        const selectedRow = rows[selectedIndex];
+        return '<strong>' + escapeHtml(selectedLabel) + '</strong> ranks <strong>#' +
+            String(selectedIndex + 1) + '</strong> of ' + String(rows.length) + ' in this benchmark at <strong>' +
+            formatMoney(selectedRow.avg_price) + '</strong>. Leader <strong>' +
+            escapeHtml(high[labelField] || '-') + '</strong> sits at ' + formatMoney(high.avg_price) +
+            ', and the overall price spread is <strong>' + spreadPct.toFixed(1) + '%</strong>' +
+            (topPsfRow ? '. Top price per sqm is ' + escapeHtml(topPsfRow[labelField] || topPsfRow.town || topPsfRow.street_name || '-') +
+                ' at <strong>$' + Math.round(Number(topPsfRow.psf || 0)).toLocaleString() + '</strong>.' : '.');
+    }
+
+    return '<strong>' + escapeHtml(high[labelField] || '-') + '</strong> leads the current benchmark at <strong>' +
+        formatMoney(high.avg_price) + '</strong>, versus <strong>' + escapeHtml(low[labelField] || '-') +
+        '</strong> at ' + formatMoney(low.avg_price) + '. The spread across this comparison set is <strong>' +
+        spreadPct.toFixed(1) + '%</strong>' +
+        (topPsfRow ? ', and the top price per sqm is <strong>$' +
+            Math.round(Number(topPsfRow.psf || 0)).toLocaleString() + '</strong>.' : '.');
+}
+
+function buildVolumeInsightHtml() {
+    if (!latestVolumeData.length) {
+        return '<span class="text-muted">No transaction volume data is available for the current scope.</span>';
+    }
+    const totalTxns = latestVolumeData.reduce((sum, row) => sum + Number(row.txn_count || 0), 0);
+    const peakRow = latestVolumeData.slice().sort((a, b) => Number(b.txn_count || 0) - Number(a.txn_count || 0))[0];
+    const first = Number(latestVolumeData[0].txn_count || 0);
+    const last = Number(latestVolumeData[latestVolumeData.length - 1].txn_count || 0);
+    const changePct = first ? ((last - first) / first) * 100 : 0;
+
+    return '<strong>' + totalTxns.toLocaleString() + ' transactions</strong> were recorded from ' +
+        escapeHtml(String(latestVolumeData[0].year)) + ' to ' +
+        escapeHtml(String(latestVolumeData[latestVolumeData.length - 1].year)) + '. Activity peaked in <strong>' +
+        escapeHtml(String(peakRow.year)) + '</strong> with <strong>' +
+        Number(peakRow.txn_count || 0).toLocaleString() + '</strong> deals, and volume has changed <strong>' +
+        changePct.toFixed(1) + '%</strong> across the selected window.';
+}
+
+function buildLeaseInsightHtml() {
+    if (!predictionSeed.town || !predictionSeed.predicted_price) {
+        return '<span class="text-muted">Run a prediction to unlock lease decay insights for this area.</span>';
+    }
+    if (!latestLeaseDecayData.length) {
+        return '<span class="text-muted">Lease decay data is loading or unavailable for this predicted flat.</span>';
+    }
+    const high = latestLeaseDecayData.slice().sort((a, b) => Number(b.avg_price || 0) - Number(a.avg_price || 0))[0];
+    const low = latestLeaseDecayData.slice().sort((a, b) => Number(a.avg_price || 0) - Number(b.avg_price || 0))[0];
+    const gapPct = Number(low.avg_price || 0)
+        ? ((Number(high.avg_price || 0) - Number(low.avg_price || 0)) / Number(low.avg_price || 0)) * 100
+        : 0;
+
+    return '<strong>' + escapeHtml(high.lease_bucket || high.bucket || high.label || 'Longer leases') +
+        '</strong> show the strongest pricing at <strong>' + formatMoney(high.avg_price) + '</strong>. Compared with <strong>' +
+        escapeHtml(low.lease_bucket || low.bucket || low.label || 'shorter leases') + '</strong> at ' +
+        formatMoney(low.avg_price) + ', the observed lease-decay gap is <strong>' +
+        gapPct.toFixed(1) + '%</strong>.';
+}
+
+function buildMyFlatInsightHtml() {
+    const predicted = parseFloat(predictionSeed.predicted_price);
+    if (!predicted || !predictionSeed.town) {
+        return buildTrendInsightHtml();
+    }
+    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const avg = parseFloat(avgText);
+    if (!avg || isNaN(avg)) {
+        return '<strong>' + escapeHtml(predictionSeed.town) + '</strong> prediction context is available, but the market baseline has not loaded yet.';
+    }
+    const diffPct = ((predicted - avg) / avg) * 100;
+
+    return 'Your predicted value for <strong>' + escapeHtml(getInsightLocationLabel()) + '</strong> is <strong>' +
+        formatMoney(predicted) + '</strong>, which is <strong>' + Math.abs(diffPct).toFixed(1) + '%</strong> ' +
+        (diffPct >= 0 ? 'above' : 'below') + ' the current area average of ' + formatMoney(avg) + '.';
+}
+
+function renderActiveRailInsight() {
+    const box = document.getElementById('railInsightText');
+    if (!box) return;
+
+    let html = '';
+    switch (activeInsightSection) {
+        case 'forecast':
+            html = buildForecastInsightHtml();
+            break;
+        case 'flattype':
+            html = buildFlatTypeInsightHtml();
+            break;
+        case 'district':
+            html = buildDistrictInsightHtml();
+            break;
+        case 'volume':
+            html = buildVolumeInsightHtml();
+            break;
+        case 'lease':
+            html = buildLeaseInsightHtml();
+            break;
+        case 'myflat':
+            html = buildMyFlatInsightHtml();
+            break;
+        case 'trend':
+        default:
+            html = buildTrendInsightHtml();
+            break;
+    }
+    box.innerHTML = html;
 }
 
 /* ── Selectors ────────────────────────────────────────────────────────────── */
@@ -1924,10 +2092,13 @@ async function loadLocationComparison() {
         });
 
         latestBenchmarkData = chartRows;
-        return { rows: chartRows, labelField };
+        latestComparisonMeta = { rows: chartRows, labelField: labelField };
+        return latestComparisonMeta;
     } catch (e) {
+        latestBenchmarkData = [];
+        latestComparisonMeta = { rows: [], labelField: 'town' };
         if (districtChart) { districtChart.destroy(); districtChart = null; }
-        return { rows: [], labelField: 'town' };
+        return latestComparisonMeta;
     } finally {
         setLoading('districtChart', false);
     }
@@ -1938,14 +2109,15 @@ async function loadVolume() {
     const ctx = document.getElementById('volumeChart').getContext('2d');
     setLoading('volumeChart', true);
     try {
+        latestVolumeData = latestTrendData.map(d => ({ year: d.year, txn_count: d.txn_count }));
         if (volumeChart) volumeChart.destroy();
         volumeChart = new Chart(ctx, {
             type: 'bar',
             data: {
-                labels: latestTrendData.map(d => d.year),
+                labels: latestVolumeData.map(d => d.year),
                 datasets: [{
                     label: 'Transactions',
-                    data:  latestTrendData.map(d => d.txn_count),
+                    data:  latestVolumeData.map(d => d.txn_count),
                     backgroundColor: 'rgba(59,130,246,0.78)',
                     borderRadius: 4,
                 }]
@@ -2057,6 +2229,8 @@ function hideFuturePredictions() {
     if (section) section.classList.add('d-none');
     const tbody = document.getElementById('forecastTableBody');
     if (tbody) tbody.innerHTML = '';
+    latestForecastData = [];
+    latestForecastMeta = {};
     if (futurePredChart) { futurePredChart.destroy(); futurePredChart = null; }
 }
 
@@ -2069,6 +2243,8 @@ async function loadFuturePredictions() {
         const data     = await fetchJSON('/api/future_prediction?' + buildFuturePredictionParams().toString());
         const timeline = data.timeline || [];
         if (timeline.length < 2) { hideFuturePredictions(); return; }
+        latestForecastData = timeline;
+        latestForecastMeta = { resolvedInputs: data.resolved_inputs || {} };
 
         // Show forecast content
         const emptyState = document.getElementById('forecastEmptyState');
@@ -2149,13 +2325,13 @@ async function loadFuturePredictions() {
 /* ── Full refresh ─────────────────────────────────────────────────────────── */
 async function refreshDashboard() {
     updateBreadcrumb();
-    const trendData      = await loadPriceTrend();
+    await loadPriceTrend();
     await loadFlatType();
-    const comparisonMeta = await loadLocationComparison();
+    await loadLocationComparison();
     await loadVolume();
     await loadPSF();
-    buildInsights(trendData, comparisonMeta);
     await loadFuturePredictions();
+    renderActiveRailInsight();
     // Prediction insight charts use the current filter state for market context
 }
 
@@ -2360,6 +2536,7 @@ async function loadPredictionContext() {
 
         // Lease decay charts
         const decay = contextData.lease_decay || [];
+        latestLeaseDecayData = decay;
         if (decay.length) {
             const labels = decay.map(d => d.lease_bucket || d.bucket || d.label);
             const prices = decay.map(d => d.avg_price);
@@ -2385,7 +2562,11 @@ async function loadPredictionContext() {
                 });
             }
         }
-    } catch(e) {}
+        renderActiveRailInsight();
+    } catch(e) {
+        latestLeaseDecayData = [];
+        renderActiveRailInsight();
+    }
 }
 
 /* ── loadPredictionInsights IIFE ──────────────────────────────────────────── */
@@ -2456,10 +2637,12 @@ function renderFaqGroup(containerId, questions) {
 function collectChartDataSummary() {
     return {
         trend:     latestTrendData.map(d => ({ year: d.year, avg_price: d.avg_price, txn_count: d.txn_count })),
-        volume:    latestTrendData.map(d => ({ year: d.year, txn_count: d.txn_count })),
+        volume:    latestVolumeData.map(d => ({ year: d.year, txn_count: d.txn_count })),
         flat_type: latestFlatTypeData.map(d => ({ flat_type: d.flat_type, txn_count: d.txn_count, avg_price: d.avg_price })),
         benchmark: latestBenchmarkData.slice(0,10).map(d => ({ label: d.town || d.street_name, avg_price: d.avg_price })),
         psf:       latestPsfData.slice(0,10).map(d => ({ label: d.town || d.street_name, psf: d.psf })),
+        forecast:  latestForecastData.map(d => ({ year: d.year, predicted_price: d.predicted_price, price_low: d.price_low, price_high: d.price_high })),
+        lease:     latestLeaseDecayData.map(d => ({ label: d.lease_bucket || d.bucket || d.label, avg_price: d.avg_price, txn_count: d.txn_count })),
     };
 }
 
@@ -2498,10 +2681,6 @@ async function loadAiFaqQuestions() {
     const chartData   = collectChartDataSummary();
     const chartImages = collectChartImages();
 
-    // Also show loading shimmer in right rail
-    const railBox = document.getElementById('railInsightText');
-    if (railBox) railBox.innerHTML = '<div class="ai-insight-shimmer"></div><div class="ai-insight-shimmer" style="width:75%"></div>';
-
     try {
         const resp = await fetch('/api/ai_questions', {
             method: 'POST',
@@ -2520,7 +2699,6 @@ async function loadAiFaqQuestions() {
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = msg;
             });
-            if (railBox) railBox.innerHTML = '<span class="text-muted" style="font-size:0.82rem;">AI temporarily unavailable.</span>';
             return;
         }
         if (Object.keys(groups).length > 0) aiFaqQuestionsCache[cacheKey] = groups;

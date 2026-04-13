@@ -52,9 +52,9 @@
 
     .map-kicker {
         font-size: 0.65rem;
-        letter-spacing: 0.14em;
+        letter-spacing: 0.1em;
         text-transform: uppercase;
-        color: #94a3b8;
+        color: #64748b;
         margin-bottom: 0.25rem;
     }
     .map-sidebar h2 {
@@ -80,8 +80,10 @@
     .map-stat {
         padding: 10px;
         border-radius: 12px;
-        background: rgba(15, 23, 42, 0.7);
-        border: 1px solid rgba(148, 163, 184, 0.10);
+        background: linear-gradient(180deg, rgba(30,41,59,0.5) 0%, rgba(15,23,42,0.5) 100%);
+        border: none;
+        border-top: 1px solid rgba(255,255,255,0.1);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         text-align: center;
     }
     .map-stat-label {
@@ -89,7 +91,7 @@
         font-size: 0.62rem;
         color: #64748b;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         margin-bottom: 2px;
     }
     .map-stat-value {
@@ -105,15 +107,28 @@
     .map-toolbar { display: grid; gap: 10px; }
 
     .map-mode-toggle {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 6px;
+        background: rgba(15, 23, 42, 0.8);
+        border-radius: 12px;
+        padding: 4px;
+        display: flex;
+        border: 1px solid rgba(255,255,255,0.05);
+        gap: 4px;
     }
-    .map-mode-toggle .btn {
-        border-radius: 10px;
+    .map-mode-toggle button {
+        background: transparent;
+        color: #94a3b8;
+        border: none;
+        border-radius: 8px;
+        flex: 1;
         padding: 0.6rem 0.6rem;
         font-size: 0.82rem;
         font-weight: 700;
+        transition: all 0.2s ease;
+    }
+    .map-mode-toggle button.active {
+        background: rgba(255,255,255,0.1);
+        color: #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
     }
 
     .map-control-group { display: grid; gap: 6px; }
@@ -121,7 +136,7 @@
     .control-label {
         font-size: 0.68rem;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         color: #64748b;
         font-weight: 700;
         margin: 0;
@@ -139,8 +154,9 @@
 
     /* ── Amenity dropdown ── */
     .amenity-panel {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.10);
+        background: rgba(15,23,42,0.4);
+        border: 1px solid rgba(255,255,255,0.03);
+        border-top: 1px solid rgba(255,255,255,0.08);
         border-radius: 12px;
         padding: 10px 12px;
     }
@@ -162,8 +178,9 @@
     .amenity-body.open { display: block; }
 
     .scenario-panel {
-        background: rgba(15, 23, 42, 0.6);
-        border: 1px solid rgba(148, 163, 184, 0.10);
+        background: rgba(15,23,42,0.4);
+        border: 1px solid rgba(255,255,255,0.03);
+        border-top: 1px solid rgba(255,255,255,0.08);
         border-radius: 12px;
         padding: 10px 12px;
     }
@@ -286,10 +303,11 @@
     /* ── Insight box ── */
     .map-insight {
         padding: 10px 12px;
-        border-radius: 10px;
-        background: linear-gradient(135deg, rgba(14, 116, 144, 0.18), rgba(124, 58, 237, 0.12));
-        border: 1px solid rgba(125, 211, 252, 0.12);
-        color: #94a3b8;
+        border-radius: 4px 10px 10px 4px;
+        background: rgba(14, 165, 233, 0.05);
+        border: none;
+        border-left: 3px solid #0ea5e9;
+        color: #93c5fd;
         font-size: 0.78rem;
         line-height: 1.45;
     }
@@ -306,7 +324,7 @@
     .map-period-note .period-label {
         color: #64748b;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         font-size: 0.64rem;
         font-weight: 700;
         margin-right: 6px;
@@ -367,7 +385,7 @@
     .map-legend-title {
         font-size: 0.68rem;
         text-transform: uppercase;
-        letter-spacing: 0.08em;
+        letter-spacing: 0.1em;
         color: #64748b;
         margin-bottom: 0.5rem;
     }
@@ -552,10 +570,10 @@
                 <div class="map-toolbar">
                     <!-- Mode toggle -->
                     <div class="map-mode-toggle">
-                        <button class="btn btn-outline-light" id="btnPins" onclick="showPins()">
+                        <button type="button" id="btnPins" onclick="showPins()">
                             <i class="bi bi-pin-map me-1"></i> Transactions
                         </button>
-                        <button class="btn btn-primary active" id="btnHeatmap" onclick="showHeatmap()">
+                        <button type="button" class="active" id="btnHeatmap" onclick="showHeatmap()">
                             <i class="bi bi-map me-1"></i> Prediction
                         </button>
                     </div>
@@ -1239,15 +1257,11 @@ function setModeButtons(mode) {
     const pinsBtn = document.getElementById('btnPins');
     const heatBtn = document.getElementById('btnHeatmap');
     if (mode === 'pins') {
-        pinsBtn.classList.add('active', 'btn-primary');
-        pinsBtn.classList.remove('btn-outline-light');
-        heatBtn.classList.remove('active', 'btn-primary');
-        heatBtn.classList.add('btn-outline-light');
+        pinsBtn.classList.add('active');
+        heatBtn.classList.remove('active');
     } else {
-        heatBtn.classList.add('active', 'btn-primary');
-        heatBtn.classList.remove('btn-outline-light');
-        pinsBtn.classList.remove('active', 'btn-primary');
-        pinsBtn.classList.add('btn-outline-light');
+        heatBtn.classList.add('active');
+        pinsBtn.classList.remove('active');
     }
 }
 

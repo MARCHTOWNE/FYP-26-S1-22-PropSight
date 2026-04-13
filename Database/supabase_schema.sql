@@ -493,8 +493,32 @@ LANGUAGE SQL STABLE AS $$
         b.dist_high_demand_primary_school,
         b.high_demand_primary_count_1km
     FROM blocks b JOIN towns t ON b.town_id = t.id
-    WHERE t.name = p_town AND b.street_name = p_street AND b.block = p_block
+    WHERE t.name = p_town
+      AND upper(trim(b.street_name)) = upper(trim(p_street))
+      AND trim(b.block) = trim(p_block)
     LIMIT 1;
+$$;
+
+-- When an exact block row is missing, use averages for that street (still far more precise than town averages).
+CREATE OR REPLACE FUNCTION rpc_street_avg_distances(p_town TEXT, p_street TEXT)
+RETURNS TABLE(dist_mrt DOUBLE PRECISION, dist_cbd DOUBLE PRECISION,
+              dist_school DOUBLE PRECISION, dist_mall DOUBLE PRECISION,
+              dist_hawker DOUBLE PRECISION, hawker_count_1km DOUBLE PRECISION,
+              dist_high_demand_school DOUBLE PRECISION,
+              high_demand_primary_count_1km DOUBLE PRECISION)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        AVG(b.dist_mrt),
+        AVG(b.dist_cbd),
+        AVG(b.dist_primary_school),
+        AVG(b.dist_major_mall),
+        AVG(b.dist_hawker_centre),
+        AVG(b.hawker_count_1km)::DOUBLE PRECISION,
+        AVG(b.dist_high_demand_primary_school),
+        AVG(b.high_demand_primary_count_1km)::DOUBLE PRECISION
+    FROM blocks b JOIN towns t ON b.town_id = t.id
+    WHERE t.name = p_town
+      AND upper(trim(b.street_name)) = upper(trim(p_street));
 $$;
 
 -- Lease decay data for analytics

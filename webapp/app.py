@@ -116,6 +116,12 @@ def _first_existing_path(paths):
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_DIR = os.path.dirname(BASE_DIR)
+
+# Linear distance features: training data from proximity_features.py uses kilometres.
+# Set PROPSIGHT_DISTANCE_UNIT=m only if your deployed DB / model still uses metres.
+_PROPSIGHT_DU = (os.environ.get("PROPSIGHT_DISTANCE_UNIT") or "km").strip().lower()
+PROPSIGHT_DISTANCE_UNIT = _PROPSIGHT_DU if _PROPSIGHT_DU in ("km", "m") else "km"
+
 REFERENCE_DATA_DIR = _first_existing_path([
     os.environ.get("HDB_REFERENCE_DATA_DIR", ""),
     os.path.join(PROJECT_DIR, "Data Preprocessing", "reference_data"),
@@ -1290,17 +1296,43 @@ def _get_saved_prediction_by_id(predictions, prediction_id):
     return next((p for p in predictions if p.get("id") == target_id), None)
 
 
+def _distance_feature_defaults():
+    """Defaults when town/block distances are missing; must match PROPSIGHT_DISTANCE_UNIT."""
+    if PROPSIGHT_DISTANCE_UNIT == "km":
+        return {
+            "dist_mrt": 0.5,
+            "dist_cbd": 10.0,
+            "dist_school": 0.5,
+            "dist_mall": 1.0,
+            "dist_hawker": 1.0,
+            "hawker_count_1km": 0,
+            "dist_high_demand_school": 0.5,
+            "high_demand_primary_count_1km": 0,
+        }
+    return {
+        "dist_mrt": 500.0,
+        "dist_cbd": 10000.0,
+        "dist_school": 500.0,
+        "dist_mall": 1000.0,
+        "dist_hawker": 1000.0,
+        "hawker_count_1km": 0,
+        "dist_high_demand_school": 500.0,
+        "high_demand_primary_count_1km": 0,
+    }
+
+
 def _format_distance(value):
-    """Format a distance value in meters to a readable string."""
+    """Format a linear distance for UI (raw unit = PROPSIGHT_DISTANCE_UNIT)."""
     if value is None:
         return "N/A"
     try:
-        m = float(value)
+        v = float(value)
     except (TypeError, ValueError):
         return "N/A"
-    if m >= 1000:
-        return f"{m / 1000:,.1f} km"
-    return f"{m:,.0f}m"
+    meters = v * 1000.0 if PROPSIGHT_DISTANCE_UNIT == "km" else v
+    if meters >= 1000:
+        return f"{meters / 1000:,.1f} km"
+    return f"{meters:,.0f} m"
 
 
 def _build_comparison_analysis(payloads):
@@ -1323,6 +1355,7 @@ def _build_comparison_analysis(payloads):
         ("dist_school", "Nearest School", "dist", "min"),
         ("dist_high_demand_school", "Top Primary School", "dist", "min"),
         ("dist_mall", "Nearest Mall", "dist", "min"),
+        ("dist_hawker", "Nearest Hawker", "dist", "min"),
         ("hawker_count_1km", "Hawkers within 1km", "count", "max"),
         ("dist_cbd", "Distance to CBD", "dist", "min"),
         ("is_mature", "Mature Estate", "yesno", None),
@@ -1452,6 +1485,13 @@ def _generate_comparison_insights(payloads, labels):
             f"while {worst_l} is farthest ({_format_distance(worst_v)})."
         )
 
+    best_l, best_v, worst_l, worst_v = _best_worst("dist_hawker", "min")
+    if best_l:
+        insights.append(
+            f"Prediction {best_l} is nearest to a hawker centre ({_format_distance(best_v)}), "
+            f"while {worst_l} is farthest ({_format_distance(worst_v)})."
+        )
+
     best_l, best_v, worst_l, worst_v = _best_worst("hawker_count_1km", "max")
     if best_l:
         insights.append(
@@ -1558,6 +1598,7 @@ def _rank_comparison_factors(payloads):
         ("dist_school", "Nearest School", "dist", True),
         ("dist_high_demand_school", "Top Primary School", "dist", True),
         ("dist_mall", "Nearest Mall", "dist", True),
+        ("dist_hawker", "Nearest Hawker", "dist", True),
         ("hawker_count_1km", "Hawkers within 1 km", "count", False),
         ("remaining_lease", "Remaining Lease", "yrs", False),
         ("flat_age", "Flat Age", "yrs", True),
@@ -1579,6 +1620,7 @@ def _rank_comparison_factors(payloads):
             "dist_cbd": "avg_dist_cbd",
             "dist_school": "avg_dist_school",
             "dist_mall": "avg_dist_mall",
+            "dist_hawker": "avg_dist_hawker",
             "dist_high_demand_school": "avg_dist_high_demand_school",
             "hawker_count_1km": "avg_hawker_count_1km",
         }
@@ -1756,11 +1798,13 @@ def _run_prediction_form(form_data, infer_flat_type=False):
         infer_flat_type=infer_flat_type,
     )
 
-    # Block-level distances if available
+    # Block-level distances when street is set (exact block, else street averages).
     block_distances = None
-    if resolved_form.get("block") and resolved_form.get("street_name"):
+    if resolved_form.get("street_name"):
         block_distances = _get_block_distances(
-            resolved_form["town"], resolved_form["street_name"], resolved_form["block"]
+            resolved_form["town"],
+            resolved_form["street_name"],
+            resolved_form.get("block") or "",
         )
 
     result = predict_price(
@@ -2392,28 +2436,33 @@ def _build_scaled_feature_df(town, flat_type, flat_model, floor_area, storey_ran
 
     storey_mid = _storey_midpoint(storey_range)
 
+    dd = _distance_feature_defaults()
     if override_distances:
-        dist_mrt = override_distances.get("dist_mrt", 500)
-        dist_cbd = override_distances.get("dist_cbd", 10000)
-        dist_school = override_distances.get("dist_school", 500)
-        dist_mall = override_distances.get("dist_mall", 1000)
-        dist_hawker = override_distances.get("dist_hawker", 1.0)
-        hawker_count_1km = override_distances.get("hawker_count_1km", 0)
-        dist_high_demand_school = override_distances.get("dist_high_demand_school", 500)
+        dist_mrt = override_distances.get("dist_mrt", dd["dist_mrt"])
+        dist_cbd = override_distances.get("dist_cbd", dd["dist_cbd"])
+        dist_school = override_distances.get("dist_school", dd["dist_school"])
+        dist_mall = override_distances.get("dist_mall", dd["dist_mall"])
+        dist_hawker = override_distances.get("dist_hawker", dd["dist_hawker"])
+        hawker_count_1km = override_distances.get("hawker_count_1km", dd["hawker_count_1km"])
+        dist_high_demand_school = override_distances.get(
+            "dist_high_demand_school", dd["dist_high_demand_school"]
+        )
         high_demand_primary_count_1km = override_distances.get(
-            "high_demand_primary_count_1km", 0
+            "high_demand_primary_count_1km", dd["high_demand_primary_count_1km"]
         )
     else:
         dists = TOWN_DISTANCES.get(town, {})
-        dist_mrt = dists.get("avg_dist_mrt", 500)
-        dist_cbd = dists.get("avg_dist_cbd", 10000)
-        dist_school = dists.get("avg_dist_school", 500)
-        dist_mall = dists.get("avg_dist_mall", 1000)
-        dist_hawker = dists.get("avg_dist_hawker", 1.0)
-        hawker_count_1km = dists.get("avg_hawker_count_1km", 0)
-        dist_high_demand_school = dists.get("avg_dist_high_demand_school", 500)
+        dist_mrt = dists.get("avg_dist_mrt", dd["dist_mrt"])
+        dist_cbd = dists.get("avg_dist_cbd", dd["dist_cbd"])
+        dist_school = dists.get("avg_dist_school", dd["dist_school"])
+        dist_mall = dists.get("avg_dist_mall", dd["dist_mall"])
+        dist_hawker = dists.get("avg_dist_hawker", dd["dist_hawker"])
+        hawker_count_1km = dists.get("avg_hawker_count_1km", dd["hawker_count_1km"])
+        dist_high_demand_school = dists.get(
+            "avg_dist_high_demand_school", dd["dist_high_demand_school"]
+        )
         high_demand_primary_count_1km = dists.get(
-            "avg_high_demand_primary_count_1km", 0
+            "avg_high_demand_primary_count_1km", dd["high_demand_primary_count_1km"]
         )
 
     scale_cols = _serving_scale_cols()
@@ -2571,6 +2620,8 @@ def _feature_label(feature_name, raw_values):
         return f"Distance to school ({_format_distance(raw_values.get(feature_name))})"
     if feature_name == "dist_major_mall":
         return f"Distance to mall ({_format_distance(raw_values.get(feature_name))})"
+    if feature_name == "dist_hawker_centre":
+        return f"Distance to hawker ({_format_distance(raw_values.get(feature_name))})"
     if feature_name == "flat_type_ordinal":
         return f"Flat type ({raw_values.get('flat_type', 'Unknown')})"
     if feature_name == "town_enc":
@@ -2845,28 +2896,48 @@ def _get_recent_similar_transactions(
         return []
 
 
+def _coerce_block_distance_row(row):
+    if not row:
+        return None
+    return {
+        "dist_mrt": row.get("dist_mrt"),
+        "dist_cbd": row.get("dist_cbd"),
+        "dist_school": row.get("dist_school"),
+        "dist_mall": row.get("dist_mall"),
+        "dist_hawker": row.get("dist_hawker"),
+        "hawker_count_1km": row.get("hawker_count_1km"),
+        "dist_high_demand_school": row.get("dist_high_demand_school"),
+        "high_demand_primary_count_1km": row.get("high_demand_primary_count_1km"),
+    }
+
+
 def _get_block_distances(town, street_name, block):
-    """Look up actual distances for a specific block."""
+    """Look up distances for a block, or street-level averages if block is unknown or missing."""
+    street = (street_name or "").strip()
+    blk = (block or "").strip()
     try:
-        rows = _supabase_rpc("rpc_block_distances", {
-            "p_town": town,
-            "p_street": street_name,
-            "p_block": block,
-        }) or []
-        if rows:
-            r = rows[0]
-            return {
-                "dist_mrt": r.get("dist_mrt"),
-                "dist_cbd": r.get("dist_cbd"),
-                "dist_school": r.get("dist_school"),
-                "dist_mall": r.get("dist_mall"),
-                "dist_hawker": r.get("dist_hawker"),
-                "hawker_count_1km": r.get("hawker_count_1km"),
-                "dist_high_demand_school": r.get("dist_high_demand_school"),
-                "high_demand_primary_count_1km": r.get("high_demand_primary_count_1km"),
-            }
+        if street and blk:
+            rows = _supabase_rpc("rpc_block_distances", {
+                "p_town": town,
+                "p_street": street_name,
+                "p_block": block,
+            }) or []
+            if rows:
+                return _coerce_block_distance_row(rows[0])
     except SupabaseError:
         return None
+
+    if not street:
+        return None
+    try:
+        rows_st = _supabase_rpc("rpc_street_avg_distances", {
+            "p_town": town,
+            "p_street": street_name,
+        }) or []
+        if rows_st:
+            return _coerce_block_distance_row(rows_st[0])
+    except SupabaseError:
+        pass
     return None
 
 
@@ -3719,9 +3790,11 @@ def predict():
             app.logger.warning("Could not log predict view", exc_info=True)
 
         block_distances = None
-        if form_data["block"] and form_data["street_name"]:
+        if form_data.get("street_name"):
             block_distances = _get_block_distances(
-                form_data["town"], form_data["street_name"], form_data["block"]
+                form_data["town"],
+                form_data["street_name"],
+                form_data.get("block") or "",
             )
 
         # Timeline: predict for 1-5 years ahead
@@ -4423,10 +4496,9 @@ def api_future_prediction():
     street_name = resolved_form["street_name"]
     block = resolved_form["block"]
 
-    # Resolve block distances if street_name and block provided
     block_distances = None
-    if street_name and block:
-        block_distances = _get_block_distances(town, street_name, block)
+    if street_name:
+        block_distances = _get_block_distances(town, street_name, block or "")
 
     current_year = datetime.now().year
     try:
@@ -4509,9 +4581,12 @@ def api_yearly_predictions():
     block          = resolved_form["block"]
 
     block_distances = None
-    if street_name and block:
-        block_distances = _get_block_distances(town=form_data["town"],
-                                               street_name=street_name, block=block)
+    if street_name:
+        block_distances = _get_block_distances(
+            town=form_data["town"],
+            street_name=street_name,
+            block=block or "",
+        )
 
     out = {}
     for year in years:

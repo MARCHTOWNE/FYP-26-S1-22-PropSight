@@ -1196,10 +1196,7 @@
       </div>
 
       <div class="suggest-pills" id="initialSuggestions">
-        <button class="suggest-pill" onclick="sendPQ('Why does floor area have the biggest impact on price?')">Why does floor area matter most?</button>
-        <button class="suggest-pill" onclick="sendPQ('How does the remaining lease years affect my flat\'s resale value?')">How does lease affect value?</button>
-        <button class="suggest-pill" onclick="sendPQ('Is the estimated price fair for a {{ form_data.flat_type }} flat in {{ form_data.town }}?')">Is this a fair price?</button>
-        <button class="suggest-pill" onclick="sendPQ('What can I do to increase the resale value of my flat?')">How to boost value?</button>
+        <!-- JS will populate these dynamically -->
       </div>
 
       <div class="chat-thread" id="pqThread"></div>
@@ -1580,6 +1577,81 @@ if (pForm && subBtn) {
       shap_features: ctx.shap_features || []
     }
   };
+
+  // Generate dynamic suggestion pills based on SHAP and context
+  function buildSuggestionPills() {
+    var pills = [];
+    var shapFeats = ctx.shap_features || [];
+    var town = ctx.town || '';
+    var flatType = ctx.flat_type || '';
+    var remainingLease = ctx.remaining_lease;
+    var townAvg = ctx.town_avg_price;
+    var predicted = ctx.predicted_price;
+
+    // SHAP-based pills (if available)
+    if (shapFeats.length) {
+      var topFeat = shapFeats[0];
+      pills.push({
+        label: 'Why does ' + topFeat.label.toLowerCase() + ' matter most?',
+        q: 'Why does ' + topFeat.label.toLowerCase() + ' have the biggest impact on my flat\'s price?'
+      });
+
+      var negFeats = shapFeats.filter(function(f) { return f.dollar_impact < 0; });
+      if (negFeats.length) {
+        pills.push({
+          label: 'What\'s dragging my price down?',
+          q: 'What factors are pulling my flat\'s price below the baseline, and by how much?'
+        });
+      }
+    }
+
+    // Lease-based pill
+    if (remainingLease && remainingLease < 70) {
+      pills.push({
+        label: 'How much is lease decay costing me?',
+        q: 'My flat has ' + remainingLease + ' years of lease left. How much is the lease decay reducing my flat\'s value compared to a newer flat?'
+      });
+    } else if (remainingLease) {
+      pills.push({
+        label: 'Is my lease healthy?',
+        q: 'With ' + remainingLease + ' years of lease remaining, is my flat still attractive to buyers and eligible for full CPF financing?'
+      });
+    }
+
+    // Position vs average pill
+    if (townAvg && predicted) {
+      var diff = ((predicted - townAvg) / townAvg * 100).toFixed(0);
+      if (diff > 0) {
+        pills.push({
+          label: 'Why is my flat above average?',
+          q: 'My prediction is about ' + diff + '% above the ' + town + ' average for ' + flatType + ' flats. What factors explain this premium?'
+        });
+      } else {
+        pills.push({
+          label: 'Why is my flat below average?',
+          q: 'My prediction is about ' + Math.abs(diff) + '% below the ' + town + ' average for ' + flatType + ' flats. What factors explain the discount?'
+        });
+      }
+    }
+
+    // Fallback if no SHAP and no context
+    if (!pills.length) {
+      pills = [
+        { label: 'Is this price fair?', q: 'Is the estimated price fair for a ' + flatType + ' flat in ' + town + '?' },
+        { label: 'How does lease affect value?', q: 'How does the remaining lease affect my flat\'s resale value?' },
+        { label: 'What drives the price?', q: 'What are the main factors that determine this flat\'s estimated price?' }
+      ];
+    }
+
+    // Render (max 4 pills)
+    var container = document.getElementById('initialSuggestions');
+    if (!container) return;
+    container.innerHTML = pills.slice(0, 4).map(function(p) {
+      return '<button class="suggest-pill" onclick="sendPQ(\'' + p.q.replace(/'/g, "\\'") + '\')">' + p.label + '</button>';
+    }).join('');
+  }
+
+  buildSuggestionPills();
 
   var thread   = document.getElementById('pqThread');
   var inp      = document.getElementById('pqInput');

@@ -1,40 +1,155 @@
 {% extends "base.html" %}
 {% block title %}Register — PropSight{% endblock %}
 
+{% block extra_head %}
+<style>
+    .premium-auth-shell {
+        min-height: calc(100vh - 220px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 56px 16px;
+        background: radial-gradient(circle at 0% 0%, rgba(37, 99, 235, 0.06), transparent 42%),
+                    radial-gradient(circle at 100% 100%, rgba(15, 23, 42, 0.06), transparent 45%),
+                    #f8fafc;
+    }
+
+    .premium-auth-card {
+        width: 100%;
+        max-width: 460px;
+        border-radius: 24px;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        box-shadow: 0 20px 40px -10px rgba(15, 23, 42, 0.08);
+        background: #ffffff;
+        padding: 48px 40px;
+    }
+
+    .auth-heading {
+        margin: 0 0 10px;
+        font-family: "Sora", sans-serif;
+        font-size: 2rem;
+        font-weight: 700;
+        letter-spacing: -0.5px;
+        color: #0f172a;
+    }
+
+    .auth-subheading {
+        margin-bottom: 30px;
+        color: #64748b;
+        font-size: 0.96rem;
+    }
+
+    .auth-field {
+        margin-bottom: 18px;
+    }
+
+    .auth-label {
+        margin-bottom: 8px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #64748b;
+    }
+
+    .auth-input {
+        width: 100%;
+        background: #f8fafc;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 12px;
+        padding: 14px 16px;
+        font-size: 0.95rem;
+        color: #0f172a;
+        transition: background 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .auth-input:focus {
+        outline: none;
+        background: #ffffff;
+        border-color: var(--primary);
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+
+    .auth-hint {
+        margin-top: 8px;
+        color: #64748b;
+        font-size: 0.78rem;
+    }
+
+    .auth-btn {
+        width: 100%;
+        border: none;
+        border-radius: 12px;
+        background: #0f172a;
+        color: #ffffff;
+        font-weight: 600;
+        padding: 14px;
+        margin-top: 4px;
+        transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    .auth-btn:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 10px 24px -10px rgba(15, 23, 42, 0.5);
+    }
+
+    .auth-footnote {
+        margin-top: 20px;
+        text-align: center;
+        color: #64748b;
+        font-size: 0.88rem;
+    }
+
+    .auth-link {
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #2563eb;
+        text-decoration: none;
+    }
+
+    .auth-link:hover {
+        color: #1d4ed8;
+        text-decoration: underline;
+    }
+
+    @media (max-width: 575.98px) {
+        .premium-auth-card {
+            padding: 36px 24px;
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container">
-    <div class="auth-form">
-        <div class="card">
-            <div class="card-body p-4">
-                <h4 class="text-center mb-4">
-                    <i class="bi bi-person-plus me-2 text-primary"></i>Create Account
-                </h4>
-                <form method="POST" action="{{ url_for('register') }}">
-                    <div class="mb-3">
-                        <label class="form-label">Username</label>
-                        <input type="text" name="username" class="form-control"
-                               required autofocus minlength="3">
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Email</label>
-                        <input type="email" name="email" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">Password</label>
-                        <input type="password" name="password" class="form-control"
-                               required minlength="6">
-                        <div class="form-text">Minimum 6 characters.</div>
-                    </div>
-                    <button type="submit" class="btn btn-primary w-100 py-2 fw-bold">
-                        Create Account
-                    </button>
-                </form>
-                <p class="text-center mt-3 mb-0 small text-muted">
-                    Already have an account?
-                    <a href="{{ url_for('login') }}">Login here</a>
-                </p>
+<section class="premium-auth-shell">
+    <div class="premium-auth-card">
+        <h1 class="auth-heading">Create your account</h1>
+        <p class="auth-subheading">Set up your PropSight access in less than a minute.</p>
+
+        <form method="POST" action="{{ url_for('register') }}">
+            <div class="auth-field">
+                <label class="auth-label" for="username">Username</label>
+                <input id="username" type="text" name="username" class="auth-input" required autofocus minlength="3">
             </div>
-        </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="email">Email</label>
+                <input id="email" type="email" name="email" class="auth-input" required>
+            </div>
+
+            <div class="auth-field">
+                <label class="auth-label" for="password">Password</label>
+                <input id="password" type="password" name="password" class="auth-input" required minlength="6">
+                <div class="auth-hint">Minimum 6 characters.</div>
+            </div>
+
+            <button type="submit" class="auth-btn">Create account</button>
+        </form>
+
+        <p class="auth-footnote">
+            Already have an account?
+            <a href="{{ url_for('login') }}" class="auth-link">Sign in</a>
+        </p>
     </div>
-</div>
+</section>
 {% endblock %}

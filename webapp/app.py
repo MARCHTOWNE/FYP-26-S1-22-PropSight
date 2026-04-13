@@ -1007,6 +1007,22 @@ def _admin_prediction_display_count(user_id, log_by_user, saved_by_user):
     return int(saved_by_user.get(uid, 0))
 
 
+def _normalize_town_name(value):
+    """Normalize town labels for analytics grouping."""
+    town = str(value or "").strip()
+    if not town:
+        return ""
+    return town.upper()
+
+
+def _log_town_feature_view(user_id, feature, town):
+    """Best-effort logger for feature interactions scoped to a town."""
+    town_name = _normalize_town_name(town)
+    if not town_name:
+        return
+    _log_feature_view(user_id, f"{feature}:{town_name}")
+
+
 def _supabase_rpc(function_name, params=None):
     """Call a Supabase PostgreSQL RPC function."""
     global _supabase_last_rpc_error
@@ -3442,6 +3458,16 @@ def comparison():
             p["form_data"] = resolved_form
             p["result"] = result
             payloads.append(payload)
+        try:
+            towns = {
+                _normalize_town_name(p.get("town"))
+                for p in payloads
+                if _normalize_town_name(p.get("town"))
+            }
+            for town in towns:
+                _log_town_feature_view(session["user_id"], "comparison", town)
+        except Exception:
+            app.logger.warning("Could not log comparison town view", exc_info=True)
 
     # Build unified comparison analysis across all properties
     comparison_analysis = _build_comparison_analysis(payloads) if len(payloads) >= 2 else None
@@ -3654,6 +3680,9 @@ def predict():
         form_data, result, _ = _run_prediction_form(prediction_input)
         try:
             _log_feature_view(session["user_id"], "predict")
+            town_feature = _normalize_town_name(form_data.get("town"))
+            if town_feature:
+                _log_feature_view(session["user_id"], f"predict:{town_feature}")
         except Exception:
             app.logger.warning("Could not log predict view", exc_info=True)
 
@@ -4011,6 +4040,11 @@ def api_price_trend_simple():
     flat_type = request.args.get("flat_type", "")
     street_name = request.args.get("street_name", "")
     block = request.args.get("block", "")
+    if town:
+        try:
+            _log_town_feature_view(session["user_id"], "analytics", town)
+        except Exception:
+            app.logger.warning("Could not log analytics town view", exc_info=True)
 
     try:
         return jsonify(_supabase_rpc("rpc_api_price_trend_simple", {
@@ -5170,6 +5204,7 @@ def api_admin_overview():
             filters={
                 "select": "user_id,feature,created_at",
                 "created_at": f"gte.{cutoff_iso}",
+                "order": "created_at.desc",
                 "limit": "20000",
             },
         ) or []
@@ -5198,16 +5233,33 @@ def api_admin_overview():
         premium_users = sum(1 for u in users if u.get("subscription_tier") == "premium")
         registered_users = max(0, len(users) - premium_users - admin_users)
 
-        town_rows = _supabase_request(
-            SUPABASE_PREDICTIONS_TABLE,
-            filters={"select": "town", "limit": "20000"},
-        ) or []
         town_counts = {}
-        for r in town_rows:
-            town = (r.get("town") or "").strip()
+        town_feature_prefixes = {"predict"}
+        for r in feature_rows:
+            feature = str(r.get("feature") or "").strip()
+            action, sep, town_raw = feature.partition(":")
+            if not sep or action.lower() not in town_feature_prefixes:
+                continue
+            town = _normalize_town_name(town_raw)
             if not town:
                 continue
             town_counts[town] = town_counts.get(town, 0) + 1
+
+        # Keep historical towns from saved predictions, but do not override
+        # real-time predict:<town> activity when it exists.
+        saved_town_rows = _supabase_request(
+            SUPABASE_PREDICTIONS_TABLE,
+            filters={"select": "town", "limit": "20000"},
+        ) or []
+        saved_town_counts = {}
+        for r in saved_town_rows:
+            town = _normalize_town_name(r.get("town"))
+            if not town:
+                continue
+            saved_town_counts[town] = saved_town_counts.get(town, 0) + 1
+        for town, count in saved_town_counts.items():
+            if town not in town_counts:
+                town_counts[town] = count
         top_towns = sorted(
             [{"name": k, "count": v} for k, v in town_counts.items()],
             key=lambda x: x["count"],

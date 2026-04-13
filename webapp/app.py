@@ -2797,19 +2797,51 @@ def _get_recent_similar_transactions(
     street_name="",
     block="",
     storey_range="",
+    return_scope_meta=False,
 ):
-    """Return recent transactions for same town + flat_type, optionally scoped."""
-    try:
-        rows = _supabase_rpc("rpc_recent_similar_transactions", {
+    """Return recent transactions for same town + flat_type, broadening scope if needed."""
+    def _fetch_rows(query_street_name, query_block, query_storey_range):
+        return _supabase_rpc("rpc_recent_similar_transactions", {
             "p_town": town,
             "p_flat_type": flat_type,
             "p_limit": limit,
-            "p_street_name": street_name or None,
-            "p_block": block or None,
-            "p_storey_range": storey_range or None,
+            "p_street_name": query_street_name,
+            "p_block": query_block,
+            "p_storey_range": query_storey_range,
         }) or []
+
+    try:
+        scope_broadened = False
+        rows = _fetch_rows(
+            street_name or None,
+            block or None,
+            storey_range or None,
+        )
+
+        # If the exact block is too narrow, widen to the rest of the street first.
+        if not rows and block:
+            rows = _fetch_rows(
+                street_name or None,
+                None,
+                storey_range or None,
+            )
+            scope_broadened = bool(rows)
+
+        # If the street still has no matches, fall back to the wider town scope.
+        if not rows and street_name:
+            rows = _fetch_rows(
+                None,
+                None,
+                storey_range or None,
+            )
+            scope_broadened = bool(rows)
+
+        if return_scope_meta:
+            return rows, scope_broadened
         return rows
     except SupabaseError:
+        if return_scope_meta:
+            return [], False
         return []
 
 
@@ -4336,20 +4368,23 @@ def api_prediction_context():
     # Fetch transactions matching the same storey range as the prediction so the
     # benchmark compares like-for-like. If storey_range yields too few results,
     # fall back to all storeys so the chart is never empty.
-    recent = _get_recent_similar_transactions(
+    recent, scope_broadened = _get_recent_similar_transactions(
         town, flat_type, limit=150,
         street_name=street_name, block=block, storey_range=storey_range,
+        return_scope_meta=True,
     )
     if len(recent) < 5 and storey_range:
-        recent = _get_recent_similar_transactions(
+        recent, scope_broadened = _get_recent_similar_transactions(
             town, flat_type, limit=150,
             street_name=street_name, block=block,
+            return_scope_meta=True,
         )
 
     return jsonify({
         "lease_decay": lease_decay,
         "recent_transactions": recent,
         "predicted_price": predicted_price,
+        "scope_broadened": scope_broadened,
     })
 
 

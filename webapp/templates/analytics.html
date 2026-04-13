@@ -459,6 +459,151 @@
     @media (max-width: 575.98px) {
         .dash-kpi-bar { grid-template-columns: 1fr 1fr; }
     }
+
+    /* ─── MY FLAT PANEL ──────────────────────────────────────────────── */
+    .myflat-summary {
+        display: flex;
+        gap: 1.5rem;
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+    .myflat-price-hero {
+        background: linear-gradient(135deg, rgba(37, 99, 235, 0.07), rgba(16, 185, 129, 0.06));
+        border: 1px solid rgba(37, 99, 235, 0.15);
+        border-radius: 14px;
+        padding: 1.2rem 1.5rem;
+        text-align: center;
+        min-width: 200px;
+    }
+    .myflat-price-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #64748b;
+        font-weight: 700;
+        margin-bottom: 0.3rem;
+    }
+    .myflat-price-value {
+        font-size: 1.7rem;
+        font-weight: 800;
+        color: #0f172a;
+        line-height: 1.1;
+    }
+    .myflat-price-vs {
+        font-size: 0.78rem;
+        margin-top: 0.4rem;
+        font-weight: 600;
+    }
+    .myflat-details-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.6rem 1.2rem;
+        flex: 1;
+        min-width: 280px;
+    }
+    .myflat-detail-label {
+        display: block;
+        font-size: 0.7rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #94a3b8;
+        font-weight: 700;
+    }
+    .myflat-detail-value {
+        display: block;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .myflat-position-card {
+        margin-top: 0.5rem;
+    }
+    .position-range {
+        margin-bottom: 1.3rem;
+    }
+    .position-range-track {
+        position: relative;
+        height: 10px;
+        background: linear-gradient(90deg, #fecaca, #fef3c7, #bbf7d0);
+        border-radius: 999px;
+        margin: 1.8rem 0 0.5rem;
+    }
+    .position-range-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        height: 100%;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.15);
+    }
+    .position-marker {
+        position: absolute;
+        top: -8px;
+        transform: translateX(-50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        transition: left 0.6s ease;
+    }
+    .position-marker-dot {
+        width: 18px;
+        height: 18px;
+        background: #2563eb;
+        border: 3px solid #fff;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(37, 99, 235, 0.35);
+        position: relative;
+        top: -4px;
+    }
+    .position-marker-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        color: #2563eb;
+        white-space: nowrap;
+        margin-bottom: 2px;
+        background: rgba(37, 99, 235, 0.08);
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+    }
+    .position-range-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        color: #94a3b8;
+        font-weight: 600;
+        margin-top: 0.15rem;
+    }
+    .position-metrics {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 0.75rem;
+    }
+    .position-metric {
+        background: #f8fafc;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        border-radius: 10px;
+        padding: 0.65rem 0.75rem;
+        text-align: center;
+    }
+    .position-metric-label {
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        color: #94a3b8;
+        font-weight: 700;
+        margin-bottom: 0.15rem;
+    }
+    .position-metric-value {
+        font-size: 0.92rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+
+    @media (max-width: 768px) {
+        .myflat-summary { flex-direction: column; }
+        .myflat-details-grid { grid-template-columns: repeat(2, 1fr); }
+        .position-metrics { grid-template-columns: repeat(2, 1fr); }
+    }
 </style>
 {% endblock %}
 
@@ -600,6 +745,10 @@
         <div class="dash-nav">
             <div class="dash-nav-inner">
                 <div class="nav-section-label">VIEWS</div>
+                <div class="nav-pill-item" data-section="myflat" id="navMyFlat" style="display:none;">
+                    <i class="bi bi-house-heart"></i>
+                    <span>My Flat</span>
+                </div>
                 <div class="nav-pill-item active" data-section="trend">
                     <i class="bi bi-graph-up-arrow"></i>
                     <span>Price Trend</span>
@@ -629,6 +778,126 @@
 
         <!-- CENTER: section panels -->
         <div class="dash-center" id="dashCenter">
+
+            <!-- PANEL: My Flat (shown when prediction seed exists) -->
+            <div id="section-myflat" class="section-panel">
+                <!-- Your Flat Summary Card -->
+                <div class="card panel-card mb-3">
+                    <div class="card-body">
+                        <div class="section-kicker">Your Property</div>
+                        <h5 class="mb-3" style="font-size:1.05rem; font-weight:700;">
+                            <i class="bi bi-house-heart me-2 text-primary"></i>Prediction Summary
+                        </h5>
+                        <div class="myflat-summary">
+                            <div class="myflat-price-hero">
+                                <div class="myflat-price-label">Estimated Value</div>
+                                <div class="myflat-price-value" id="myflatPrice">—</div>
+                                <div class="myflat-price-vs" id="myflatVsAvg"></div>
+                            </div>
+                            <div class="myflat-details-grid">
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Town</span>
+                                    <span class="myflat-detail-value" id="myflatTown">—</span>
+                                </div>
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Flat Type</span>
+                                    <span class="myflat-detail-value" id="myflatFlatType">—</span>
+                                </div>
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Floor Area</span>
+                                    <span class="myflat-detail-value" id="myflatFloorArea">—</span>
+                                </div>
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Storey</span>
+                                    <span class="myflat-detail-value" id="myflatStorey">—</span>
+                                </div>
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Remaining Lease</span>
+                                    <span class="myflat-detail-value" id="myflatLease">—</span>
+                                </div>
+                                <div class="myflat-detail">
+                                    <span class="myflat-detail-label">Address</span>
+                                    <span class="myflat-detail-value" id="myflatAddress">—</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Price Trend vs Prediction -->
+                <div class="card panel-card mb-3">
+                    <div class="card-body">
+                        <div class="section-kicker">Historical Context</div>
+                        <h6 class="mb-1" style="font-size:0.95rem; font-weight:700;">
+                            <i class="bi bi-graph-up me-2 text-primary"></i>Area Price Trend vs Your Estimate
+                        </h6>
+                        <p class="chart-note">How your predicted value compares to historical averages in the same area.</p>
+                        <div class="chart-container-tall"><canvas id="trendVsPredictionChart"></canvas></div>
+                    </div>
+                </div>
+
+                <!-- Market Position -->
+                <div class="card panel-card mb-3">
+                    <div class="card-body">
+                        <div class="section-kicker">Market Position</div>
+                        <h6 class="mb-1" style="font-size:0.95rem; font-weight:700;">
+                            <i class="bi bi-speedometer2 me-2 text-primary"></i>Where Your Flat Sits in the Market
+                        </h6>
+                        <p class="chart-note">How your estimated value compares to recent sales in the same area and flat type.</p>
+
+                        <div id="myflatPositionCard" class="myflat-position-card">
+                            <div class="position-range">
+                                <div class="position-range-track">
+                                    <div class="position-range-fill" id="posRangeFill"></div>
+                                    <div class="position-marker" id="posMarker" style="left:50%;">
+                                        <div class="position-marker-label" id="posMarkerLabel">Your Flat</div>
+                                        <div class="position-marker-dot"></div>
+                                    </div>
+                                </div>
+                                <div class="position-range-labels">
+                                    <span id="posLabelLow">—</span>
+                                    <span id="posLabelAvg" class="text-center">Area Avg</span>
+                                    <span id="posLabelHigh" class="text-end">—</span>
+                                </div>
+                            </div>
+
+                            <div class="position-metrics">
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Your Estimate</div>
+                                    <div class="position-metric-value text-primary" id="posYourPrice">—</div>
+                                </div>
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Area Average</div>
+                                    <div class="position-metric-value" id="posAreaAvg">—</div>
+                                </div>
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Difference</div>
+                                    <div class="position-metric-value" id="posDiff">—</div>
+                                </div>
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Price/sqm</div>
+                                    <div class="position-metric-value" id="posPsm">—</div>
+                                </div>
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Lease Health</div>
+                                    <div class="position-metric-value" id="posLeaseHealth">—</div>
+                                </div>
+                                <div class="position-metric">
+                                    <div class="position-metric-label">Market Activity</div>
+                                    <div class="position-metric-value" id="posActivity">—</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="myflatPositionEmpty" class="section-empty d-none" style="padding:1.5rem;text-align:center;">
+                            <i class="bi bi-speedometer2 text-muted" style="font-size:1.5rem;"></i>
+                            <p class="text-muted mt-2 mb-0" style="font-size:0.84rem;">
+                                Position data will appear once the dashboard loads market data for your area.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
 
             <!-- PANEL: Price Trend -->
             <div id="section-trend" class="section-panel active">
@@ -1484,11 +1753,15 @@ async function loadPriceTrend() {
                 }
             }
         });
+        updateMyflatVsAvg();
+        updateMyflatPosition();
         return data;
     } catch (e) {
         latestTrendData = [];
         setKpis([]);
         updateFocusSummary([]);
+        updateMyflatVsAvg();
+        updateMyflatPosition();
         return [];
     } finally {
         setLoading('priceTrendChart', false);
@@ -1923,9 +2196,225 @@ document.getElementById('filterStreet').addEventListener('change', async functio
     }
     updateBreadcrumb();
     refreshDashboard();
+    const focusParam = pageParams.get('focus');
+    if (focusParam) switchSection(focusParam);
 })();
 
 let leaseDecChart;
+
+/* ── updateMyflatVsAvg ────────────────────────────────────────────────────── */
+function updateMyflatVsAvg() {
+    const el = document.getElementById('myflatVsAvg');
+    if (!el) return;
+    const predicted = parseFloat(predictionSeed.predicted_price);
+    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const avg = parseFloat(avgText);
+    if (!predicted || !avg || isNaN(avg)) { el.textContent = ''; return; }
+    const diff = ((predicted - avg) / avg * 100).toFixed(1);
+    if (diff > 0) {
+        el.innerHTML = '<span class="text-success"><i class="bi bi-arrow-up-short"></i>' + diff + '% above area average</span>';
+    } else if (diff < 0) {
+        el.innerHTML = '<span class="text-danger"><i class="bi bi-arrow-down-short"></i>' + Math.abs(diff) + '% below area average</span>';
+    } else {
+        el.innerHTML = '<span class="text-muted">At area average</span>';
+    }
+}
+
+function updateMyflatPosition() {
+    const predicted = parseFloat(predictionSeed.predicted_price);
+    if (!predicted) return;
+
+    const card = document.getElementById('myflatPositionCard');
+    const empty = document.getElementById('myflatPositionEmpty');
+
+    const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
+    const avg = parseFloat(avgText);
+
+    if (!avg || isNaN(avg)) {
+        if (card) card.classList.add('d-none');
+        if (empty) empty.classList.remove('d-none');
+        return;
+    }
+
+    if (card) card.classList.remove('d-none');
+    if (empty) empty.classList.add('d-none');
+
+    const rangeLow = avg * 0.7;
+    const rangeHigh = avg * 1.3;
+    const clampedPct = Math.max(5, Math.min(95,
+        ((predicted - rangeLow) / (rangeHigh - rangeLow)) * 100
+    ));
+
+    document.getElementById('posRangeFill').style.width = clampedPct + '%';
+    document.getElementById('posMarker').style.left = clampedPct + '%';
+    document.getElementById('posLabelLow').textContent = formatMoney(Math.round(rangeLow));
+    document.getElementById('posLabelAvg').textContent = 'Avg: ' + formatMoney(Math.round(avg));
+    document.getElementById('posLabelHigh').textContent = formatMoney(Math.round(rangeHigh));
+
+    document.getElementById('posYourPrice').textContent = formatMoney(predicted);
+    document.getElementById('posAreaAvg').textContent = formatMoney(Math.round(avg));
+
+    const diffPct = ((predicted - avg) / avg * 100).toFixed(1);
+    const diffEl = document.getElementById('posDiff');
+    if (diffPct > 0) {
+        diffEl.innerHTML = '<span class="text-success">+' + diffPct + '% above</span>';
+    } else if (diffPct < 0) {
+        diffEl.innerHTML = '<span class="text-danger">' + diffPct + '% below</span>';
+    } else {
+        diffEl.innerHTML = '<span class="text-muted">At average</span>';
+    }
+
+    const floorArea = parseFloat(predictionSeed.floor_area);
+    if (floorArea) {
+        document.getElementById('posPsm').textContent =
+            '$' + Math.round(predicted / floorArea).toLocaleString() + '/sqm';
+    } else {
+        document.getElementById('posPsm').textContent = '—';
+    }
+
+    const leaseCommence = parseInt(predictionSeed.lease_commence);
+    const currentYear = new Date().getFullYear();
+    const remainingLease = leaseCommence ? Math.max(0, 99 - (currentYear - leaseCommence)) : null;
+    const leaseEl = document.getElementById('posLeaseHealth');
+    if (remainingLease !== null) {
+        if (remainingLease >= 70) {
+            leaseEl.innerHTML = '<span class="text-success">' + remainingLease + 'y · Healthy</span>';
+        } else if (remainingLease >= 50) {
+            leaseEl.innerHTML = '<span style="color:#f59e0b;">' + remainingLease + 'y · Watch</span>';
+        } else {
+            leaseEl.innerHTML = '<span class="text-danger">' + remainingLease + 'y · Low</span>';
+        }
+    } else {
+        leaseEl.textContent = '—';
+    }
+
+    const txnText = document.getElementById('railKpiTxn').textContent;
+    const yoyText = document.getElementById('railKpiYoY').textContent;
+    const actEl = document.getElementById('posActivity');
+    if (txnText && txnText !== '—') {
+        actEl.textContent = txnText + ' sales · ' + yoyText;
+    } else {
+        actEl.textContent = '—';
+    }
+}
+
+/* ── loadTrendVsPrediction ────────────────────────────────────────────────── */
+async function loadTrendVsPrediction() {
+    if (!predictionSeed.town) return;
+    const params = new URLSearchParams();
+    params.set('town', predictionSeed.town);
+    if (predictionSeed.flat_type) params.set('flat_type', predictionSeed.flat_type);
+    try {
+        const data = await fetchJSON('/api/price_trend_simple?' + params.toString());
+        const canvas = document.getElementById('trendVsPredictionChart');
+        if (!canvas || !data.length) return;
+        const ctx = canvas.getContext('2d');
+        const predictedPrice = parseFloat(predictionSeed.predicted_price);
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: data.map(d => d.year),
+                datasets: [
+                    {
+                        label: 'Area Average',
+                        data: data.map(d => d.avg_price),
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37,99,235,0.12)',
+                        fill: true, tension: 0.28,
+                        pointRadius: 3,
+                    },
+                    {
+                        label: 'Your Estimate',
+                        data: data.map(() => predictedPrice),
+                        borderColor: '#10b981',
+                        borderDash: [6, 4],
+                        pointRadius: 0,
+                        fill: false,
+                    }
+                ]
+            },
+            options: {
+                responsive: true, maintainAspectRatio: false,
+                plugins: {
+                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + formatMoney(ctx.parsed.y) } },
+                    legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
+                },
+                scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
+            }
+        });
+    } catch(e) {}
+}
+
+/* ── loadPredictionContext ────────────────────────────────────────────────── */
+async function loadPredictionContext() {
+    if (!predictionSeed.town) return;
+    const params = new URLSearchParams();
+    params.set('town', predictionSeed.town);
+    if (predictionSeed.flat_type) params.set('flat_type', predictionSeed.flat_type);
+    if (predictionSeed.predicted_price) params.set('predicted_price', predictionSeed.predicted_price);
+    if (predictionSeed.street_name) params.set('street_name', predictionSeed.street_name);
+    if (predictionSeed.block) params.set('block', predictionSeed.block);
+    if (predictionSeed.storey_range) params.set('storey_range', predictionSeed.storey_range);
+    try {
+        const contextData = await fetchJSON('/api/prediction_context?' + params.toString());
+
+        // Lease decay charts
+        const decay = contextData.lease_decay || [];
+        if (decay.length) {
+            const labels = decay.map(d => d.lease_bucket || d.bucket || d.label);
+            const prices = decay.map(d => d.avg_price);
+            const counts = decay.map(d => d.txn_count || 0);
+
+            const leaseCanvas = document.getElementById('leaseDecayChart');
+            if (leaseCanvas) {
+                document.getElementById('leasePlaceholder').classList.add('d-none');
+                document.getElementById('leaseDecayContainer').classList.remove('d-none');
+                const ctx = leaseCanvas.getContext('2d');
+                if (leaseDecChart) leaseDecChart.destroy();
+                leaseDecChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: labels,
+                        datasets: [{ label: 'Average Price', data: prices, backgroundColor: decay.map((_, i) => COLORS[i % COLORS.length]), borderRadius: 6 }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) + ' (' + Number(counts[ctx.dataIndex] || 0).toLocaleString() + ' txns)' } } },
+                        scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
+                    }
+                });
+            }
+        }
+    } catch(e) {}
+}
+
+/* ── loadPredictionInsights IIFE ──────────────────────────────────────────── */
+(function loadPredictionInsights() {
+    const predictedPrice = parseFloat(predictionSeed.predicted_price);
+    const town = predictionSeed.town;
+    const flatType = predictionSeed.flat_type;
+    if (!predictedPrice || !town) return;
+
+    const currentYear = new Date().getFullYear();
+    const leaseCommence = parseInt(predictionSeed.lease_commence) || 0;
+    const remainingLease = leaseCommence ? Math.max(0, 99 - (currentYear - leaseCommence)) : null;
+    const address = [predictionSeed.block ? 'Blk ' + predictionSeed.block : '', predictionSeed.street_name].filter(Boolean).join(' ');
+
+    document.getElementById('myflatPrice').textContent = formatMoney(predictedPrice);
+    document.getElementById('myflatTown').textContent = town || '—';
+    document.getElementById('myflatFlatType').textContent = flatType || '—';
+    document.getElementById('myflatFloorArea').textContent = predictionSeed.floor_area ? predictionSeed.floor_area + ' sqm' : '—';
+    document.getElementById('myflatStorey').textContent = predictionSeed.storey_range || '—';
+    document.getElementById('myflatLease').textContent = remainingLease !== null ? remainingLease + ' years' : '—';
+    document.getElementById('myflatAddress').textContent = address || '—';
+
+    // Show the My Flat nav pill and switch to it
+    document.getElementById('navMyFlat').style.display = 'flex';
+    switchSection('myflat');
+
+    loadTrendVsPrediction();
+    loadPredictionContext();
+})();
 
 
 /* ══════════════════════════════════════════════════════════════════════════

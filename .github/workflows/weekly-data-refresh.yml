@@ -8,7 +8,7 @@ on:
 jobs:
   refresh-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}

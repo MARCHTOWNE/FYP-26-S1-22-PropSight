@@ -62,6 +62,13 @@ class EnsembleModel:
         return blended
 
 
+#ensures pickle can find EnsembleModel when loaded via gunicorn (module is
+#"app" not "__main__").
+import sys as _sys
+if "__main__" in _sys.modules and not hasattr(_sys.modules["__main__"], "EnsembleModel"):
+    _sys.modules["__main__"].EnsembleModel = EnsembleModel
+
+
 # ---------------------------------------------------------------------------
 def _ttl_cache(maxsize=128, ttl=3600):
     """lru_cache replacement that expires entries after *ttl* seconds."""

@@ -123,7 +123,7 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    /* ─── AI Chatbot widget ───────────────────────────────────────────── */
+    /*AI Chatbot widget*/
     .ai-chat-widget { position: fixed; bottom: 24px; right: 24px; z-index: 1050; }
     .ai-chat-toggle {
         width: 56px; height: 56px; border-radius: 50%;
@@ -173,6 +173,27 @@
     }
     .ai-chat-suggestion:hover { background: #dbeafe; transform: scale(1.04); }
     .ai-chat-suggestion.used { opacity: 0.4; pointer-events: none; }
+    /*expanded inline chat*/
+    #aiChatExpanded {
+        display: none; border-radius: 16px;
+        border: 1px solid rgba(148,163,184,0.22); background: #fff;
+        box-shadow: 0 8px 32px rgba(15,23,42,0.10);
+        overflow: hidden; flex-direction: column;
+        animation: expandSlideDown 0.3s ease;
+    }
+    #aiChatExpanded.active { display: flex; }
+    #aiChatExpanded .ai-chat-messages { max-height: 55vh; min-height: 340px; }
+    #aiChatExpanded .ai-chat-bubble { max-width: 65%; }
+    @keyframes expandSlideDown {
+        from { opacity: 0; transform: translateY(-12px); }
+        to   { opacity: 1; transform: translateY(0); }
+    }
+    .ai-chat-header-btn {
+        background: none; border: none; color: #64748b; cursor: pointer;
+        padding: 0.15rem; font-size: 1rem; line-height: 1;
+        transition: color 0.15s;
+    }
+    .ai-chat-header-btn:hover { color: #1e293b; }
     @media (max-width: 575.98px) {
         .ai-chat-panel { width: calc(100vw - 32px); max-height: 75vh; }
         .ai-chat-widget { right: 16px; bottom: 16px; }
@@ -432,7 +453,26 @@
     .section-empty p  { color: #94a3b8; font-size: 0.84rem; margin: 0; }
 
     /* FAQ section below */
-    .faq-section { }
+    /* Align FAQ + expanded chat with the dash-center column */
+    .faq-section,
+    #aiChatExpanded {
+        margin-left: calc(180px + 1.1rem);
+        margin-right: calc(280px + 1.1rem);
+    }
+    @media (max-width: 1199.98px) {
+        .faq-section,
+        #aiChatExpanded {
+            margin-left: calc(160px + 1.1rem);
+            margin-right: 0;
+        }
+    }
+    @media (max-width: 767.98px) {
+        .faq-section,
+        #aiChatExpanded {
+            margin-left: 0;
+            margin-right: 0;
+        }
+    }
     .faq-group-label {
         font-size: 0.7rem;
         font-weight: 700;
@@ -1197,6 +1237,24 @@
         </div>
     </div>
 
+    {% if is_premium %}
+    <!--Expanded inline chat (hidden by default)-->
+    <div id="aiChatExpanded" class="mt-4">
+        <div class="ai-chat-header">
+            <div class="d-flex align-items-center gap-2">
+                <i class="bi bi-stars text-primary"></i>
+                <span class="fw-bold">AI Market Analyst</span>
+                <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:0.65rem;">PREMIUM</span>
+            </div>
+            <div class="d-flex align-items-center gap-2">
+                <button id="aiChatCollapse" class="ai-chat-header-btn" title="Collapse back to widget"><i class="bi bi-fullscreen-exit"></i></button>
+            </div>
+        </div>
+        <!-- messages, suggestions, input get moved here by JS -->
+        <div id="aiChatExpandedBody"></div>
+    </div>
+    {% endif %}
+
 </div><!-- end .container-xl -->
 
 {% if is_premium %}
@@ -1211,7 +1269,10 @@
                 <span class="fw-bold">AI Market Analyst</span>
                 <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:0.65rem;">PREMIUM</span>
             </div>
-            <button id="aiChatClose" class="btn btn-sm btn-link text-muted p-0"><i class="bi bi-x-lg"></i></button>
+            <div class="d-flex align-items-center gap-2">
+                <button id="aiChatExpand" class="ai-chat-header-btn" title="Expand"><i class="bi bi-arrows-fullscreen"></i></button>
+                <button id="aiChatClose" class="ai-chat-header-btn" title="Close"><i class="bi bi-x-lg"></i></button>
+            </div>
         </div>
         <div id="aiChatMessages" class="ai-chat-messages">
             <div class="ai-chat-bubble ai-chat-bot">
@@ -2786,25 +2847,71 @@ document.addEventListener('click', e => {
     if (item) expandFaqItem(item);
 });
 
-/* ══════════════════════════════════════════════════════════════════════════
-   Premium AI Chatbot
-══════════════════════════════════════════════════════════════════════════ */
+//Premium AI Chatbot
 if (IS_PREMIUM) {
     let chatHistory = [];
     let chatBusy    = false;
+    let isExpanded  = false;
 
+    const chatWidget   = document.getElementById('aiChatWidget');
     const chatToggle   = document.getElementById('aiChatToggle');
     const chatPanel    = document.getElementById('aiChatPanel');
     const chatClose    = document.getElementById('aiChatClose');
     const chatInput    = document.getElementById('aiChatInput');
     const chatSendBtn  = document.getElementById('aiChatSend');
     const chatMessages = document.getElementById('aiChatMessages');
+    const chatSuggestions = document.getElementById('aiChatSuggestions');
+    const chatInputArea   = chatInput.closest('.ai-chat-input-area');
+    const chatExpandBtn   = document.getElementById('aiChatExpand');
+    const chatExpandedEl  = document.getElementById('aiChatExpanded');
+    const chatExpandedBody = document.getElementById('aiChatExpandedBody');
+    const chatCollapseBtn  = document.getElementById('aiChatCollapse');
 
     const openChat  = () => { chatPanel.classList.remove('d-none'); chatToggle.classList.add('open'); chatInput.focus(); };
     const closeChat = () => { chatPanel.classList.add('d-none');    chatToggle.classList.remove('open'); };
 
+    //Expand/collapse
+    function expandChat() {
+        isExpanded = true;
+        //Move live elements into the expanded body
+        chatExpandedBody.appendChild(chatMessages);
+        chatExpandedBody.appendChild(chatSuggestions);
+        chatExpandedBody.appendChild(chatInputArea);
+        //Hide floating widget and show inline section
+        chatWidget.style.display = 'none';
+        chatExpandedEl.classList.add('active');
+        chatInput.focus();
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+    function collapseChat() {
+        isExpanded = false;
+        //Move elements back into floating panel
+        chatPanel.appendChild(chatMessages);
+        chatPanel.appendChild(chatSuggestions);
+        chatPanel.appendChild(chatInputArea);
+        //Show floating widget, hide inline section
+        chatExpandedEl.classList.remove('active');
+        chatWidget.style.display = '';
+        openChat();
+    }
+
     chatToggle.addEventListener('click', openChat);
     chatClose.addEventListener('click', closeChat);
+    chatExpandBtn.addEventListener('click', expandChat);
+    chatCollapseBtn.addEventListener('click', collapseChat);
+
+    //Render dynamic suggestion buttons
+    function renderSuggestions(suggestions) {
+        chatSuggestions.innerHTML = '';
+        if (!suggestions || !suggestions.length) return;
+        suggestions.forEach(q => {
+            const btn = document.createElement('button');
+            btn.className = 'ai-chat-suggestion';
+            btn.setAttribute('data-q', q);
+            btn.textContent = q;
+            chatSuggestions.appendChild(btn);
+        });
+    }
 
     function appendBubble(text, role) {
         const bubble = document.createElement('div');
@@ -2852,6 +2959,7 @@ if (IS_PREMIUM) {
                 chatHistory.push({ role: 'user', text });
                 chatHistory.push({ role: 'model', text: result.reply });
                 appendBubble(result.reply, 'bot');
+                renderSuggestions(result.suggestions);
             }
         } catch (e) {
             removeTyping();
@@ -2866,7 +2974,8 @@ if (IS_PREMIUM) {
     chatInput.addEventListener('keydown', e => {
         if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage(); }
     });
-    document.getElementById('aiChatSuggestions').addEventListener('click', e => {
+    /* Delegated listener works regardless of which container the suggestions live in */
+    document.addEventListener('click', e => {
         const btn = e.target.closest('.ai-chat-suggestion');
         if (!btn || chatBusy) return;
         chatInput.value = btn.getAttribute('data-q');

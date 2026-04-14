@@ -4602,9 +4602,7 @@ def api_yearly_predictions():
     return jsonify(out)
 
 
-# ---------------------------------------------------------------------------
 # AI Insights (Gemini-powered QnA)
-# ---------------------------------------------------------------------------
 
 _AI_QUESTIONS_PROMPT = """You are a Singapore HDB (public housing) market analyst.
 The user is viewing analytics for: {filter_desc}
@@ -4713,7 +4711,7 @@ def api_ai_questions():
 
     print(f"[AI Questions] Raw Gemini response ({len(text)} chars): {text[:500]}", flush=True)
 
-    # Parse JSON: strip markdown fences and extract the JSON object
+    #parse JSON: strip markdown fences and extract the JSON object
     cleaned = text.strip()
     if cleaned.startswith("```"):
         cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
@@ -4801,9 +4799,9 @@ def api_ai_answer():
     return jsonify({"answer": text.strip(), "remaining": remaining})
 
 
-# ---------------------------------------------------------------------------
-# AI Chat (Premium chatbot)
-# ---------------------------------------------------------------------------
+
+#AI Chat (Premium chatbot)
+
 
 _AI_CHAT_SYSTEM_PROMPT = """You are a Singapore HDB (public housing) market analyst chatbot.
 The user is viewing analytics for: {filter_desc}
@@ -4820,7 +4818,11 @@ Rules:
 - Explain causes simply: policy changes, cooling measures, interest rates, new MRT lines, COVID effects, grant changes.
 - Give practical advice when relevant: is it a good time to sell, hold, or upgrade?
 - Be concise (2-4 sentences) unless the user asks for detail.
-- If the user asks something outside HDB analytics scope, politely redirect."""
+- If the user asks something outside HDB analytics scope, politely redirect.
+
+IMPORTANT: At the very end of every reply, on its own line, output exactly 3 short follow-up questions the user might ask next, formatted as:
+SUGGESTIONS: question one | question two | question three
+Keep each question under 8 words. Make them relevant to what you just discussed."""
 
 
 @app.route("/api/ai_chat", methods=["POST"])
@@ -4840,7 +4842,7 @@ def api_ai_chat():
     if not message:
         return jsonify({"error": "No message provided"}), 400
 
-    # Build filter description
+    #build filter description
     filters = context.get("filters", {})
     town = filters.get("town") or "All towns"
     flat_type = filters.get("flat_type") or "All flat types"
@@ -4862,7 +4864,7 @@ def api_ai_chat():
         context_data=context_data,
     )
 
-    # Build Gemini multi-turn contents
+    #build Gemini multi-turn contents
     contents = []
 
     if not history:
@@ -4889,7 +4891,18 @@ def api_ai_chat():
     if not text:
         return jsonify({"error": "AI temporarily unavailable"}), 503
 
-    return jsonify({"reply": text.strip()})
+    #parse dynamic suggestions from the reply
+    reply = text.strip()
+    suggestions = []
+    for line in reversed(reply.splitlines()):
+        stripped = line.strip()
+        if stripped.upper().startswith("SUGGESTIONS:"):
+            raw = stripped.split(":", 1)[1]
+            suggestions = [s.strip() for s in raw.split("|") if s.strip()]
+            reply = reply[:reply.rfind(line)].strip()
+            break
+
+    return jsonify({"reply": reply, "suggestions": suggestions})
 
 
 

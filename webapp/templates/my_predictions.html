@@ -100,16 +100,19 @@
             <h1 class="section-title mb-0 fs-3">Saved Predictions</h1>
         </div>
         
-        {% if predictions|length >= 1 %}
         <div class="d-flex gap-2">
+            <a href="{{ url_for('predict') }}" class="btn btn-outline-primary action-bar-btn shadow-sm border-0">
+                <i class="bi bi-arrow-left me-1"></i>Back to Prediction
+            </a>
+        {% if predictions|length >= 1 %}
             <button id="delete-selected-btn" class="btn btn-light text-danger action-bar-btn shadow-sm border-0" disabled>
                 <i class="bi bi-trash me-1"></i>Delete (<span id="delete-count">0</span>)
             </button>
             <button id="compare-btn" class="btn btn-primary action-bar-btn shadow-sm border-0" disabled>
                 <i class="bi bi-columns-gap me-1"></i>Compare (<span id="compare-count">0</span>)
             </button>
-        </div>
         {% endif %}
+        </div>
     </div>
 
     {% if predictions %}

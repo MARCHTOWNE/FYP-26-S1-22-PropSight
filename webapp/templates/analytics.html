@@ -740,7 +740,7 @@
     <div class="dash-kpi-bar mb-3">
         <!-- Avg Resale Price -->
         <div class="dash-kpi-card kpi-accent-blue">
-            <div class="kpi-label-sm">Avg Resale Price</div>
+            <div class="kpi-label-sm">Area Average Price</div>
             <div id="kpiAvgPrice" class="kpi-val-lg">—</div>
             <div class="kpi-delta-row">
                 <i id="kpiAvgPriceArrow" class="bi bi-dash text-muted"></i>
@@ -760,7 +760,7 @@
         </div>
         <!-- Total Transactions -->
         <div class="dash-kpi-card kpi-accent-green">
-            <div class="kpi-label-sm">Total Transactions</div>
+            <div class="kpi-label-sm">Recent Sales Activity</div>
             <div id="kpiTxn" class="kpi-val-lg">—</div>
             <div class="kpi-delta-row">
                 <i id="kpiTxnArrow" class="bi bi-dash text-muted"></i>
@@ -770,10 +770,10 @@
         </div>
         <!-- Price Momentum -->
         <div class="dash-kpi-card kpi-accent-amber">
-            <div class="kpi-label-sm">Price Momentum</div>
+            <div class="kpi-label-sm">Year-on-Year Change</div>
             <div id="kpiMomentum" class="kpi-val-lg">—</div>
             <div class="kpi-delta-row">
-                <span class="kpi-delta-vs">Year-over-Year trend</span>
+                <span class="kpi-delta-vs">price direction over time</span>
             </div>
         </div>
     </div>
@@ -1114,12 +1114,12 @@
                 <div class="card-body">
                     <div class="section-kicker">Market Pulse</div>
                     <h6 class="mb-3" style="font-weight:700; font-size:0.9rem;">
-                        <i class="bi bi-activity me-1 text-primary"></i>Real-Time Signals
+                        <i class="bi bi-activity me-1 text-primary"></i>Market Health
                     </h6>
 
                     <div class="mb-3">
                         <div class="d-flex justify-content-between mb-1">
-                            <span class="pulse-label">Buyer Demand</span>
+                            <span class="pulse-label">How Active Is This Area?</span>
                             <span id="pulseValDemand" class="pulse-value">—</span>
                         </div>
                         <div class="pulse-track">
@@ -1129,7 +1129,7 @@
 
                     <div class="mb-3">
                         <div class="d-flex justify-content-between mb-1">
-                            <span class="pulse-label">Price Momentum</span>
+                            <span class="pulse-label">Are Prices Rising?</span>
                             <span id="pulseValMomentum" class="pulse-value">—</span>
                         </div>
                         <div class="pulse-track">
@@ -1139,7 +1139,7 @@
 
                     <div>
                         <div class="d-flex justify-content-between mb-1">
-                            <span class="pulse-label">Supply Pressure</span>
+                            <span class="pulse-label">How Many Sellers?</span>
                             <span id="pulseValSupply" class="pulse-value">—</span>
                         </div>
                         <div class="pulse-track">
@@ -1152,19 +1152,19 @@
             <!-- Mini KPI 2×2 -->
             <div class="rail-mini-grid">
                 <div class="rail-mini-card">
-                    <div class="rail-mini-label">Avg PSM</div>
+                    <div class="rail-mini-label">Price/sqm</div>
                     <div id="railKpiPsm" class="rail-mini-value">—</div>
                 </div>
                 <div class="rail-mini-card">
-                    <div class="rail-mini-label">Txn Count</div>
+                    <div class="rail-mini-label">Sales Count</div>
                     <div id="railKpiTxn" class="rail-mini-value">—</div>
                 </div>
                 <div class="rail-mini-card">
-                    <div class="rail-mini-label">YoY Growth</div>
+                    <div class="rail-mini-label">Annual Change</div>
                     <div id="railKpiYoY" class="rail-mini-value">—</div>
                 </div>
                 <div class="rail-mini-card">
-                    <div class="rail-mini-label">Midpoint</div>
+                    <div class="rail-mini-label">Median Price</div>
                     <div id="kpiMid" class="rail-mini-value">—</div>
                 </div>
             </div>
@@ -1192,43 +1192,57 @@
             <i class="bi bi-stars me-2 text-primary"></i>Insights About Your Data
         </h5>
         <div class="row g-3">
-            <!-- Trend FAQ -->
-            <div class="col-lg-4">
+            <!-- Value FAQ -->
+            <div class="col-lg-3">
                 <div class="card panel-card h-100">
                     <div class="card-body">
                         <div class="faq-group-label">
-                            <i class="bi bi-graph-up-arrow me-1 text-primary"></i>Trend Analysis
+                            <i class="bi bi-graph-up-arrow me-1 text-primary"></i>Your Flat's Value
                         </div>
-                        <h6 class="mb-2 fw-700">Price Trend</h6>
-                        <div id="aiFaqTrend" class="ai-faq-list">
+                        <h6 class="mb-2 fw-700">Value Trends</h6>
+                        <div id="aiFaqValue" class="ai-faq-list">
                             <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
                         </div>
                     </div>
                 </div>
             </div>
-            <!-- Volume & Mix FAQ -->
-            <div class="col-lg-4">
+            <!-- Demand FAQ -->
+            <div class="col-lg-3">
                 <div class="card panel-card h-100">
                     <div class="card-body">
                         <div class="faq-group-label">
-                            <i class="bi bi-activity me-1 text-primary"></i>Volume &amp; Mix
+                            <i class="bi bi-people me-1 text-primary"></i>Buyer Activity
                         </div>
-                        <h6 class="mb-2 fw-700">Transaction Activity</h6>
-                        <div id="aiFaqVolume" class="ai-faq-list">
+                        <h6 class="mb-2 fw-700">Area Demand</h6>
+                        <div id="aiFaqDemand" class="ai-faq-list">
                             <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
                         </div>
                     </div>
                 </div>
             </div>
-            <!-- Benchmark FAQ -->
-            <div class="col-lg-4">
+            <!-- Position FAQ -->
+            <div class="col-lg-3">
                 <div class="card panel-card h-100">
                     <div class="card-body">
                         <div class="faq-group-label">
-                            <i class="bi bi-buildings me-1 text-primary"></i>Benchmarking
+                            <i class="bi bi-bar-chart-line me-1 text-primary"></i>Market Position
                         </div>
-                        <h6 class="mb-2 fw-700">Town &amp; District Comparison</h6>
-                        <div id="aiFaqBenchmark" class="ai-faq-list">
+                        <h6 class="mb-2 fw-700">How You Compare</h6>
+                        <div id="aiFaqPosition" class="ai-faq-list">
+                            <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- Lease FAQ -->
+            <div class="col-lg-3">
+                <div class="card panel-card h-100">
+                    <div class="card-body">
+                        <div class="faq-group-label">
+                            <i class="bi bi-hourglass-split me-1 text-primary"></i>Lease Impact
+                        </div>
+                        <h6 class="mb-2 fw-700">Remaining Lease</h6>
+                        <div id="aiFaqLease" class="ai-faq-list">
                             <div class="text-muted" style="font-size:0.83rem;">Apply filters to generate AI insights.</div>
                         </div>
                     </div>
@@ -2724,9 +2738,10 @@ function getAiFaqCacheKey() {
 }
 
 function renderAiFaqFromGroups(groups) {
-    renderFaqGroup('aiFaqTrend',     groups.trend || []);
-    renderFaqGroup('aiFaqVolume',    (groups.volume || []).concat(groups.flat_type || []));
-    renderFaqGroup('aiFaqBenchmark', (groups.benchmark || []).concat(groups.psf || []));
+    renderFaqGroup('aiFaqValue',    groups.value || []);
+    renderFaqGroup('aiFaqDemand',   groups.demand || []);
+    renderFaqGroup('aiFaqPosition', groups.position || []);
+    renderFaqGroup('aiFaqLease',    groups.lease || []);
 }
 
 async function loadAiFaqQuestions() {
@@ -2734,9 +2749,10 @@ async function loadAiFaqQuestions() {
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
 
-    renderFaqShimmer('aiFaqTrend', 2);
-    renderFaqShimmer('aiFaqVolume', 2);
-    renderFaqShimmer('aiFaqBenchmark', 2);
+    renderFaqShimmer('aiFaqValue', 2);
+    renderFaqShimmer('aiFaqDemand', 2);
+    renderFaqShimmer('aiFaqPosition', 2);
+    renderFaqShimmer('aiFaqLease', 2);
 
     const filters     = getFilters();
     const chartData   = collectChartDataSummary();
@@ -2756,7 +2772,7 @@ async function loadAiFaqQuestions() {
 
         if (result.ai_unavailable) {
             const msg = '<div class="text-muted" style="font-size:0.83rem;"><i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
-            ['aiFaqTrend','aiFaqVolume','aiFaqBenchmark'].forEach(id => {
+            ['aiFaqValue','aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.innerHTML = msg;
             });
@@ -2766,7 +2782,7 @@ async function loadAiFaqQuestions() {
         renderAiFaqFromGroups(groups);
     } catch (e) {
         if (token !== aiFaqReqToken) return;
-        ['aiFaqTrend','aiFaqVolume','aiFaqBenchmark'].forEach(id => {
+        ['aiFaqValue','aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
             const el = document.getElementById(id);
             if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.83rem;"><i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
         });
@@ -2777,9 +2793,10 @@ function debouncedLoadAiFaq() {
     clearTimeout(aiFaqDebounceTimer);
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
-    renderFaqShimmer('aiFaqTrend', 2);
-    renderFaqShimmer('aiFaqVolume', 2);
-    renderFaqShimmer('aiFaqBenchmark', 2);
+    renderFaqShimmer('aiFaqValue', 2);
+    renderFaqShimmer('aiFaqDemand', 2);
+    renderFaqShimmer('aiFaqPosition', 2);
+    renderFaqShimmer('aiFaqLease', 2);
     aiFaqDebounceTimer = setTimeout(loadAiFaqQuestions, 2000);
 }
 

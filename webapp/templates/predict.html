@@ -351,6 +351,7 @@
   padding: 14px 20px;
   border-bottom: 1px solid rgba(226,232,240,0.6);
   flex-wrap: wrap;
+  justify-content: center;
 }
 .btn-act {
   display: inline-flex;
@@ -368,6 +369,22 @@
 }
 .btn-act-dark { background: #0f172a; color: #fff; }
 .btn-act-dark:hover { background: #2563eb; color: #fff; }
+.btn-act-save {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  color: #fff;
+  font-weight: 700;
+  box-shadow: 0 10px 24px rgba(37,99,235,0.28);
+}
+.btn-act-save:hover {
+  background: linear-gradient(135deg, #1d4ed8 0%, #1e40af 100%);
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 28px rgba(30,64,175,0.34);
+}
+.btn-act-save:focus-visible {
+  outline: 3px solid rgba(37,99,235,0.28);
+  outline-offset: 2px;
+}
 .btn-act-outline { background: transparent; color: #374151; border: 1.5px solid #e2e8f0; }
 .btn-act-outline:hover { border-color: #2563eb; color: #2563eb; }
 
@@ -1036,12 +1053,12 @@
           <input type="hidden" name="predicted_price" value="{{ result.predicted_price }}">
           <input type="hidden" name="price_low" value="{{ result.price_low }}">
           <input type="hidden" name="price_high" value="{{ result.price_high }}">
-          <button type="submit" class="btn-act btn-act-dark">
+          <button type="submit" class="btn-act btn-act-dark btn-act-save">
             <i class="bi bi-bookmark-plus"></i> Save
           </button>
         </form>
         {% else %}
-        <a href="{{ url_for('login') }}" class="btn-act btn-act-dark">
+        <a href="{{ url_for('login') }}" class="btn-act btn-act-dark btn-act-save">
           <i class="bi bi-bookmark-plus"></i> Save
         </a>
         {% endif %}

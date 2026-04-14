@@ -30,11 +30,19 @@ jobs:
           pip install requests pandas numpy python-dotenv psycopg2-binary
 
       - name: Restore SQLite cache
+        id: cache-restore
         uses: actions/cache@v4
         with:
           path: Data Preprocessing/hdb_resale.db
           key: sqlite-db-${{ github.run_id }}
           restore-keys: sqlite-db-
+
+      - name: Download seed DB on cache miss
+        if: steps.cache-restore.outputs.cache-hit != 'true'
+        run: |
+          gh release download data-seed -p hdb_resale.db -D "Data Preprocessing/" --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
 
       - name: Run data preprocessing pipeline
         working-directory: scripts

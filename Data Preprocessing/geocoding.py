@@ -293,6 +293,37 @@ def geocode_address(
 # Cache helpers
 # ---------------------------------------------------------------------------
 
+def _ensure_failures_table(conn: sqlite3.Connection) -> None:
+    """Create geocode_failures table if it does not exist."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS geocode_failures (
+            full_address TEXT PRIMARY KEY,
+            attempts     INTEGER DEFAULT 1,
+            last_tried   TEXT
+        )
+    """)
+    conn.commit()
+
+
+def load_failed_addresses(conn: sqlite3.Connection) -> set[str]:
+    """Return the set of addresses that have previously failed geocoding."""
+    _ensure_failures_table(conn)
+    rows = conn.execute("SELECT full_address FROM geocode_failures").fetchall()
+    return {row[0] for row in rows}
+
+
+def save_failed_batch(
+    conn: sqlite3.Connection,
+    batch: list[tuple[str, str]],
+) -> None:
+    """Record addresses that failed geocoding so they are skipped on future runs."""
+    conn.executemany(
+        "INSERT OR REPLACE INTO geocode_failures (full_address, last_tried) VALUES (?, ?)",
+        batch,
+    )
+    conn.commit()
+
+
 def load_cache(conn: sqlite3.Connection) -> dict[str, tuple[float, float]]:
     """
     Read all rows from geocode_cache and return as an in-memory lookup dict.
@@ -369,16 +400,19 @@ def run_geocoding(db_path: str = DB_PATH) -> None:
         conn.close()
         return
 
-    # 2. Apply cache hits
+    # 2. Apply cache hits and skip previously failed addresses
     cache = load_cache(conn)
+    failed_addresses = load_failed_addresses(conn)
     cache_hits = [addr for addr in pending if addr in cache]
-    to_geocode = [addr for addr in pending if addr not in cache]
-    print(f"  Cache hits: {len(cache_hits):,}  |  API calls needed: {len(to_geocode):,}")
+    skipped = [addr for addr in pending if addr in failed_addresses and addr not in cache]
+    to_geocode = [addr for addr in pending if addr not in cache and addr not in failed_addresses]
+    print(f"  Cache hits: {len(cache_hits):,}  |  Previously failed (skipped): {len(skipped):,}  |  API calls needed: {len(to_geocode):,}")
 
     # 3. Geocode remaining in batches
     api_calls = 0
     failed = 0
     new_cache_entries: list[tuple[str, float, float, str]] = []
+    new_failure_entries: list[tuple[str, str]] = []
     session = requests.Session()
 
     for i, address in enumerate(to_geocode):
@@ -392,6 +426,7 @@ def run_geocoding(db_path: str = DB_PATH) -> None:
             cache[address] = (lat, lng)
         else:
             failed += 1
+            new_failure_entries.append((address, datetime.now(timezone.utc).isoformat()))
 
         # Flush cache batch to DB periodically
         if len(new_cache_entries) >= BATCH_SIZE or i == len(to_geocode) - 1:
@@ -402,6 +437,9 @@ def run_geocoding(db_path: str = DB_PATH) -> None:
                     f"(progress: {i + 1}/{len(to_geocode)})"
                 )
                 new_cache_entries = []
+            if new_failure_entries:
+                save_failed_batch(conn, new_failure_entries)
+                new_failure_entries = []
 
     session.close()
 

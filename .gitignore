@@ -17,7 +17,6 @@ venv/
 .venv/
 
 # ML artefacts
-*.pkl
 *.parquet
 *.npz
 
@@ -30,6 +29,7 @@ venv/
 
 ML/model_assets/latest.txt
 ML/model_assets/*/
+!ML/model_assets/20260409_100356/
 webapp/model_assets/
 ML/catboost_info/
 catboost_info/

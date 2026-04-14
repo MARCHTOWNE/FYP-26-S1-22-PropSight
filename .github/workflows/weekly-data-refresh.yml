@@ -1,0 +1,55 @@
+name: Weekly Data Refresh
+
+on:
+  schedule:
+    - cron: '0 3 * * 3' #Every Wednesday at 03:00 UTC (11:00 SGT)
+  workflow_dispatch: #Manual trigger from GitHub UI
+
+jobs:
+  refresh-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      HDB_SQLITE_PATH: ${{ github.workspace }}/Data Preprocessing/hdb_resale.db
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas numpy python-dotenv psycopg2-binary
+
+      - name: Restore SQLite cache
+        uses: actions/cache@v4
+        with:
+          path: Data Preprocessing/hdb_resale.db
+          key: sqlite-db-${{ github.run_id }}
+          restore-keys: sqlite-db-
+
+      - name: Run data preprocessing pipeline
+        working-directory: scripts
+        run: python run_data_preprocessing.py
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title: `Weekly data refresh failed: ${new Date().toISOString().slice(0, 10)}`,
+              body: `The weekly data refresh pipeline failed.\n\n[View logs](${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId})`,
+              labels: ['pipeline-failure']
+            });

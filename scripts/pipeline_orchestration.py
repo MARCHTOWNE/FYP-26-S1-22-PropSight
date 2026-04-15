@@ -362,22 +362,25 @@ def _get_db_counts() -> dict[str, int] | None:
     if not os.path.exists(LOCAL_DB_PATH):
         return None
 
-    conn = sqlite3.connect(LOCAL_DB_PATH)
-    counts = {
-        "total_rows": conn.execute(
-            "SELECT COUNT(*) FROM resale_prices"
-        ).fetchone()[0],
-        "geocoded_rows": conn.execute(
-            "SELECT COUNT(*) FROM resale_prices WHERE latitude IS NOT NULL"
-        ).fetchone()[0],
-        "proximity_rows": conn.execute(
-            "SELECT COUNT(*) FROM resale_prices "
-            "WHERE dist_mrt IS NOT NULL AND dist_cbd IS NOT NULL "
-            "AND dist_primary_school IS NOT NULL AND dist_major_mall IS NOT NULL"
-        ).fetchone()[0],
-    }
-    conn.close()
-    return counts
+    try:
+        conn = sqlite3.connect(LOCAL_DB_PATH)
+        counts = {
+            "total_rows": conn.execute(
+                "SELECT COUNT(*) FROM resale_prices"
+            ).fetchone()[0],
+            "geocoded_rows": conn.execute(
+                "SELECT COUNT(*) FROM resale_prices WHERE latitude IS NOT NULL"
+            ).fetchone()[0],
+            "proximity_rows": conn.execute(
+                "SELECT COUNT(*) FROM resale_prices "
+                "WHERE dist_mrt IS NOT NULL AND dist_cbd IS NOT NULL "
+                "AND dist_primary_school IS NOT NULL AND dist_major_mall IS NOT NULL"
+            ).fetchone()[0],
+        }
+        conn.close()
+        return counts
+    except sqlite3.OperationalError:
+        return None
 
 
 def print_data_preprocessing_summary() -> None:

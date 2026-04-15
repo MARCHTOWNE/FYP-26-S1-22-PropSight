@@ -26,6 +26,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    permissions:
+      contents: write
+      issues: write
 
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -59,12 +62,9 @@ jobs:
           restore-keys: model-assets-
 
       - name: Run ML pipeline
+        id: run_ml
         working-directory: scripts
         run: python run_ml_pipeline.py
-
-      - name: Sync model version to Supabase
-        working-directory: scripts
-        run: python sync_to_supabase.py
 
       - name: Save model assets cache
         if: always()
@@ -74,6 +74,7 @@ jobs:
           key: model-assets-${{ github.run_id }}
 
       - name: Commit and push updated model assets
+        if: steps.run_ml.outcome == 'success'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -96,8 +97,13 @@ jobs:
           Triggered by: ${{ github.event_name }}"
           git push
 
+      - name: Sync model version to Supabase
+        if: steps.run_ml.outcome == 'success'
+        working-directory: scripts
+        run: python sync_to_supabase.py
+
       - name: Trigger Render deploy
-        if: env.RENDER_DEPLOY_HOOK != ''
+        if: steps.run_ml.outcome == 'success' && env.RENDER_DEPLOY_HOOK != ''
         env:
           RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |

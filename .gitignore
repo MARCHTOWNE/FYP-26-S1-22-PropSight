@@ -30,6 +30,13 @@ venv/
 ML/model_assets/latest.txt
 ML/model_assets/*/
 !ML/model_assets/20260409_100356/
+ML/model_assets/20260409_100356/ensemble_model.pkl
+ML/model_assets/20260409_100356/lgbm_model.pkl
+ML/model_assets/20260409_100356/model_comparison.json
+ML/model_assets/20260409_100356/rf_model.pkl
+ML/model_assets/20260409_100356/training_report.txt
+ML/model_assets/20260409_100356/xgboost_model.pkl
+ML/model_assets/optuna_study_*.pkl
 webapp/model_assets/
 ML/catboost_info/
 catboost_info/

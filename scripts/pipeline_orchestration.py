@@ -98,6 +98,68 @@ def _data_pipeline_changed() -> bool | None:
     return None
 
 
+def warm_cache_from_supabase() -> None:
+    try:
+        from dotenv import load_dotenv
+        load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
+    except ImportError:
+        pass
+
+    supabase_db_url = os.environ.get("SUPABASE_DB_URL", "")
+    if not supabase_db_url:
+        print("  WARNING: SUPABASE_DB_URL not set — skipping cache warm-up (geocoding will run normally).")
+        return
+
+    try:
+        import psycopg2
+    except ImportError:
+        print("  WARNING: psycopg2 not installed — skipping cache warm-up.")
+        return
+
+    pg_conn = pg_cur = None
+    try:
+        pg_conn = psycopg2.connect(supabase_db_url)
+        pg_cur = pg_conn.cursor()
+        pg_cur.execute(
+            "SELECT full_address, latitude, longitude, dist_mrt, dist_cbd, "
+            "dist_primary_school, dist_major_mall FROM blocks WHERE latitude IS NOT NULL"
+        )
+        rows = pg_cur.fetchall()
+    except Exception as exc:
+        print(f"  WARNING: Could not query Supabase blocks table: {exc}")
+        return
+    finally:
+        if pg_cur:
+            pg_cur.close()
+        if pg_conn:
+            pg_conn.close()
+
+    if not rows:
+        print("  WARNING: Supabase blocks table returned 0 geocoded rows — skipping cache warm-up.")
+        return
+
+    sqlite_conn = sqlite3.connect(LOCAL_DB_PATH)
+    try:
+        sqlite_conn.executemany(
+            "INSERT OR IGNORE INTO geocode_cache "
+            "(full_address, latitude, longitude, fetched_at) VALUES (?, ?, ?, ?)",
+            [(r[0], r[1], r[2], "supabase-sync") for r in rows],
+        )
+        changes_before_update = sqlite_conn.total_changes
+        sqlite_conn.executemany(
+            "UPDATE resale_prices SET latitude=?, longitude=?, dist_mrt=?, "
+            "dist_cbd=?, dist_primary_school=?, dist_major_mall=? "
+            "WHERE full_address=? AND latitude IS NULL",
+            [(r[1], r[2], r[3], r[4], r[5], r[6], r[0]) for r in rows],
+        )
+        updated = sqlite_conn.total_changes - changes_before_update
+        sqlite_conn.commit()
+    finally:
+        sqlite_conn.close()
+
+    print(f"  Warmed {len(rows)} addresses from Supabase ({updated} resale rows updated)")
+
+
 def run_geocoding() -> None:
     if _data_pipeline_changed() is False and not _env_flag("HDB_BACKFILL_GEOCODING"):
         print("  Data pipeline reported no DB changes — skipping backlog geocoding.")
@@ -406,6 +468,7 @@ def print_full_summary() -> None:
 PREPROCESSING_STEPS = [
     ("Fetch latest data from HDB API", run_api_fetcher),
     ("Data cleaning & preprocessing", run_data_pipeline),
+    ("Warm geocode cache from Supabase", warm_cache_from_supabase),
     ("Geocoding addresses", run_geocoding),
     ("Computing proximity features", run_proximity_features),
     ("Syncing processed data to Supabase", run_supabase_data_sync),

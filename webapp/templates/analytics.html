@@ -4,17 +4,64 @@
 {% block extra_head %}
 <style>
     /* ─── PRESERVED EXISTING STYLES ──────────────────────────────────── */
+    .analytics-page-wrapper {
+        background-color: #f1f5f9;
+        background-image:
+            radial-gradient(circle at 50% 0%, rgba(37,99,235,0.06) 0%, transparent 62%),
+            url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cpath d='M32 0H0V32' fill='none' stroke='%230f172a' stroke-opacity='0.03' stroke-width='1'/%3E%3C/svg%3E");
+        background-repeat: no-repeat, repeat;
+        background-size: auto, 32px 32px;
+        background-attachment: fixed, fixed;
+        min-height: 100vh;
+        padding-bottom: 1.25rem;
+    }
     .dashboard-hero {
-        background: linear-gradient(118deg, rgba(37, 99, 235, 0.1), rgba(14, 165, 233, 0.08));
-        border: 1px solid rgba(148, 163, 184, 0.24);
-        border-radius: 18px;
-        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.08);
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        border-radius: 20px;
+        box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 30px 60px -15px rgba(15, 23, 42, 0.12);
+        position: relative;
+        overflow: hidden;
+    }
+    .dashboard-hero::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(125deg, rgba(37, 99, 235, 0.04), rgba(14, 165, 233, 0.025) 42%, rgba(99, 102, 241, 0.015));
+        pointer-events: none;
+    }
+    .dashboard-hero-filters {
+        border-top: 1px solid rgba(15, 23, 42, 0.06);
+    }
+    .pf-select {
+        width: 100%;
+        padding: 9px 34px 9px 12px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 14px;
+        font-size: 13.5px;
+        color: #0f172a;
+        background: #f8fafc url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24'%3E%3Cpath fill='%2364748b' d='m7 10 5 5 5-5z'/%3E%3C/svg%3E") no-repeat right 10px center;
+        appearance: none;
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+    }
+    .pf-select:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+        background-color: #ffffff;
     }
     .hint-text { font-size: 0.82rem; color: #64748b; }
     .panel-card {
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 16px;
-        box-shadow: 0 10px 28px rgba(15, 23, 42, 0.06);
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        border-radius: 20px;
+        box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.07), 0 24px 48px -18px rgba(15, 23, 42, 0.1);
+    }
+    .dash-center .panel-card {
+        border-radius: 20px;
+        box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.08), 0 30px 60px -15px rgba(15, 23, 42, 0.12);
     }
     .panel-card .card-body { padding: 1.1rem 1.1rem 1rem; }
     .section-kicker {
@@ -136,15 +183,30 @@
     .ai-chat-toggle:hover { transform: scale(1.08); box-shadow: 0 8px 28px rgba(37,99,235,0.45); }
     .ai-chat-toggle.open { display: none; }
     .ai-chat-panel {
-        width: 440px; max-height: 620px; border-radius: 16px;
-        border: 1px solid rgba(148,163,184,0.22); background: #fff;
-        box-shadow: 0 16px 48px rgba(15,23,42,0.15);
+        width: 440px; max-height: 620px; border-radius: 20px;
+        border: 1px solid rgba(15,23,42,0.06); background: #ffffff;
+        box-shadow: 0 10px 30px -5px rgba(15,23,42,0.08), 0 30px 60px -15px rgba(15,23,42,0.15);
         display: flex; flex-direction: column; overflow: hidden;
     }
     .ai-chat-header {
         display: flex; justify-content: space-between; align-items: center;
-        padding: 0.75rem 1rem; border-bottom: 1px solid rgba(148,163,184,0.15);
-        background: linear-gradient(135deg, rgba(37,99,235,0.04), rgba(14,165,233,0.03));
+        padding: 0.75rem 1rem; border-bottom: 1px solid rgba(15,23,42,0.04);
+        background: #ffffff;
+    }
+    .ai-chat-title {
+        color: #0f172a;
+        font-family: 'Sora', sans-serif;
+        font-weight: 800;
+    }
+    .ai-chat-premium-badge {
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        color: #b45309;
+        border: 1px solid #fde68a;
+        border-radius: 50px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        padding: 2px 8px;
+        font-size: 0.65rem;
     }
     .ai-chat-messages {
         flex: 1; overflow-y: auto; padding: 0.75rem;
@@ -152,26 +214,70 @@
         max-height: 480px; min-height: 240px;
     }
     .ai-chat-bubble {
-        padding: 0.6rem 0.85rem; border-radius: 12px;
-        font-size: 0.84rem; line-height: 1.5; max-width: 85%; word-wrap: break-word;
+        padding: 12px 16px; border-radius: 16px;
+        font-size: 0.84rem; line-height: 1.6; max-width: 85%; word-wrap: break-word;
     }
-    .ai-chat-bot { background: linear-gradient(135deg,#f0f4ff,#e8f0fe); color: #1e293b; align-self: flex-start; border-bottom-left-radius: 4px; }
-    .ai-chat-user { background: #2563eb; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
-    .ai-chat-typing { align-self: flex-start; background: #f1f5f9; color: #64748b; font-style: italic; }
+    .ai-chat-bot {
+        background: #f8fafc;
+        color: #334155;
+        align-self: flex-start;
+        border: 1px solid rgba(15,23,42,0.04);
+        border-radius: 16px 16px 16px 4px;
+    }
+    .ai-chat-user {
+        background: #0f172a;
+        color: #ffffff;
+        align-self: flex-end;
+        border-radius: 16px 16px 4px 16px;
+    }
+    .ai-chat-typing { align-self: flex-start; background: #f8fafc; color: #64748b; font-style: italic; }
     .ai-chat-input-area {
         display: flex; gap: 0.4rem; padding: 0.6rem 0.75rem;
-        border-top: 1px solid rgba(148,163,184,0.15); background: #fafbfc;
+        border-top: 1px solid rgba(15,23,42,0.04); background: #ffffff;
     }
-    .ai-chat-input-area input { border-radius: 10px; font-size: 0.84rem; }
-    .ai-chat-input-area button { border-radius: 10px; padding: 0.25rem 0.65rem; }
+    .ai-chat-input-area input {
+        border-radius: 10px;
+        font-size: 0.84rem;
+        background: #f8fafc;
+        border: 1px solid transparent;
+        transition: all 0.2s ease;
+    }
+    .ai-chat-input-area input:focus {
+        background: #ffffff;
+        border: 1px solid #2563eb;
+        box-shadow: 0 0 0 3px rgba(37,99,235,0.1);
+    }
+    .ai-chat-input-area button {
+        border-radius: 10px;
+        padding: 0.25rem 0.65rem;
+        background: #0f172a;
+        border-color: #0f172a;
+        color: #ffffff;
+        transition: all 0.2s ease;
+    }
+    .ai-chat-input-area button:hover {
+        background: #2563eb;
+        border-color: #2563eb;
+        color: #ffffff;
+    }
     .ai-chat-suggestions { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.5rem 0.75rem 0; }
     .ai-chat-suggestion {
-        background: linear-gradient(135deg, #eff6ff, #e0f2fe); color: #1e40af;
-        border: 1px solid rgba(37,99,235,0.18); border-radius: 20px;
-        padding: 0.3rem 0.7rem; font-size: 0.75rem; cursor: pointer;
-        transition: background 0.15s, transform 0.1s; white-space: nowrap;
+        background: #ffffff;
+        color: #475569;
+        border: 1px solid rgba(15,23,42,0.1);
+        border-radius: 50px;
+        padding: 6px 14px;
+        font-size: 0.75rem;
+        cursor: pointer;
+        transition: all 0.2s;
+        white-space: nowrap;
     }
-    .ai-chat-suggestion:hover { background: #dbeafe; transform: scale(1.04); }
+    .ai-chat-suggestion:hover {
+        background: rgba(37,99,235,0.04);
+        border-color: #2563eb;
+        color: #2563eb;
+        transform: translateY(-1px);
+    }
     .ai-chat-suggestion.used { opacity: 0.4; pointer-events: none; }
     /*expanded inline chat*/
     #aiChatExpanded {
@@ -206,13 +312,14 @@
         display: inline-flex;
         align-items: center;
         gap: 0.25rem;
-        background: linear-gradient(135deg, #f59e0b, #d97706);
-        color: #fff;
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        color: #b45309;
+        border: 1px solid #fde68a;
         font-size: 0.68rem;
-        font-weight: 700;
+        font-weight: 800;
         padding: 0.18rem 0.52rem;
         border-radius: 999px;
-        letter-spacing: 0.04em;
+        letter-spacing: 0.05em;
         vertical-align: middle;
     }
 
@@ -225,16 +332,16 @@
 
     .dash-kpi-card {
         background: #fff;
-        border-radius: 14px;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+        border-radius: 18px;
+        border: 1.5px solid rgba(15, 23, 42, 0.06);
+        box-shadow: 0 8px 24px -8px rgba(15, 23, 42, 0.12), 0 18px 40px -18px rgba(15, 23, 42, 0.18);
         padding: 1rem 1.1rem 0.9rem;
         border-left: 4px solid #e2e8f0;
         transition: box-shadow 0.2s, transform 0.2s;
     }
     .dash-kpi-card:hover {
-        box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
-        transform: translateY(-2px);
+        box-shadow: 0 16px 40px -14px rgba(15, 23, 42, 0.18), 0 26px 54px -26px rgba(15, 23, 42, 0.2);
+        transform: translateY(-4px);
     }
     .kpi-accent-blue  { border-left-color: #2563eb; }
     .kpi-accent-sky   { border-left-color: #0ea5e9; }
@@ -282,11 +389,11 @@
         top: 76px;
     }
     .dash-nav-inner {
-        background: #fff;
-        border: 1px solid rgba(148, 163, 184, 0.18);
-        border-radius: 16px;
-        padding: 0.75rem;
-        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
+        background: #ffffff;
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        border-radius: 24px;
+        padding: 0.85rem;
+        box-shadow: 0 10px 28px -10px rgba(15, 23, 42, 0.12), 0 24px 44px -28px rgba(15, 23, 42, 0.16);
         display: flex;
         flex-direction: column;
         gap: 0.2rem;
@@ -317,9 +424,10 @@
     }
     .nav-pill-item:hover { background: rgba(37, 99, 235, 0.05); color: #1e293b; }
     .nav-pill-item.active {
-        background: rgba(37, 99, 235, 0.09);
-        color: #2563eb;
-        border-color: rgba(37, 99, 235, 0.22);
+        background: rgba(37, 99, 235, 0.05);
+        color: #0f172a;
+        font-weight: 700;
+        border-color: rgba(37, 99, 235, 0.15);
     }
     .nav-pill-item i { font-size: 0.93rem; flex-shrink: 0; }
 
@@ -344,8 +452,8 @@
     .pulse-label { font-size: 0.77rem; font-weight: 600; color: #334155; }
     .pulse-value { font-size: 0.77rem; font-weight: 700; color: #0f172a; }
     .pulse-track {
-        height: 7px;
-        background: #f1f5f9;
+        height: 6px;
+        background: #e2e8f0;
         border-radius: 999px;
         overflow: hidden;
     }
@@ -354,9 +462,9 @@
         border-radius: 999px;
         transition: width 0.9s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
-    .pulse-fill-blue    { background: linear-gradient(90deg, #2563eb, #60a5fa); }
-    .pulse-fill-green   { background: linear-gradient(90deg, #10b981, #34d399); }
-    .pulse-fill-amber   { background: linear-gradient(90deg, #f59e0b, #fbbf24); }
+    .pulse-fill-blue    { background: linear-gradient(90deg, #1d4ed8, #3b82f6); }
+    .pulse-fill-green   { background: linear-gradient(90deg, #0f766e, #14b8a6); }
+    .pulse-fill-amber   { background: linear-gradient(90deg, #b45309, #f59e0b); }
 
     /* Rail mini 2×2 KPI grid */
     .rail-mini-grid {
@@ -383,20 +491,37 @@
 
     /* AI Insight rail card */
     .ai-insight-rail {
-        background: linear-gradient(135deg, rgba(37,99,235,0.07), rgba(14,165,233,0.05));
-        border: 1px solid rgba(37, 99, 235, 0.18);
-        border-radius: 14px;
+        background: linear-gradient(145deg, #f8fbff, #eff6ff);
+        border: 1px solid rgba(15, 23, 42, 0.06);
+        border-radius: 20px;
+        box-shadow: 0 10px 30px -5px rgba(15, 23, 42, 0.07), 0 24px 48px -18px rgba(15, 23, 42, 0.11);
         overflow: hidden;
     }
     .ai-insight-rail-header {
-        padding: 0.6rem 0.85rem;
-        font-size: 0.72rem;
-        font-weight: 700;
-        color: #2563eb;
-        letter-spacing: 0.05em;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.68rem 0.85rem;
+        border-bottom: 1px solid rgba(15, 23, 42, 0.04);
+        background: #ffffff;
+    }
+    .ai-insight-rail-title {
+        color: #0f172a;
+        font-size: 0.78rem;
+        font-weight: 800;
+        letter-spacing: 0.04em;
         text-transform: uppercase;
-        border-bottom: 1px solid rgba(37, 99, 235, 0.1);
-        background: rgba(37, 99, 235, 0.04);
+        font-family: 'Sora', sans-serif;
+    }
+    .ai-insight-rail-badge {
+        background: linear-gradient(135deg, #fffbeb, #fef3c7);
+        color: #b45309;
+        border: 1px solid #fde68a;
+        border-radius: 50px;
+        font-weight: 800;
+        letter-spacing: 0.05em;
+        padding: 2px 8px;
+        font-size: 0.62rem;
     }
     .ai-insight-rail-body {
         padding: 0.8rem 0.85rem;
@@ -649,6 +774,7 @@
 {% endblock %}
 
 {% block content %}
+<div class="analytics-page-wrapper">
 <div class="container-xl py-4">
 
     <!-- ① DASHBOARD HERO ───────────────────────────────────────────────── -->
@@ -669,7 +795,7 @@
             <div class="d-flex flex-wrap align-items-end gap-2">
                 <div>
                     <label class="form-label fw-bold small mb-1">Town</label>
-                    <select id="filterTown" class="form-select form-select-sm" style="min-width:160px;">
+                    <select id="filterTown" class="form-select form-select-sm pf-select" style="min-width:160px;">
                         <option value="">All Towns</option>
                         {% for t in towns %}
                         <option value="{{ t }}">{{ t }}</option>
@@ -683,23 +809,22 @@
         </div>
 
         <!-- Compact secondary filters -->
-        <div class="d-flex flex-wrap gap-2 align-items-end pt-2"
-             style="border-top: 1px solid rgba(148,163,184,0.15);">
+        <div class="d-flex flex-wrap gap-2 align-items-end pt-2 dashboard-hero-filters">
             <div>
                 <label class="form-label fw-bold small mb-1">Street</label>
-                <select id="filterStreet" class="form-select form-select-sm" style="min-width:160px;" disabled>
+                <select id="filterStreet" class="form-select form-select-sm pf-select" style="min-width:160px;" disabled>
                     <option value="">All Streets</option>
                 </select>
             </div>
             <div>
                 <label class="form-label fw-bold small mb-1">Block</label>
-                <select id="filterBlock" class="form-select form-select-sm" style="min-width:100px;" disabled>
+                <select id="filterBlock" class="form-select form-select-sm pf-select" style="min-width:100px;" disabled>
                     <option value="">All Blocks</option>
                 </select>
             </div>
             <div>
                 <label class="form-label fw-bold small mb-1">Flat Type</label>
-                <select id="filterFlat" class="form-select form-select-sm">
+                <select id="filterFlat" class="form-select form-select-sm pf-select">
                     <option value="">All Types</option>
                     <option>1 Room</option>
                     <option>2 Room</option>
@@ -712,18 +837,18 @@
             </div>
             <div>
                 <label class="form-label fw-bold small mb-1">Trend Style</label>
-                <select id="trendStyle" class="form-select form-select-sm">
+                <select id="trendStyle" class="form-select form-select-sm pf-select">
                     <option value="line">Line + Area</option>
                     <option value="bar">Bar</option>
                 </select>
             </div>
             <div>
                 <label class="form-label fw-bold small mb-1">From</label>
-                <select id="yearFrom" class="form-select form-select-sm" style="min-width:80px;"></select>
+                <select id="yearFrom" class="form-select form-select-sm pf-select" style="min-width:80px;"></select>
             </div>
             <div>
                 <label class="form-label fw-bold small mb-1">To</label>
-                <select id="yearTo" class="form-select form-select-sm" style="min-width:80px;"></select>
+                <select id="yearTo" class="form-select form-select-sm pf-select" style="min-width:80px;"></select>
             </div>
             <div class="d-flex align-items-end gap-2">
                 <div id="filterBreadcrumb" class="filter-breadcrumb">
@@ -1173,7 +1298,8 @@
             <!-- AI Insight -->
             <div class="ai-insight-rail">
                 <div class="ai-insight-rail-header">
-                    <i class="bi bi-stars me-1"></i>AI Market Insight
+                    <span class="ai-insight-rail-title"><i class="bi bi-stars me-1"></i>AI Market Insight</span>
+                    <span class="ai-insight-rail-badge">PREMIUM</span>
                 </div>
                 <div id="railInsightText" class="ai-insight-rail-body">
                     Apply filters and click Refresh to generate a contextual market insight.
@@ -1258,8 +1384,8 @@
         <div class="ai-chat-header">
             <div class="d-flex align-items-center gap-2">
                 <i class="bi bi-stars text-primary"></i>
-                <span class="fw-bold">AI Market Analyst</span>
-                <span class="badge bg-primary bg-opacity-10 text-primary" style="font-size:0.65rem;">PREMIUM</span>
+                <span class="ai-chat-title">AI Market Analyst</span>
+                <span class="ai-chat-premium-badge">PREMIUM</span>
             </div>
             <div class="d-flex align-items-center gap-2">
                 <button id="aiChatCollapse" class="ai-chat-header-btn" title="Collapse back to widget"><i class="bi bi-fullscreen-exit"></i></button>
@@ -1271,6 +1397,7 @@
     {% endif %}
 
 </div><!-- end .container-xl -->
+</div><!-- end .analytics-page-wrapper -->
 
 {% if is_premium %}
 <div id="aiChatWidget" class="ai-chat-widget">

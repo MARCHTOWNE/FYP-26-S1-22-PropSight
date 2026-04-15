@@ -3432,6 +3432,40 @@ def _get_popular_predictions(limit=3):
         return []
 
 
+def _build_town_coords_lookup():
+    """Town -> coordinates lookup used by mini-map previews."""
+    lookup = {}
+    for row in _get_prediction_map_seed_data():
+        town = (row.get("town") or "").strip()
+        lat = _coerce_float(row.get("lat"))
+        lng = _coerce_float(row.get("lng"))
+        if not town or lat is None or lng is None:
+            continue
+        lookup[town] = {"lat": lat, "lng": lng}
+        lookup[town.upper()] = {"lat": lat, "lng": lng}
+    return lookup
+
+
+def _attach_prediction_coordinates(predictions, town_coords):
+    """Ensure each prediction has lat/lng for Leaflet mini maps."""
+    enriched = []
+    for item in predictions or []:
+        row = dict(item) if isinstance(item, dict) else {}
+        lat = _coerce_float(row.get("lat"))
+        lng = _coerce_float(row.get("lng"))
+        if lat is None or lng is None:
+            town = (row.get("town") or "").strip()
+            fallback = town_coords.get(town) or town_coords.get(town.upper())
+            if fallback:
+                lat = fallback.get("lat")
+                lng = fallback.get("lng")
+        if lat is not None and lng is not None:
+            row["lat"] = lat
+            row["lng"] = lng
+        enriched.append(row)
+    return enriched
+
+
 @app.route("/")
 def landing():
     """Public marketing landing page."""
@@ -3451,6 +3485,12 @@ def home():
     performance = ARTEFACTS.get("performance", {})
     artefact_mape = performance.get("test_mape_display")
 
+    # Town coordinates for map thumbnails
+    try:
+        town_coords = _build_town_coords_lookup()
+    except Exception:
+        town_coords = {}
+
     # Popular / personalized predictions for homepage cards
     popular_predictions = []
     is_personalized = False
@@ -3460,23 +3500,14 @@ def home():
                 _get_saved_predictions(session["user_id"])
             )
             if user_preds:
-                popular_predictions = user_preds[:3]
+                popular_predictions = _attach_prediction_coordinates(user_preds[:3], town_coords)
                 is_personalized = True
             else:
-                popular_predictions = _get_popular_predictions()
+                popular_predictions = _attach_prediction_coordinates(_get_popular_predictions(), town_coords)
         except Exception:
-            popular_predictions = _get_popular_predictions()
+            popular_predictions = _attach_prediction_coordinates(_get_popular_predictions(), town_coords)
     else:
-        popular_predictions = _get_popular_predictions()
-
-    # Town coordinates for map thumbnails
-    town_coords = {}
-    try:
-        for d in _get_district_summary_data():
-            if d.get("lat") and d.get("lng"):
-                town_coords[d["town"]] = {"lat": d["lat"], "lng": d["lng"]}
-    except Exception:
-        pass
+        popular_predictions = _attach_prediction_coordinates(_get_popular_predictions(), town_coords)
 
     return render_template(
         "home.html",

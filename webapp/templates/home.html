@@ -169,44 +169,42 @@
 
             {% if popular_predictions %}
             <div class="popular-grid member-activity-grid">
-                {% for pred in popular_predictions %}
-                <a href="{{ url_for('predict', town=pred.town, flat_type=pred.flat_type, flat_model=pred.get('flat_model', ''), floor_area=pred.get('floor_area', ''), storey_range=pred.get('storey_range', ''), lease_commence=pred.get('lease_commence', ''), street_name=pred.get('street_name', ''), block=pred.get('block', '')) }}" class="popular-card-link member-activity-card-link">
+                {% for p in popular_predictions %}
+                <a href="{{ url_for('predict', town=p.town, flat_type=p.flat_type, flat_model=p.get('flat_model', ''), floor_area=p.get('floor_area', ''), storey_range=p.get('storey_range', ''), lease_commence=p.get('lease_commence', ''), street_name=p.get('street_name', ''), block=p.get('block', '')) }}" class="popular-card-link member-activity-card-link">
                     <div class="panel-card ps-glass-card popular-card member-activity-card h-100">
-                        <div class="card-map" id="memberActMap{{ loop.index }}"
-                             data-lat="{{ town_coords.get(pred.town, {}).get('lat', 1.3521) }}"
-                             data-lng="{{ town_coords.get(pred.town, {}).get('lng', 103.8198) }}"></div>
+                        <div class="mini-map-header" id="mini-map-{{ loop.index }}" data-lat="{{ p.lat }}" data-lng="{{ p.lng }}"></div>
                         <div class="popular-card-body member-activity-card-body">
                             <div class="member-activity-card-top">
                                 <span class="member-activity-badge">{% if is_personalized %}Saved valuation{% else %}Trending{% endif %}</span>
-                                <h6 class="popular-card-town member-activity-town">{{ pred.town | title }}</h6>
+                                <h6 class="popular-card-town member-activity-town">{{ p.town | title }}</h6>
                             </div>
                             {% if is_personalized %}
-                                {% if pred.get('street_name') or pred.get('block') %}
-                                <span class="popular-card-address member-activity-address">{% if pred.get('block') %}{{ pred.block }} {% endif %}{{ pred.get('street_name', '') }}</span>
+                                {% if p.get('street_name') or p.get('block') %}
+                                <span class="popular-card-address member-activity-address">{% if p.get('block') %}{{ p.block }} {% endif %}{{ p.get('street_name', '') }}</span>
                                 {% endif %}
-                                <span class="popular-card-type member-activity-type">{{ pred.flat_type }} · {{ pred.flat_model }}</span>
+                                <span class="popular-card-type member-activity-type">{{ p.flat_type }} · {{ p.flat_model }}</span>
                                 <div class="member-activity-detail-row">
-                                    {% if pred.get('floor_area') %}
-                                    <span class="member-activity-pill"><i class="bi bi-rulers" aria-hidden="true"></i> {{ pred.floor_area }} sqm</span>
+                                    {% if p.get('floor_area') %}
+                                    <span class="member-activity-pill"><i class="bi bi-rulers" aria-hidden="true"></i> {{ p.floor_area }} sqm</span>
                                     {% endif %}
-                                    {% if pred.get('storey_range') %}
-                                    <span class="member-activity-pill"><i class="bi bi-building" aria-hidden="true"></i> {{ pred.storey_range }}</span>
+                                    {% if p.get('storey_range') %}
+                                    <span class="member-activity-pill"><i class="bi bi-building" aria-hidden="true"></i> {{ p.storey_range }}</span>
                                     {% endif %}
-                                    {% if pred.get('lease_commence') %}
-                                    <span class="member-activity-pill"><i class="bi bi-calendar3" aria-hidden="true"></i> Lease {{ pred.lease_commence }}</span>
+                                    {% if p.get('lease_commence') %}
+                                    <span class="member-activity-pill"><i class="bi bi-calendar3" aria-hidden="true"></i> Lease {{ p.lease_commence }}</span>
                                     {% endif %}
                                 </div>
-                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(pred.predicted_price) }}</div>
-                                {% if pred.get('price_low') is not none and pred.get('price_high') is not none %}
+                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(p.predicted_price) }}</div>
+                                {% if p.get('price_low') is not none and p.get('price_high') is not none %}
                                 <div class="member-activity-range">
-                                    Range ${{ "{:,.0f}".format(pred.price_low) }} – ${{ "{:,.0f}".format(pred.price_high) }}
+                                    Range ${{ "{:,.0f}".format(p.price_low) }} – ${{ "{:,.0f}".format(p.price_high) }}
                                 </div>
                                 {% endif %}
-                                <small class="text-muted member-activity-date">Saved {{ pred.created_at_date_display }}</small>
+                                <small class="text-muted member-activity-date">Saved {{ p.created_at_date_display }}</small>
                             {% else %}
-                                <span class="popular-card-type member-activity-type">{{ pred.flat_type }}</span>
-                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(pred.avg_price or 0) }}</div>
-                                <small class="text-muted member-activity-date">{{ pred.count }} prediction{{ "s" if pred.count != 1 }} in sample</small>
+                                <span class="popular-card-type member-activity-type">{{ p.flat_type }}</span>
+                                <div class="popular-card-price member-activity-price">${{ "{:,.0f}".format(p.avg_price or 0) }}</div>
+                                <small class="text-muted member-activity-date">{{ p.count }} prediction{{ "s" if p.count != 1 }} in sample</small>
                             {% endif %}
                         </div>
                     </div>
@@ -233,25 +231,23 @@
         <p class="section-subtitle mb-4">{{ "Your most recent saved prediction results" if is_personalized else "Most predicted areas by our users" }}</p>
 
         <div class="popular-grid">
-            {% for pred in popular_predictions %}
-            <a href="{{ url_for('predict', town=pred.town, flat_type=pred.flat_type, flat_model=pred.get('flat_model', ''), floor_area=pred.get('floor_area', ''), storey_range=pred.get('storey_range', ''), lease_commence=pred.get('lease_commence', ''), street_name=pred.get('street_name', ''), block=pred.get('block', '')) }}" class="popular-card-link">
+            {% for p in popular_predictions %}
+            <a href="{{ url_for('predict', town=p.town, flat_type=p.flat_type, flat_model=p.get('flat_model', ''), floor_area=p.get('floor_area', ''), storey_range=p.get('storey_range', ''), lease_commence=p.get('lease_commence', ''), street_name=p.get('street_name', ''), block=p.get('block', '')) }}" class="popular-card-link">
                 <div class="panel-card ps-glass-card popular-card">
-                    <div class="card-map" id="popMap{{ loop.index }}"
-                         data-lat="{{ town_coords.get(pred.town, {}).get('lat', 1.3521) }}"
-                         data-lng="{{ town_coords.get(pred.town, {}).get('lng', 103.8198) }}"></div>
+                    <div class="mini-map-header" id="mini-map-{{ loop.index }}" data-lat="{{ p.lat }}" data-lng="{{ p.lng }}"></div>
                     <div class="popular-card-body">
-                        <h6 class="popular-card-town">{{ pred.town | title }}</h6>
+                        <h6 class="popular-card-town">{{ p.town | title }}</h6>
                         {% if is_personalized %}
-                            {% if pred.get('street_name') or pred.get('block') %}
-                            <span class="popular-card-address">{% if pred.get('block') %}{{ pred.block }} {% endif %}{{ pred.get('street_name', '') }}</span>
+                            {% if p.get('street_name') or p.get('block') %}
+                            <span class="popular-card-address">{% if p.get('block') %}{{ p.block }} {% endif %}{{ p.get('street_name', '') }}</span>
                             {% endif %}
-                            <span class="popular-card-type">{{ pred.flat_type }} &middot; {{ pred.flat_model }}</span>
-                            <div class="popular-card-price">${{ "{:,.0f}".format(pred.predicted_price) }}</div>
-                            <small class="text-muted">Saved {{ pred.created_at_date_display }}</small>
+                            <span class="popular-card-type">{{ p.flat_type }} &middot; {{ p.flat_model }}</span>
+                            <div class="popular-card-price">${{ "{:,.0f}".format(p.predicted_price) }}</div>
+                            <small class="text-muted">Saved {{ p.created_at_date_display }}</small>
                         {% else %}
-                            <span class="popular-card-type">{{ pred.flat_type }}</span>
-                            <div class="popular-card-price">${{ "{:,.0f}".format(pred.avg_price or 0) }}</div>
-                            <small class="text-muted">{{ pred.count }} prediction{{ "s" if pred.count != 1 }} made</small>
+                            <span class="popular-card-type">{{ p.flat_type }}</span>
+                            <div class="popular-card-price">${{ "{:,.0f}".format(p.avg_price or 0) }}</div>
+                            <small class="text-muted">{{ p.count }} prediction{{ "s" if p.count != 1 }} made</small>
                         {% endif %}
                     </div>
                 </div>
@@ -402,24 +398,32 @@ const revealObs = new IntersectionObserver((entries) => {
 revealItems.forEach(el => revealObs.observe(el));
 
 // Popular predictions mini-maps
-document.querySelectorAll('.card-map').forEach(function(el) {
+document.querySelectorAll('.mini-map-header').forEach(function(el) {
     var lat = parseFloat(el.dataset.lat);
     var lng = parseFloat(el.dataset.lng);
     if (isNaN(lat) || isNaN(lng)) return;
     var miniMap = L.map(el.id, {
-        center: [lat, lng],
-        zoom: 14,
         zoomControl: false,
-        attributionControl: false,
         dragging: false,
         scrollWheelZoom: false,
         doubleClickZoom: false,
-        touchZoom: false
+        touchZoom: false,
+        boxZoom: false,
+        keyboard: false,
+        tap: false
     });
+    miniMap.setView([lat, lng], 14);
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         maxZoom: 19
     }).addTo(miniMap);
-    L.circleMarker([lat, lng], {radius: 6, color: '#2563eb', fillColor: '#2563eb', fillOpacity: 0.7, weight: 2}).addTo(miniMap);
+    L.circleMarker([lat, lng], {
+        radius: 6,
+        fillColor: '#2563eb',
+        color: '#ffffff',
+        weight: 2,
+        fillOpacity: 1,
+        className: 'mini-map-dot'
+    }).addTo(miniMap);
 });
 </script>
 {% if not g.user %}

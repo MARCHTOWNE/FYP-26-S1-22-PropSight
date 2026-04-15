@@ -1195,7 +1195,7 @@ def determine_winner(results: dict) -> dict:
         Dict with winner name, selection metrics, and test metrics.
     """
     eligible_models = [
-        name for name in ("xgboost", "lgbm", "catboost", "ensemble")
+        name for name in ("xgboost", "lgbm", "catboost")
         if name in results
     ]
     if not eligible_models:
@@ -1226,6 +1226,7 @@ def determine_winner(results: dict) -> dict:
             f"R2={future_metrics['r2']:.4f}, "
             f"MAPE={future_metrics['mape']:.2f}%."
         )
+    justification += "The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint)."
 
     return {
         "winner": best_name,

@@ -95,6 +95,7 @@ jobs:
           Run: $(basename \"$RUN_DIR\")
           Results: $WINNER
           Triggered by: ${{ github.event_name }}"
+          git pull --rebase origin main
           git push
 
       - name: Sync model version to Supabase

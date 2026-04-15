@@ -1,0 +1,122 @@
+name: Monthly Model Retrain
+
+on:
+  schedule:
+    - cron: '0 5 1 * *'  # 1st of each month at 05:00 UTC / 13:00 SGT
+  workflow_dispatch:
+    inputs:
+      fresh_tuning:
+        description: 'Run fresh Optuna hyperparameter tuning?'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'false'
+          - 'true'
+      optuna_trials:
+        description: 'Number of Optuna trials (if fresh_tuning=true)'
+        required: false
+        default: '25'
+        type: string
+
+jobs:
+  retrain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+
+    env:
+      SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      TRAINING_DATA_SOURCE: supabase
+      OPTUNA_TRIALS: ${{ github.event.inputs.optuna_trials || '25' }}
+      FRESH_TUNING: ${{ github.event.inputs.fresh_tuning || '0' }}
+      N_ESTIMATORS: '3000'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install requests pandas numpy python-dotenv psycopg2-binary pyarrow scipy scikit-learn xgboost lightgbm catboost optuna shap
+
+      - name: Restore model assets cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ML/model_assets
+          key: model-assets-${{ hashFiles('ML/model_assets/latest.txt') }}
+          restore-keys: model-assets-
+
+      - name: Run ML pipeline
+        working-directory: scripts
+        run: python run_ml_pipeline.py
+
+      - name: Sync model version to Supabase
+        working-directory: scripts
+        run: python sync_to_supabase.py
+
+      - name: Save model assets cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: ML/model_assets
+          key: model-assets-${{ github.run_id }}
+
+      - name: Commit and push updated model assets
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add ML/model_assets/
+          if git diff --cached --quiet; then
+            echo "No model asset changes to commit."
+            exit 0
+          fi
+          RUN_DIR=$(cat ML/model_assets/latest.txt 2>/dev/null || echo "unknown")
+          METRICS_FILE="ML/${RUN_DIR}/metrics.json"
+          if [ -f "$METRICS_FILE" ]; then
+            WINNER=$(python3 -c "
+import json
+with open('$METRICS_FILE') as f:
+    m = json.load(f)
+w = m.get('winner', {})
+print(f\"{w.get('winner','?')} | MAPE {w.get('test_mape','?')}% | RMSE {w.get('test_rmse','?')}\")
+" 2>/dev/null || echo "metrics unavailable")
+          else
+            WINNER="metrics unavailable"
+          fi
+          git commit -m "chore(ml): retrain model [$(date -u +%Y-%m-%d)]
+
+          Run: $(basename \"$RUN_DIR\")
+          Results: $WINNER
+          Triggered by: ${{ github.event_name }}"
+          git push
+
+      - name: Trigger Render deploy
+        if: env.RENDER_DEPLOY_HOOK != ''
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          curl -s -o /dev/null -w "%{http_code}" "$RENDER_DEPLOY_HOOK"
+          echo " — Render deploy triggered."
+
+      - name: Create issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            await github.rest.issues.create({
+              owner,
+              repo,
+              title: `Monthly model retrain failed: ${new Date().toISOString().slice(0, 10)}`,
+              body: `The monthly model retrain pipeline failed.\n\n[View logs](${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId})`,
+              labels: ['pipeline-failure']
+            });

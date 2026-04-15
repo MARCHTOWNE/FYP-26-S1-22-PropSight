@@ -2,13 +2,13 @@ name: Weekly Data Refresh
 
 on:
   schedule:
-    - cron: '0 3 * * 3' #Every Wednesday at 03:00 UTC (11:00 SGT)
-  workflow_dispatch: #Manual trigger from GitHub UI
+    - cron: '0 3 * * 3' # Every Wednesday at 03:00 UTC (11:00 SGT)
+  workflow_dispatch: # Manual trigger from GitHub UI
 
 jobs:
   refresh-data:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     env:
       SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
@@ -31,10 +31,10 @@ jobs:
 
       - name: Restore SQLite cache
         id: cache-restore
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: Data Preprocessing/hdb_resale.db
-          key: sqlite-db-${{ github.run_id }}
+          key: sqlite-db-${{ hashFiles('Data Preprocessing/hdb_resale.db') }}
           restore-keys: sqlite-db-
 
       - name: Download seed DB on cache miss
@@ -47,6 +47,13 @@ jobs:
       - name: Run data preprocessing pipeline
         working-directory: scripts
         run: python run_data_preprocessing.py
+
+      - name: Save SQLite cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: Data Preprocessing/hdb_resale.db
+          key: sqlite-db-${{ github.run_id }}
 
       - name: Create issue on failure
         if: failure()

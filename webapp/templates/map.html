@@ -46,9 +46,39 @@
         backdrop-filter: blur(16px);
         box-shadow: 0 18px 40px rgba(2, 6, 23, 0.42);
         padding: 20px 18px;
+        transition: transform 0.25s ease, opacity 0.2s ease;
+    }
+    .map-layout.sidebar-collapsed .map-sidebar {
+        transform: translateX(calc(-100% - 28px));
+        opacity: 0;
+        pointer-events: none;
     }
     .map-sidebar::-webkit-scrollbar { width: 4px; }
     .map-sidebar::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
+
+    .sidebar-toggle-btn {
+        position: absolute;
+        top: 18px;
+        left: 18px;
+        z-index: 1002;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(7, 13, 24, 0.88);
+        color: #e2e8f0;
+        border-radius: 999px;
+        padding: 8px 12px;
+        font-size: 0.76rem;
+        font-weight: 700;
+        line-height: 1;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 24px rgba(2, 6, 23, 0.32);
+    }
+    .map-layout:not(.sidebar-collapsed) .sidebar-toggle-btn {
+        left: 372px;
+    }
+    .sidebar-toggle-btn i { font-size: 0.82rem; }
 
     .map-kicker {
         font-size: 0.65rem;
@@ -527,11 +557,23 @@
         }
         .map-legend-panel { right: 12px; left: 12px; bottom: 12px; width: auto; }
         .map-float-note { display: none; }
+        .map-layout:not(.sidebar-collapsed) .sidebar-toggle-btn {
+            left: 24px;
+            top: calc(12px + 1px);
+        }
+        .map-layout.sidebar-collapsed .sidebar-toggle-btn {
+            left: 12px;
+            top: 12px;
+        }
     }
     @media (max-width: 767px) {
         .map-stat-grid { grid-template-columns: 1fr; }
         .map-sidebar { padding: 14px; }
         .scenario-grid { grid-template-columns: 1fr; }
+        .sidebar-toggle-btn {
+            font-size: 0.72rem;
+            padding: 7px 10px;
+        }
     }
 </style>
 {% endblock %}
@@ -698,6 +740,10 @@
                     </div>
                 </div>
             </div>
+            <button type="button" class="sidebar-toggle-btn" id="sidebarToggleBtn" onclick="toggleMapSidebar()">
+                <i class="bi bi-layout-sidebar-inset" id="sidebarToggleIcon"></i>
+                <span id="sidebarToggleText">Hide Inputs</span>
+            </button>
 
             <div class="map-float-note" id="floatNote">
                 <i class="bi bi-cursor-fill"></i>
@@ -758,6 +804,10 @@ const scenarioResetBtn = document.getElementById('scenarioResetBtn');
 const mapFlatTypeSelect = document.getElementById('mapFlatType');
 const mapFlatModelSelect = document.getElementById('mapFlatModel');
 const mapStoreyRangeSelect = document.getElementById('mapStoreyRange');
+const mapLayout = document.querySelector('.map-layout');
+const sidebarToggleBtn = document.getElementById('sidebarToggleBtn');
+const sidebarToggleText = document.getElementById('sidebarToggleText');
+const sidebarToggleIcon = document.getElementById('sidebarToggleIcon');
 const allMapFlatModels = {{ flat_models|tojson }};
 const mapFlatModelsByType = {{ flat_models_by_type|tojson }};
 const shouldStartInPins = (
@@ -1040,6 +1090,19 @@ function updateScenarioSummary() {
 
 function setScenarioPanelVisible(isVisible) {
     scenarioPanel.style.display = isVisible ? '' : 'none';
+}
+
+function setMapSidebarCollapsed(collapsed) {
+    mapLayout.classList.toggle('sidebar-collapsed', collapsed);
+    sidebarToggleText.textContent = collapsed ? 'Open Inputs' : 'Hide Inputs';
+    sidebarToggleIcon.className = collapsed ? 'bi bi-layout-sidebar-inset-reverse' : 'bi bi-layout-sidebar-inset';
+    sidebarToggleBtn.setAttribute('aria-label', collapsed ? 'Open input board' : 'Hide input board');
+    sidebarToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+}
+
+function toggleMapSidebar() {
+    const isCollapsed = mapLayout.classList.contains('sidebar-collapsed');
+    setMapSidebarCollapsed(!isCollapsed);
 }
 
 // ─── Prediction Mode ─────────────────────────────────────────────
@@ -1605,6 +1668,7 @@ scenarioResetBtn.addEventListener('click', function(event) {
 syncMapFlatModelOptions();
 updateScenarioSummary();
 toggleScenarioPanel(false);
+setMapSidebarCollapsed(false);
 
 // ─── Init ────────────────────────────────────────────────────────
 if (initialTown) {

@@ -2290,6 +2290,20 @@ def load_user():
             "subscription_tier": session.get("subscription_tier", "general"),
         }
     elif "user_id" in session:
+        # Keep the special admin sentinel session (-1) so admin login
+        # does not depend on a public.users row in Supabase.
+        if (
+            str(session.get("subscription_tier", "")).strip().lower() == "admin"
+            and str(session.get("email", "")).strip().lower() == ADMIN_EMAIL.strip().lower()
+            and str(session.get("user_id", "")).strip() == "-1"
+        ):
+            g.user = {
+                "id": -1,
+                "username": session.get("username", "Platform Manager"),
+                "email": session.get("email", ""),
+                "subscription_tier": "admin",
+            }
+            return
         session.clear()
 
 
@@ -3296,6 +3310,17 @@ def login():
         email = request.form["email"].strip().lower()
         password = request.form["password"]
 
+        if email == ADMIN_EMAIL.strip().lower() and password == ADMIN_PASSWORD:
+            session["user_id"] = -1
+            session["username"] = "Platform Manager"
+            session["email"] = email
+            session["access_token"] = ""
+            session["subscription_tier"] = "admin"
+            flash("Welcome back, Platform Manager!", "success")
+            # Admin should always land on the admin dashboard,
+            # even if a generic "next" URL is present.
+            return redirect(url_for("admin_dashboard"))
+
         try:
             result = _supabase_auth(
                 "/token?grant_type=password",
@@ -3474,6 +3499,9 @@ def landing():
 
 @app.route("/home")
 def home():
+    if _is_admin_session():
+        return redirect(url_for("admin_dashboard"))
+
     # Total transaction count
     try:
         total_txns = _supabase_count("transactions")
@@ -4954,11 +4982,18 @@ ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@propsight.sg")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
 
 
+def _is_admin_session() -> bool:
+    return str(session.get("email", "")).strip().lower() == ADMIN_EMAIL.strip().lower()
+
+
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("is_admin"):
-            return redirect(url_for("admin_login"))
+        if not session.get("user_id"):
+            return redirect(url_for("login", next=request.path))
+        if not _is_admin_session():
+            flash("Admin access required.", "danger")
+            return redirect(url_for("home"))
         return f(*args, **kwargs)
     return decorated
 
@@ -4966,40 +5001,25 @@ def admin_required(f):
 def api_admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if not session.get("is_admin"):
-            return jsonify({"error": "Admin authentication required"}), 401
+        if not session.get("user_id"):
+            return jsonify({"error": "Authentication required"}), 401
+        if not _is_admin_session():
+            return jsonify({"error": "Admin access required"}), 403
         return f(*args, **kwargs)
     return decorated
 
 
-@app.route("/admin", methods=["GET"])
-def admin_login():
-    if session.get("is_admin"):
-        return redirect(url_for("admin_dashboard"))
-    return render_template("admin.html", admin_authenticated=False)
-
-
-@app.route("/admin/auth", methods=["POST"])
-def admin_auth():
-    data = request.get_json() or {}
-    email = data.get("email", "").strip()
-    password = data.get("password", "").strip()
-    if email == ADMIN_EMAIL and password == ADMIN_PASSWORD:
-        session["is_admin"] = True
-        return jsonify({"success": True})
-    return jsonify({"success": False, "error": "Invalid credentials"}), 401
-
-
 @app.route("/admin/logout", methods=["POST"])
 def admin_logout():
-    session.pop("is_admin", None)
+    session.clear()
     return jsonify({"success": True})
 
 
+@app.route("/admin", methods=["GET"])
 @app.route("/admin/dashboard")
 @admin_required
 def admin_dashboard():
-    return render_template("admin.html", admin_authenticated=True)
+    return render_template("admin.html")
 
 
 @app.route("/api/admin/stats")

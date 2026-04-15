@@ -82,13 +82,7 @@ jobs:
           RUN_DIR=$(cat ML/model_assets/latest.txt 2>/dev/null || echo "unknown")
           METRICS_FILE="ML/${RUN_DIR}/metrics.json"
           if [ -f "$METRICS_FILE" ]; then
-            WINNER=$(python3 -c "
-import json
-with open('$METRICS_FILE') as f:
-    m = json.load(f)
-w = m.get('winner', {})
-print(f\"{w.get('winner','?')} | MAPE {w.get('test_mape','?')}% | RMSE {w.get('test_rmse','?')}\")
-" 2>/dev/null || echo "metrics unavailable")
+            WINNER=$(python3 -c "import json; m=json.load(open('$METRICS_FILE')); w=m.get('winner',{}); print(f\"{w.get('winner','?')} | MAPE {w.get('test_mape','?')}% | RMSE {w.get('test_rmse','?')}\")" 2>/dev/null || echo "metrics unavailable")
           else
             WINNER="metrics unavailable"
           fi

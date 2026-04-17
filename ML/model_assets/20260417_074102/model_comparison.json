@@ -1,0 +1,66 @@
+{
+  "winner": {
+    "winner": "catboost",
+    "selection_metric": "val_mape",
+    "val_mape": 3.6175,
+    "val_rmse": 33780.0,
+    "test_rmse": 34699.2,
+    "test_r2": 0.973872,
+    "test_mape": 3.6447,
+    "justification": "catboost achieved the lowest validation MAPE of 3.62%. Its locked test metrics are RMSE=36,416, R2=0.9712, MAPE=3.90%. Runner-up on validation: lgbm at 3.71% MAPE. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).",
+    "pre_refit_test_mape": 3.8969,
+    "pre_refit_test_rmse": 36415.78,
+    "pre_refit_test_r2": 0.971223,
+    "refit_test_mape": 3.6447,
+    "refit_test_rmse": 34699.2,
+    "refit_test_r2": 0.973872
+  },
+  "training_config": {
+    "xgb_trials": 25,
+    "lgbm_trials": 25,
+    "catboost_trials": 25,
+    "xgb_n_estimators": 2000,
+    "lgbm_n_estimators": 2000,
+    "catboost_n_estimators": 2000,
+    "early_stopping_rounds": 50,
+    "tuning_sample_size": 250000,
+    "rf_estimators": 300,
+    "model_n_jobs": -1,
+    "fresh_tuning": false
+  },
+  "training_config_notes": [],
+  "all_models": {
+    "xgboost": {
+      "val_rmse": 35093.15,
+      "val_r2": 0.972154,
+      "val_mape": 3.736,
+      "test_rmse": 38782.73,
+      "test_r2": 0.96736,
+      "test_mape": 4.1272
+    },
+    "lgbm": {
+      "val_rmse": 34549.36,
+      "val_r2": 0.97301,
+      "val_mape": 3.7139,
+      "test_rmse": 38284.41,
+      "test_r2": 0.968194,
+      "test_mape": 4.1173
+    },
+    "catboost": {
+      "val_rmse": 33780.0,
+      "val_r2": 0.974199,
+      "val_mape": 3.6175,
+      "test_rmse": 36415.78,
+      "test_r2": 0.971223,
+      "test_mape": 3.8969
+    },
+    "ensemble": {
+      "val_rmse": 33295.61,
+      "val_r2": 0.974934,
+      "val_mape": 3.571,
+      "test_rmse": 36258.03,
+      "test_r2": 0.971471,
+      "test_mape": 3.8739
+    }
+  }
+}

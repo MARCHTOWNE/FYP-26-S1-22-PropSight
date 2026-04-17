@@ -1418,17 +1418,10 @@
         </div>
         <div id="aiChatMessages" class="ai-chat-messages">
             <div class="ai-chat-bubble ai-chat-bot">
-                Ask me anything about the charts and data on this page. I can see all the visualisations and numbers.
+                Ask about the data on this page — I can see all the charts, filters, and numbers. I'm best at explaining what the trends mean for homeowners like you.
             </div>
         </div>
-        <div id="aiChatSuggestions" class="ai-chat-suggestions">
-            <button class="ai-chat-suggestion" data-q="What's the price trend?">What's the price trend?</button>
-            <button class="ai-chat-suggestion" data-q="Which flat type is best value?">Which flat type is best value?</button>
-            <button class="ai-chat-suggestion" data-q="Summarise the charts">Summarise the charts</button>
-            <button class="ai-chat-suggestion" data-q="What's driving prices here?">What's driving prices here?</button>
-            <button class="ai-chat-suggestion" data-q="How will prices change?">How will prices change?</button>
-            <button class="ai-chat-suggestion" data-q="Is this area good value?">Is this area good value?</button>
-        </div>
+        <div id="aiChatSuggestions" class="ai-chat-suggestions"></div>
         <div class="ai-chat-input-area">
             <input id="aiChatInput" type="text" class="form-control form-control-sm"
                    placeholder="Ask about prices, trends, comparisons..." maxlength="500">
@@ -2560,6 +2553,7 @@ document.getElementById('filterStreet').addEventListener('change', async functio
         const to   = Number(document.getElementById('yearTo').value   || 9999);
         if (from > to) document.getElementById('yearTo').value = String(from);
         refreshDashboard();
+        if (typeof chatHistory !== 'undefined' && !chatHistory.length) renderStarters();
     });
 });
 
@@ -3012,7 +3006,35 @@ if (IS_PREMIUM) {
     const chatExpandedBody = document.getElementById('aiChatExpandedBody');
     const chatCollapseBtn  = document.getElementById('aiChatCollapse');
 
-    const openChat  = () => { chatPanel.classList.remove('d-none'); chatToggle.classList.add('open'); chatInput.focus(); };
+    function buildChatStarters() {
+      const f = (typeof getFilters === 'function') ? getFilters() : {};
+      const town = f.town || '';
+      const flatType = f.flat_type || '';
+      const starters = [];
+
+      if (town && flatType) {
+        starters.push(`How has ${flatType} demand shifted in ${town}?`);
+        starters.push(`Is ${town} mature? How does that affect my value?`);
+        starters.push(`What's the lease decay picture for ${flatType} in ${town}?`);
+      } else if (town) {
+        starters.push(`What's driving prices in ${town}?`);
+        starters.push(`How is demand trending in ${town}?`);
+        starters.push(`Is ${town} a mature estate?`);
+      } else if (flatType) {
+        starters.push(`Where are ${flatType} flats in strongest demand?`);
+        starters.push(`How does ${flatType} pricing compare across towns?`);
+      } else {
+        starters.push('Which towns are seeing the biggest price changes?');
+        starters.push('How does mature vs non-mature affect prices?');
+        starters.push('Why does lease decay matter for resale?');
+      }
+
+      starters.push('What should I understand about my flat\'s position?');
+
+      return starters.slice(0, 4);
+    }
+
+    const openChat  = () => { chatPanel.classList.remove('d-none'); chatToggle.classList.add('open'); chatInput.focus(); if (!chatHistory.length) renderStarters(); };
     const closeChat = () => { chatPanel.classList.add('d-none');    chatToggle.classList.remove('open'); };
 
     //Expand/collapse
@@ -3056,6 +3078,10 @@ if (IS_PREMIUM) {
             btn.textContent = q;
             chatSuggestions.appendChild(btn);
         });
+    }
+
+    function renderStarters() {
+      renderSuggestions(buildChatStarters());
     }
 
     function appendBubble(text, role) {

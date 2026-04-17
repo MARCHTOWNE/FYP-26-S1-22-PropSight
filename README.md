@@ -312,14 +312,25 @@ The current SQL file defines the RPC functions used by `webapp/app.py`, includin
 Relevant `.env` values used by the current code:
 
 ```
+# Required
 SUPABASE_URL=https://<project>.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<service-role-key>
-SUPABASE_KEY=<optional alternate key name accepted by webapp/app.py>
-SUPABASE_DB_URL=postgresql://...
 SECRET_KEY=<flask-session-secret>
-MODEL_ASSETS_DIR=<optional model artefacts override>
+ADMIN_EMAIL=<admin-login-email>
+ADMIN_PASSWORD=<strong-random-password>
+
+# Optional
+SUPABASE_KEY=<alternate key name accepted by webapp/app.py>
+SUPABASE_DB_URL=postgresql://...
+MODEL_ASSETS_DIR=<model artefacts override>
 SUPABASE_USERS_TABLE=users
 SUPABASE_PREDICTIONS_TABLE=saved_predictions
+```
+
+`ADMIN_EMAIL` and `ADMIN_PASSWORD` are **required** — the app raises a `RuntimeError` at startup if either is missing. Generate a strong password with:
+
+```bash
+python -c "import secrets; print(secrets.token_urlsafe(24))"
 ```
 
 ---

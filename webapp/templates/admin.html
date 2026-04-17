@@ -208,18 +208,13 @@
 
           <div class="topbar-panel" id="notif-panel" style="right:52px;">
             <div class="panel-header"><div><div class="panel-title">Notifications</div><div class="panel-sub">Recent admin events</div></div><button class="btn-action" onclick="clearNotifs()">Mark all read</button></div>
-            <div id="notif-list">
-              <div class="notif-item unread"><div class="notif-dot-item green"></div><div><div class="notif-text">New account created for <strong><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="4e3e3c27372f60202f273c7c7e7c7b0e29232f2722602d2123">[email&#160;protected]</a></strong></div><div class="notif-time">2 minutes ago</div></div></div>
-              <div class="notif-item unread"><div class="notif-dot-item orange"></div><div><div class="notif-text">Resale dataset updated for April 2026 batch</div><div class="notif-time">1 hour ago</div></div></div>
-              <div class="notif-item unread"><div class="notif-dot-item red"></div><div><div class="notif-text">Flagged prediction requires manual review</div><div class="notif-time">3 hours ago</div></div></div>
-              <div class="notif-item"><div class="notif-dot-item blue"></div><div><div class="notif-text">XGBoost model remains active for live predictions</div><div class="notif-time">Yesterday</div></div></div>
-            </div>
+            <div id="notif-list"></div>
           </div>
 
           <div class="topbar-panel" id="settings-panel" style="right:0;width:320px;">
             <div class="panel-header"><div><div class="panel-title">Settings</div><div class="panel-sub">Platform preferences</div></div></div>
             <div class="settings-section-label">Account</div>
-            <div class="settings-row"><div><div class="settings-row-title">Display Name</div><div class="settings-row-sub">Shown in sidebar</div></div><input class="settings-input" value="Platform Manager"></div>
+            <div class="settings-row"><div><div class="settings-row-title">Display Name</div><div class="settings-row-sub">Shown in sidebar</div></div><input class="settings-input" value="{{ session.username or 'Admin' }}"></div>
             <div class="settings-row"><div><div class="settings-row-title">Email Notifications</div><div class="settings-row-sub">Receive admin alerts</div></div><label class="toggle-switch"><input type="checkbox" checked><span class="toggle-knob"></span></label></div>
             <div class="settings-row"><div><div class="settings-row-title">Auto-refresh Dashboard</div><div class="settings-row-sub">Refresh every 30 seconds</div></div><label class="toggle-switch"><input type="checkbox" checked><span class="toggle-knob"></span></label></div>
             <div style="padding:14px 20px 20px;"><button class="btn-primary-sm" style="width:100%;justify-content:center;" onclick="showToast('Settings saved.','success');closeAllPanels();">Save Changes</button></div>
@@ -522,9 +517,9 @@
         return;
       }
       list.innerHTML = items.map((n, idx)=>{
-        const color = n.action==='create' ? 'green' : n.action==='suspend' ? 'red' : n.action==='upgrade' ? 'orange' : 'blue';
+        const color = n.icon_color || 'blue';
         const unreadCls = idx < 5 ? ' unread' : '';
-        return `<div class="notif-item${unreadCls}"><div class="notif-dot-item ${color}"></div><div><div class="notif-text">${n.text||'Admin activity'}</div><div class="notif-time">${formatNotifTime(n.created_at)}</div></div></div>`;
+        return `<div class="notif-item${unreadCls}"><div class="notif-dot-item ${color}"></div><div><div class="notif-text">${n.text||'Admin activity'}</div><div class="notif-time">${formatNotifTime(n.timestamp)}</div></div></div>`;
       }).join('');
       unreadCount = Math.min(5, items.length);
       document.getElementById('notif-dot').style.display = unreadCount > 0 ? 'block' : 'none';

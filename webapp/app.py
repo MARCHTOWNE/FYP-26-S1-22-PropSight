@@ -5030,8 +5030,13 @@ def api_ai_chat():
 # Admin Routes
 # ---------------------------------------------------------------------------
 
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "admin@propsight.sg")
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin123")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD")
+if not ADMIN_EMAIL or not ADMIN_PASSWORD:
+    raise RuntimeError(
+        "ADMIN_EMAIL and ADMIN_PASSWORD environment variables must be set. "
+        "Generate a strong password with: python -c \"import secrets; print(secrets.token_urlsafe(24))\""
+    )
 
 
 def _is_admin_session() -> bool:
@@ -5389,21 +5394,39 @@ def _log_admin_event(action, target_user_id=None, target_email=""):
 @api_admin_required
 def api_admin_notifications():
     try:
-        rows = _supabase_request(
-            "feature_view_log",
-            filters={
-                "select": "user_id,feature,created_at",
-                "feature": "like.admin:%",
-                "order": "created_at.desc",
-                "limit": "30",
-            },
-        ) or []
-        notices = []
-        for r in rows:
-            feature = str(r.get("feature") or "")
-            parts = feature.split(":", 2)
-            action = parts[1] if len(parts) >= 2 else "event"
-            target = parts[2] if len(parts) >= 3 else ""
+        events = []
+
+        # New user registrations: last 5 from users table
+        try:
+            new_users = _supabase_request(
+                SUPABASE_USERS_TABLE,
+                filters={
+                    "select": "email,created_at",
+                    "order": "created_at.desc",
+                    "limit": "5",
+                },
+            ) or []
+            for u in new_users:
+                events.append({
+                    "type": "new_user",
+                    "text": f"New account registered: {u.get('email', 'unknown')}",
+                    "timestamp": u.get("created_at"),
+                    "icon_color": "green",
+                })
+        except Exception:
+            pass
+
+        # Subscription changes: last 5 admin events from feature_view_log
+        try:
+            admin_rows = _supabase_request(
+                "feature_view_log",
+                filters={
+                    "select": "feature,created_at",
+                    "feature": "like.admin:%",
+                    "order": "created_at.desc",
+                    "limit": "5",
+                },
+            ) or []
             action_map = {
                 "create": "New account created",
                 "suspend": "Account suspended",
@@ -5411,17 +5434,51 @@ def api_admin_notifications():
                 "upgrade": "User upgraded to Premium",
                 "downgrade": "User downgraded to Registered",
             }
-            text = action_map.get(action, "Admin activity")
-            if target:
-                text = f"{text}: {target}"
-            notices.append(
-                {
+            for r in admin_rows:
+                feature = str(r.get("feature") or "")
+                parts = feature.split(":", 2)
+                action = parts[1] if len(parts) >= 2 else "event"
+                target = parts[2] if len(parts) >= 3 else ""
+                text = action_map.get(action, "Admin activity")
+                if target:
+                    text = f"{text}: {target}"
+                events.append({
+                    "type": "subscription_change",
                     "text": text,
-                    "action": action,
-                    "created_at": r.get("created_at"),
-                }
-            )
-        return jsonify(notices)
+                    "timestamp": r.get("created_at"),
+                    "icon_color": "blue",
+                })
+        except Exception:
+            pass
+
+        # Recent model runs: last 3 from ML/model_assets filesystem
+        try:
+            if ASSETS_DIR and os.path.isdir(ASSETS_DIR):
+                run_names = sorted(
+                    (
+                        n for n in os.listdir(ASSETS_DIR)
+                        if RUN_DIR_NAME_RE.match(n)
+                        and os.path.isdir(os.path.join(ASSETS_DIR, n))
+                    ),
+                    reverse=True,
+                )[:3]
+                for name in run_names:
+                    try:
+                        dt = datetime.strptime(name, "%Y%m%d_%H%M%S").replace(tzinfo=SGT)
+                        ts = dt.isoformat()
+                    except Exception:
+                        ts = name
+                    events.append({
+                        "type": "model_run",
+                        "text": f"Model training run completed: {name}",
+                        "timestamp": ts,
+                        "icon_color": "orange",
+                    })
+        except Exception:
+            pass
+
+        events.sort(key=lambda e: str(e.get("timestamp") or ""), reverse=True)
+        return jsonify(events[:10])
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
 

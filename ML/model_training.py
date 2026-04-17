@@ -105,6 +105,7 @@ EARLY_STOPPING_ROUNDS = int(os.environ.get("GBM_EARLY_STOPPING_ROUNDS", "50"))
 TUNING_SAMPLE_SIZE = int(os.environ.get("TUNING_SAMPLE_SIZE", "250000"))
 N_RF_ESTIMATORS = int(os.environ.get("RF_ESTIMATORS", "300"))
 MODEL_N_JOBS   = int(os.environ.get("MODEL_N_JOBS", "-1"))
+MIN_TRAIN_ROWS = int(os.environ.get("MIN_TRAIN_ROWS", "10000"))
 FRESH_TUNING   = _env_flag("FRESH_TUNING", False)
 DECAY_RATE     = float(os.environ.get("DECAY_RATE", "0.006"))
 COMPUTE_SHAP   = _env_flag("COMPUTE_SHAP", False)
@@ -1579,6 +1580,11 @@ def main() -> None:
     y_val_pi   = y_val_df["price_index"].values if "price_index" in y_val_df else None
 
     print(f"  X_train: {X_train.shape}  X_val: {X_val.shape}  X_test: {X_test.shape}")
+    if len(X_train) < MIN_TRAIN_ROWS:
+        raise RuntimeError(
+            f"Training set too small: {len(X_train):,} rows (minimum {MIN_TRAIN_ROWS:,}). "
+            "This likely means Supabase returned empty or partial data. Aborting to protect the deployed model."
+        )
     if "future_holdout" in split_frames:
         X_future_holdout, _ = split_frames["future_holdout"]
         print(f"  X_future_holdout: {X_future_holdout.shape}")
@@ -1660,13 +1666,7 @@ def main() -> None:
     )
     print(f"  CatBoost training time: {time.time() - t0:.1f}s")
 
-    # Step 4: Train Random Forest
-    print("\n--- STEP 4: RANDOM FOREST ---")
-    t0 = time.time()
-    rf_model = train_random_forest(X_train, y_train_log)
-    print(f"  Random Forest training time: {time.time() - t0:.1f}s")
-
-    base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "catboost": catboost_model, "rf": rf_model}
+    base_models = {"xgboost": xgb_model, "lgbm": lgbm_model, "catboost": catboost_model}
 
     # Step 4b: Build ensemble (CatBoost + LGBM, val-MAPE optimised blend)
     print("\n--- STEP 4b: ENSEMBLE ---")

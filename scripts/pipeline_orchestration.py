@@ -311,9 +311,28 @@ def run_supabase_model_version_sync(
     test_rmse = winner.get("test_rmse")
     test_r2 = winner.get("test_r2")
 
+    mape_regression_threshold = float(os.environ.get("MAX_MAPE_REGRESSION_PCT", "10")) / 100
+
     try:
         pg_conn = psycopg2.connect(supabase_db_url)
         pg_cur = pg_conn.cursor()
+
+        # Guard: only promote if new MAPE is not more than threshold% worse than deployed.
+        if test_mape is not None:
+            pg_cur.execute(
+                "SELECT test_mape FROM model_versions WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1"
+            )
+            current_row = pg_cur.fetchone()
+            if current_row and current_row[0] is not None:
+                current_mape = float(current_row[0])
+                if test_mape > current_mape * (1 + mape_regression_threshold):
+                    print(
+                        f"  ABORT: New model MAPE ({test_mape:.4f}%) is more than "
+                        f"{mape_regression_threshold * 100:.0f}% worse than the deployed model "
+                        f"({current_mape:.4f}%). Skipping deployment to protect production."
+                    )
+                    pg_conn.close()
+                    return
 
         pg_cur.execute("UPDATE model_versions SET is_active = FALSE WHERE is_active = TRUE")
         pg_cur.execute(

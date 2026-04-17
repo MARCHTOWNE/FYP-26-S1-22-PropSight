@@ -1122,7 +1122,7 @@ def _gemini_request(url, body_dict, timeout=25):
     return candidates[0]["content"]["parts"][0]["text"]
 
 
-def _call_gemini(prompt, max_tokens=1024, images=None):
+def _call_gemini(prompt, max_tokens=1024, images=None, json_mode=False):
     """call Google Gemini API and return text response, or None on error.
     Falls back to Gemini 2.5 Flash if the primary model fails (e.g. rate limit)."""
     if not GEMINI_API_KEY:
@@ -1131,9 +1131,12 @@ def _call_gemini(prompt, max_tokens=1024, images=None):
     if images:
         for img_b64 in images:
             parts.append({"inline_data": {"mime_type": "image/png", "data": img_b64}})
+    generation_config = {"maxOutputTokens": max_tokens, "temperature": 0.3}
+    if json_mode:
+        generation_config["response_mime_type"] = "application/json"
     payload = {
         "contents": [{"parts": parts}],
-        "generationConfig": {"maxOutputTokens": max_tokens, "temperature": 0.3},
+        "generationConfig": generation_config,
     }
     for endpoint in (GEMINI_ENDPOINT, GEMINI_FALLBACK_ENDPOINT):
         try:
@@ -3759,7 +3762,7 @@ def api_comparison_ai_analysis():
         macro_factors="\n".join(macro_lines) or "None identified",
     )
 
-    text = _call_gemini(prompt, max_tokens=1024)
+    text = _call_gemini(prompt, max_tokens=1024, json_mode=True)
     if not text:
         return jsonify({"error": "AI generation failed"}), 503
 
@@ -4743,7 +4746,7 @@ Bad: "What is the average price trend?" or "How many transactions were there?"
 Keep questions SHORT (under 20 words each).
 
 Return ONLY valid JSON in this exact format, with no other text:
-{{"groups": {{"trend": ["question1", ...], "volume": ["question1", ...], "benchmark": ["question1", ...]}}}}
+{{"groups": {{"value": ["question1", "question2"], "demand": ["question1"], "position": ["question1"], "lease": ["question1"]}}}}
 
 Use only these group keys: value (how my flat's value is changing), demand (is my area popular), position (how my flat compares), lease (how remaining lease affects value). Omit a group if no interesting question exists for it."""
 
@@ -4782,7 +4785,6 @@ Instead, explain what the data MEANS for homeowners in plain, simple language:
 - What's causing the changes? (policy changes, cooling measures, interest rates, new MRT lines, grants, COVID effects)
 - Help them understand where their flat sits relative to the market (above or below average for the area, and why)
 Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
-Avoid giving advice of any kind such as buy, sell, renovate or rent, we are only a DECISION SUPPORT TOOL.
 Avoid giving advice of any kind such as buy, sell, renovate, rent, or hold. PropSight is a decision-support tool only.
 
 Answer in 2-3 sentences. Be direct and practical.
@@ -4823,7 +4825,7 @@ def api_ai_questions():
         psf_summary=json.dumps(chart_data.get("psf", []), default=str)[:300],
     )
 
-    text = _call_gemini(prompt, max_tokens=8192, images=images)
+    text = _call_gemini(prompt, max_tokens=2048, images=images, json_mode=True)
     if not text:
         print("[AI Questions] _call_gemini returned None — both models failed", flush=True)
         return jsonify({"groups": {}, "tier": session.get("subscription_tier", "general"), "remaining": 0, "ai_unavailable": True})

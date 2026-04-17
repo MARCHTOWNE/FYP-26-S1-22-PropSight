@@ -4767,6 +4767,7 @@ Macro factors (market-level):
 For each property, write a 1-2 sentence plain-language explanation of "why that price?" using ONLY the factors above.
 Connect the factors to the predicted price — explain how each factor pushes the price up or down.
 Avoid jargon. Write as if explaining to someone unfamiliar with property markets.
+Do not recommend which property is "best" or "better value". Describe the factors objectively so the user can weigh them against their own priorities.
 
 Return ONLY valid JSON:
 {{"panels": [{{"label": "A", "why_price": "explanation..."}}, ...]}}"""
@@ -4785,7 +4786,7 @@ Instead, explain what the data MEANS for homeowners in plain, simple language:
 - What's causing the changes? (policy changes, cooling measures, interest rates, new MRT lines, grants, COVID effects)
 - Help them understand where their flat sits relative to the market (above or below average for the area, and why)
 Avoid jargon and technical terms. Write as if explaining to someone who doesn't follow the property market.
-Avoid giving advice of any kind such as buy, sell, renovate, rent, or hold. PropSight is a decision-support tool only.
+Do not give buy/sell/hold/renovate/rent advice — PropSight is decision-support only. If the question asks for a recommendation, answer the FACTUAL part if there is one (e.g. "is demand rising here" has a factual answer), then steer the user toward relevant data PropSight already shows: lease decay, comparable transactions, demand trend, position vs town average. Never tell them what to do with their flat.
 
 Answer in 2-3 sentences. Be direct and practical.
 
@@ -4940,7 +4941,7 @@ Rules:
 - Never give buy, sell, hold, or upgrade advice. PropSight is a decision-support tool only — help the user understand their market position, not tell them what to do.
 - Be concise (2-4 sentences) unless the user asks for detail.
 - If the user asks something outside HDB analytics scope, politely redirect.
-- If the user asks 'should I sell/buy/hold', explain the relevant market factors and say: 'PropSight helps you understand the data — talk to a licensed property agent for personalised advice.'
+- If the user asks 'should I sell/buy/hold' or any decision-type question, do NOT answer the decision. Instead, redirect into PropSight's data: acknowledge the decision is personal (finances, life stage, plans the platform doesn't see), then offer to show relevant analytics. Use this structure: "That's a personal decision PropSight can't make for you — it depends on things like your finances, life stage, and plans we don't see. What I *can* help with is the data behind it: [offer 2-3 specific next steps based on context, e.g. lease decay impact, recent comparable transactions, demand trend in the town]. Which would be most useful?"
 
 IMPORTANT: At the very end of every reply, on its own line, output exactly 3 short follow-up questions the user might ask next, formatted as:
 SUGGESTIONS: question one | question two | question three

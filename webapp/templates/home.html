@@ -50,7 +50,7 @@
                         </div>
                         <div class="text-center text-md-start">
                             <p class="account-gateway-title mb-1">Signed in as {{ g.user['username'] }}</p>
-                            <p class="account-gateway-sub mb-0">Your workspace, saved predictions, and full toolkit are one tap away.</p>
+                            <p class="account-gateway-sub mb-0">Your workspace, saved valuations, and full toolkit are one tap away.</p>
                         </div>
                     </div>
                     <div class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-end gap-2 account-gateway-actions">
@@ -62,7 +62,7 @@
                         <div class="row align-items-center">
                             <div class="col-lg-4 mb-4 mb-lg-0 pe-lg-4 border-end-lg text-center text-lg-start">
                                 <h4 class="mb-1 premium-gateway-heading">Sign in to your workspace</h4>
-                                <p class="mb-0 premium-gateway-lead">Access saved predictions and your personalized activity dashboard.</p>
+                                <p class="mb-0 premium-gateway-lead">Access saved valuations and your personalized activity dashboard.</p>
                             </div>
                             <div class="col-lg-8 ps-lg-4">
                                 <form method="POST" action="{{ url_for('login') }}" class="m-0">
@@ -119,7 +119,7 @@
             <h2 id="member-dashboard-heading" class="section-title member-dash-title mb-1">Welcome back, {{ g.user['username'] }}</h2>
             <p class="section-subtitle member-dash-subtitle mb-0">
                 {% if is_personalized %}
-                Here is a snapshot of your latest saved predictions and activity.
+                Here is a snapshot of your latest saved valuations and activity.
                 {% elif popular_predictions %}
                 You are seeing what the community is exploring most—save a prediction to personalize this board.
                 {% else %}
@@ -167,7 +167,7 @@
             <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
                 <div>
                     <p class="section-eyebrow member-dash-eyebrow mb-1">{{ "Your recent activity" if is_personalized else "What others are exploring" }}</p>
-                    <h3 class="h5 member-dash-section-title mb-0">{{ "Saved predictions" if is_personalized else "Trending predictions" }}</h3>
+                    <h3 class="h5 member-dash-section-title mb-0">{{ "Saved valuations" if is_personalized else "Trending predictions" }}</h3>
                 </div>
                 <div class="d-flex flex-wrap gap-2">
                     <a href="{{ url_for('my_predictions') }}" class="btn btn-outline-primary btn-sm">My predictions</a>
@@ -229,7 +229,6 @@
         </div>
     </div>
 </section>
-
 {% endif %}
 
 {% if popular_predictions and not g.user %}
@@ -446,7 +445,6 @@ document.addEventListener("click", function(event) {
     toggleButton.innerHTML = shouldShow ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
     toggleButton.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
 });
-
 </script>
 {% if not g.user %}
 <div class="nudge-bar" id="nudgeBar">

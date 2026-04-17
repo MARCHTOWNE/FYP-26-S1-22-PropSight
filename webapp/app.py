@@ -3596,90 +3596,6 @@ def _attach_prediction_coordinates(predictions, town_coords):
     return enriched
 
 
-def _build_town_market_lookup(seed_rows):
-    """Town -> market metrics lookup used by detail drawer KPIs."""
-    lookup = {}
-    for row in seed_rows or []:
-        town = (row.get("town") or "").strip()
-        if not town:
-            continue
-        payload = {
-            "avg_price": _coerce_float(row.get("avg_price")),
-            "recent_avg": _coerce_float(row.get("recent_avg")),
-            "recent_txns": _coerce_int(row.get("recent_txns"), 0),
-        }
-        lookup[town] = payload
-        lookup[town.upper()] = payload
-    return lookup
-
-
-def _annotate_predictions_for_drawer(predictions, town_market_lookup):
-    """Attach analytics-aligned drawer metrics for each prediction row."""
-    current_year = _current_year()
-    annotated = []
-
-    for item in predictions or []:
-        row = dict(item) if isinstance(item, dict) else {}
-        town = (row.get("town") or "").strip()
-        flat_type = (row.get("flat_type") or "").strip()
-        predicted_price = _coerce_float(row.get("predicted_price"))
-        lease_commence = _coerce_int(row.get("lease_commence"))
-
-        town_market = town_market_lookup.get(town) or town_market_lookup.get(town.upper()) or {}
-        # Match prediction page logic: compare against town+flat-type average first.
-        town_avg_price = None
-        if town and flat_type:
-            breakdown = _get_flat_type_breakdown_data(town)
-            for entry in breakdown:
-                if (entry.get("flat_type") or "").strip() == flat_type:
-                    town_avg_price = _coerce_float(entry.get("avg_price"))
-                    break
-        if town_avg_price is None:
-            town_avg_price = _coerce_float(town_market.get("avg_price"))
-        recent_avg_price = _coerce_float(town_market.get("recent_avg"))
-
-        position_pct = None
-        if predicted_price and town_avg_price and town_avg_price > 0:
-            position_pct = ((predicted_price - town_avg_price) / town_avg_price) * 100.0
-        row["drawer_position_pct"] = round(position_pct, 1) if position_pct is not None else None
-
-        demand_delta = None
-        if recent_avg_price and town_avg_price and town_avg_price > 0:
-            demand_delta = (recent_avg_price - town_avg_price) / town_avg_price
-        if demand_delta is None:
-            row["drawer_area_demand"] = "Not enough data"
-            row["drawer_area_demand_tone"] = "neutral"
-        elif demand_delta >= 0.03:
-            row["drawer_area_demand"] = "Rising"
-            row["drawer_area_demand_tone"] = "blue"
-        elif demand_delta <= -0.03:
-            row["drawer_area_demand"] = "Cooling"
-            row["drawer_area_demand_tone"] = "amber"
-        else:
-            row["drawer_area_demand"] = "Stable"
-            row["drawer_area_demand_tone"] = "neutral"
-
-        yoy_pct = None
-        if town and flat_type:
-            appreciation = _resolve_town_flat_type_appreciation_features(town, flat_type, current_year)
-            yoy_value = appreciation.get("town_yoy_appreciation_lag1")
-            if yoy_value is not None:
-                yoy_pct = float(yoy_value) * 100.0
-        row["drawer_yoy_pct"] = round(yoy_pct, 1) if yoy_pct is not None else None
-
-        if lease_commence is not None:
-            row["drawer_flat_age"] = max(0, current_year - lease_commence)
-            row["drawer_remaining_lease"] = max(0, 99 - (current_year - lease_commence))
-        else:
-            row["drawer_flat_age"] = None
-            row["drawer_remaining_lease"] = None
-
-        row["drawer_town_avg_price"] = round(town_avg_price) if town_avg_price is not None else None
-        annotated.append(row)
-
-    return annotated
-
-
 @app.route("/")
 def landing():
     """Public marketing landing page."""
@@ -3702,21 +3618,11 @@ def home():
     performance = ARTEFACTS.get("performance", {})
     artefact_mape = performance.get("test_mape_display")
 
-    # Town coordinates and market metrics for map thumbnails / drawer context
+    # Town coordinates for map thumbnails
     try:
-        seed_rows = _get_prediction_map_seed_data()
+        town_coords = _build_town_coords_lookup()
     except Exception:
-        seed_rows = []
-    town_coords = {}
-    for row in seed_rows:
-        town = (row.get("town") or "").strip()
-        lat = _coerce_float(row.get("lat"))
-        lng = _coerce_float(row.get("lng"))
-        if not town or lat is None or lng is None:
-            continue
-        town_coords[town] = {"lat": lat, "lng": lng}
-        town_coords[town.upper()] = {"lat": lat, "lng": lng}
-    town_market_lookup = _build_town_market_lookup(seed_rows)
+        town_coords = {}
 
     # Popular / personalized predictions for homepage cards
     popular_predictions = []
@@ -3728,7 +3634,6 @@ def home():
             )
             if user_preds:
                 popular_predictions = _attach_prediction_coordinates(user_preds[:3], town_coords)
-                popular_predictions = _annotate_predictions_for_drawer(popular_predictions, town_market_lookup)
                 is_personalized = True
             else:
                 popular_predictions = _attach_prediction_coordinates(_get_popular_predictions(), town_coords)
@@ -4177,11 +4082,6 @@ def my_predictions():
     except SupabaseError:
         flash("Could not load saved predictions from Supabase.", "danger")
         preds = []
-    try:
-        town_market_lookup = _build_town_market_lookup(_get_prediction_map_seed_data())
-        preds = _annotate_predictions_for_drawer(preds, town_market_lookup)
-    except Exception:
-        pass
     return render_template("my_predictions.html", predictions=preds)
 
 

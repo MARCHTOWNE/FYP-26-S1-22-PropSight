@@ -2270,6 +2270,7 @@ GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
 FEATURE_VIEW_RELOAD_GRACE_SECONDS = 20
 ANALYTICS_SCOPE_SESSION_KEY = "_analytics_last_counted_scope"
 ANALYTICS_ALL_TOWNS_SCOPE = "__all_towns__"
+ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY = "_analytics_pending_first_town_selection"
 
 
 def _get_weekly_view_count(user_id, feature):
@@ -2326,18 +2327,26 @@ def _analytics_scope_token(town):
 
 def _seed_analytics_scope(town):
     session[ANALYTICS_SCOPE_SESSION_KEY] = _analytics_scope_token(town)
+    session[ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY] = not bool(_normalize_town_name(town))
 
 
 def _log_analytics_scope_change(user_id, town):
     scope = _analytics_scope_token(town)
     last_scope = session.get(ANALYTICS_SCOPE_SESSION_KEY)
+    pending_first_town_selection = bool(session.get(ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY))
     if last_scope is None:
         session[ANALYTICS_SCOPE_SESSION_KEY] = scope
+        session[ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY] = False
         return
     if last_scope == scope:
         return
+    if pending_first_town_selection and last_scope == ANALYTICS_ALL_TOWNS_SCOPE and scope != ANALYTICS_ALL_TOWNS_SCOPE:
+        session[ANALYTICS_SCOPE_SESSION_KEY] = scope
+        session[ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY] = False
+        return
     _log_feature_view(user_id, "analytics")
     session[ANALYTICS_SCOPE_SESSION_KEY] = scope
+    session[ANALYTICS_PENDING_FIRST_TOWN_SELECTION_SESSION_KEY] = False
 
 
 @app.before_request

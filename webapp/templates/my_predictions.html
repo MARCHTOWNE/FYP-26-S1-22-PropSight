@@ -89,6 +89,7 @@
     padding: 8px 16px;
     transition: all 0.2s;
 }
+
 </style>
 {% endblock %}
 
@@ -133,7 +134,22 @@
                 <tbody>
                     {% for p in predictions %}
                     <tr class="prediction-row" style="cursor:pointer"
-                        data-href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}">
+                        data-href="{{ url_for('predict', town=p['town'], flat_type=p['flat_type'], flat_model=p['flat_model'], floor_area=p['floor_area']|int, storey_range=p['storey_range'], lease_commence=p['lease_commence']|int, street_name=p.get('street_name', ''), block=p.get('block', '')) }}"
+                        data-town="{{ p['town'] }}"
+                        data-block="{{ p.get('block', '') }}"
+                        data-street="{{ p.get('street_name', '') }}"
+                        data-price="{{ "{:,.0f}".format(p['predicted_price']) }}"
+                        data-flat-type="{{ p['flat_type'] }}"
+                        data-flat-model="{{ p['flat_model'] }}"
+                        data-floor-area="{{ "{:,.0f}".format(p['floor_area']) }}"
+                        data-storey="{{ p['storey_range'] }}"
+                        data-lease-commence="{{ p['lease_commence']|int }}"
+                        data-price-low="{{ "{:,.0f}".format(p['price_low']) if p.get('price_low') is not none else '' }}"
+                        data-price-high="{{ "{:,.0f}".format(p['price_high']) if p.get('price_high') is not none else '' }}"
+                        data-position-pct="{{ p.get('drawer_position_pct', '') }}"
+                        data-flat-age="{{ p.get('drawer_flat_age', '') }}"
+                        data-yoy-pct="{{ p.get('drawer_yoy_pct', '') }}"
+                        data-town-avg-price="{{ "{:,.0f}".format(p.drawer_town_avg_price) if p.get('drawer_town_avg_price') is not none else '' }}">
                         
                         <td class="text-center" onclick="event.stopPropagation()">
                             <input type="checkbox" class="form-check-input compare-check" name="ids" value="{{ p['id'] }}" style="cursor: pointer;">

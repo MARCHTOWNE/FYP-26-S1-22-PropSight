@@ -149,7 +149,7 @@
 
         <p class="auth-footnote">
             Don't have an account?
-            <a href="{{ url_for('register') }}" class="auth-link">Create one</a>
+            <a href="{{ url_for('register', next=next_url) if next_url else url_for('register') }}" class="auth-link">Create one</a>
         </p>
     </div>
 </section>

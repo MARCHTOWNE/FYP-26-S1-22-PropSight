@@ -127,6 +127,9 @@
         <p class="auth-subheading">Set up your PropSight access in less than a minute.</p>
 
         <form method="POST" action="{{ url_for('register') }}">
+            {% if next_url %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            {% endif %}
             <div class="auth-field">
                 <label class="auth-label" for="username">Username</label>
                 <input id="username" type="text" name="username" class="auth-input" required autofocus minlength="3">
@@ -148,7 +151,7 @@
 
         <p class="auth-footnote">
             Already have an account?
-            <a href="{{ url_for('login') }}" class="auth-link">Sign in</a>
+            <a href="{{ url_for('login', next=next_url) if next_url else url_for('login') }}" class="auth-link">Sign in</a>
         </p>
     </div>
 </section>

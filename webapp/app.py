@@ -3270,6 +3270,10 @@ def _infer_map_prediction_profile(town):
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
+    next_url = _safe_next_url(
+        request.form.get("next", "") if request.method == "POST" else request.args.get("next", "")
+    )
+
     if request.method == "POST":
         username = request.form["username"].strip()
         email = request.form["email"].strip().lower()
@@ -3277,10 +3281,10 @@ def register():
 
         if len(username) < 3:
             flash("Username must be at least 3 characters.", "danger")
-            return render_template("register.html")
+            return render_template("register.html", next_url=next_url)
         if len(password) < 6:
             flash("Password must be at least 6 characters.", "danger")
-            return render_template("register.html")
+            return render_template("register.html", next_url=next_url)
 
         try:
             result = _supabase_auth("/signup", payload={
@@ -3294,7 +3298,7 @@ def register():
                 flash("An account with that email already exists.", "danger")
             else:
                 flash(f"Registration failed: {exc}", "danger")
-            return render_template("register.html")
+            return render_template("register.html", next_url=next_url)
 
         # Also write to public.users so saved_predictions integer FK keeps working
         try:
@@ -3311,19 +3315,19 @@ def register():
         if result.get("access_token"):
             if not db_user.get("id"):
                 flash("Account created, but the app profile could not be provisioned in Supabase. Please contact support before logging in.", "danger")
-                return redirect(url_for("login"))
+                return redirect(url_for("login", next=next_url) if next_url else url_for("login"))
             session["user_id"] = db_user.get("id")
             session["username"] = username
             session["email"] = email
             session["access_token"] = result["access_token"]
             session["subscription_tier"] = "general"
             flash("Account created! Welcome.", "success")
-            return redirect(url_for("home"))
+            return redirect(next_url or url_for("home"))
 
         flash("Account created! Check your email to confirm before logging in.", "success")
-        return redirect(url_for("login"))
+        return redirect(url_for("login", next=next_url) if next_url else url_for("login"))
 
-    return render_template("register.html")
+    return render_template("register.html", next_url=next_url)
 
 
 @app.route("/login", methods=["GET", "POST"])

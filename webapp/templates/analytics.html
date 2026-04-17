@@ -1433,6 +1433,8 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
 <script>
 /* ── Chart instances ──────────────────────────────────────────────────────── */
 let priceTrendChart;
@@ -1482,6 +1484,34 @@ function escapeHtml(value) {
         .replace(/&/g,'&amp;').replace(/</g,'&lt;')
         .replace(/>/g,'&gt;').replace(/"/g,'&quot;')
         .replace(/'/g,'&#39;');
+}
+
+function renderAiMarkdown(text) {
+    if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+        return escapeHtml(String(text || '')).replace(/\n/g, '<br>');
+    }
+    marked.setOptions({ breaks: true, gfm: true });
+    const html = marked.parse(String(text || ''));
+    return DOMPurify.sanitize(html, {
+        ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'blockquote', 'a'],
+        ALLOWED_ATTR: ['href', 'target', 'rel'],
+    });
+}
+
+function buildMyFlatContext() {
+    const seed = predictionSeed || {};
+    if (!seed.town && !seed.flat_type && !seed.predicted_price) return null;
+    return {
+        town: seed.town,
+        flat_type: seed.flat_type,
+        flat_model: seed.flat_model,
+        floor_area: seed.floor_area,
+        storey_range: seed.storey_range,
+        lease_commence: seed.lease_commence,
+        predicted_price: seed.predicted_price,
+        street_name: seed.street_name,
+        block: seed.block,
+    };
 }
 
 function formatMoney(value) {
@@ -2884,7 +2914,7 @@ async function loadAiFaqQuestions() {
         const resp = await fetch('/api/ai_questions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ filters, chart_data: chartData, chart_images: chartImages }),
+            body: JSON.stringify({ filters, chart_data: chartData, chart_images: chartImages, my_flat: buildMyFlatContext() }),
         });
         if (token !== aiFaqReqToken) return;
         if (!resp.ok) throw new Error('AI unavailable');
@@ -2955,7 +2985,7 @@ async function expandFaqItem(item) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 question,
-                context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages() },
+                context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages(), my_flat: buildMyFlatContext() },
             }),
         });
 
@@ -2968,7 +2998,7 @@ async function expandFaqItem(item) {
         }
         if (!resp.ok) throw new Error('AI error');
         const result    = await resp.json();
-        const formatted = escapeHtml(result.answer).replace(/\n/g, '<br>');
+        const formatted = renderAiMarkdown(result.answer);
         aiFaqAnswerCache[question] = formatted;
         answerEl.innerHTML = formatted;
 
@@ -3087,7 +3117,9 @@ if (IS_PREMIUM) {
     function appendBubble(text, role) {
         const bubble = document.createElement('div');
         bubble.className = 'ai-chat-bubble ' + (role === 'user' ? 'ai-chat-user' : 'ai-chat-bot');
-        bubble.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+        bubble.innerHTML = (role === 'user')
+            ? escapeHtml(text).replace(/\n/g, '<br>')
+            : renderAiMarkdown(text);
         chatMessages.appendChild(bubble);
         chatMessages.scrollTop = chatMessages.scrollHeight;
         return bubble;
@@ -3118,7 +3150,7 @@ if (IS_PREMIUM) {
                 body: JSON.stringify({
                     message: text,
                     history: chatHistory,
-                    context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages() },
+                    context: { filters: getFilters(), chart_data: collectChartDataSummary(), chart_images: collectChartImages(), my_flat: buildMyFlatContext() },
                 }),
             });
             removeTyping();

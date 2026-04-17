@@ -320,7 +320,7 @@ def run_supabase_model_version_sync(
         # Guard: only promote if new MAPE is not more than threshold% worse than deployed.
         if test_mape is not None:
             pg_cur.execute(
-                "SELECT test_mape FROM model_versions WHERE is_active = TRUE ORDER BY created_at DESC LIMIT 1"
+                "SELECT test_mape FROM model_versions WHERE is_active = TRUE ORDER BY trained_at DESC LIMIT 1"
             )
             current_row = pg_cur.fetchone()
             if current_row and current_row[0] is not None:

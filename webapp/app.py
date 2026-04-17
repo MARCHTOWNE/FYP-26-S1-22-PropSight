@@ -2267,6 +2267,7 @@ def api_premium_required(f):
 
 # Weekly view limits for general users per feature
 GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
+FEATURE_VIEW_RELOAD_GRACE_SECONDS = 40
 
 
 def _get_weekly_view_count(user_id, feature):
@@ -2295,12 +2296,25 @@ def _check_feature_limit(feature):
 
 
 def _log_feature_view_once(user_id, feature):
-    """Log a feature view only once per session to avoid burning views on reloads."""
-    session_key = f"_viewed_{feature}"
-    if session.get(session_key):
-        return
+    """Log a feature view, but ignore immediate reloads within a short grace window."""
+    session_key = "_feature_view_times"
+    view_times = session.get(session_key)
+    if not isinstance(view_times, dict):
+        view_times = {}
+
+    now = datetime.now(timezone.utc)
+    last_seen_raw = view_times.get(feature)
+    if last_seen_raw:
+        try:
+            last_seen = datetime.fromisoformat(str(last_seen_raw).replace("Z", "+00:00"))
+        except ValueError:
+            last_seen = None
+        if last_seen is not None and (now - last_seen).total_seconds() < FEATURE_VIEW_RELOAD_GRACE_SECONDS:
+            return
+
     _log_feature_view(user_id, feature)
-    session[session_key] = True
+    view_times[feature] = now.isoformat().replace("+00:00", "Z")
+    session[session_key] = view_times
 
 
 @app.before_request

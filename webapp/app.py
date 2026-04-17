@@ -99,7 +99,9 @@ def _ttl_cache(maxsize=128, ttl=3600):
 # ---------------------------------------------------------------------------
 # App setup
 
+from werkzeug.middleware.proxy_fix import ProxyFix
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 _secret = os.environ.get("SECRET_KEY")
 if not _secret:
     raise RuntimeError(

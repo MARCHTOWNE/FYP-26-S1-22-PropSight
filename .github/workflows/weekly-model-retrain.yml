@@ -78,21 +78,42 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add ML/model_assets/
+
+          RUN_DIR=$(cat ML/model_assets/latest.txt 2>/dev/null || echo "unknown")
+          METRICS_FILE="ML/${RUN_DIR}/metrics.json"
+
+          if [ -f "$METRICS_FILE" ]; then
+            WINNER_NAME=$(python3 -c "import json; m=json.load(open('$METRICS_FILE')); print(m.get('winner',{}).get('winner','ensemble'))" 2>/dev/null || echo "ensemble")
+            WINNER=$(python3 -c "import json; m=json.load(open('$METRICS_FILE')); w=m.get('winner',{}); print(f\"{w.get('winner','?')} | MAPE {w.get('test_mape','?')}% | RMSE {w.get('test_rmse','?')}\")" 2>/dev/null || echo "metrics unavailable")
+          else
+            WINNER_NAME="ensemble"
+            WINNER="metrics unavailable"
+          fi
+
+          # Force-add winner model + supporting metadata (run dirs are gitignored)
+          git add -f \
+            "ML/${RUN_DIR}/${WINNER_NAME}_model.pkl" \
+            "ML/${RUN_DIR}/metrics.json" \
+            "ML/${RUN_DIR}/feature_cols.txt" \
+            "ML/${RUN_DIR}/model_comparison.json" \
+            "ML/${RUN_DIR}/run_manifest.json" \
+            "ML/${RUN_DIR}/training_report.txt" \
+            "ML/${RUN_DIR}/scaler.pkl" \
+            "ML/${RUN_DIR}/target_encoders.pkl" \
+            "ML/${RUN_DIR}/rolling_stats_snapshot.pkl" 2>/dev/null || true
+
+          # Add root-level model_assets files (optuna meta, outlier bounds)
+          git add ML/model_assets/optuna_study_*_meta.json ML/model_assets/outlier_bounds.json 2>/dev/null || true
+
           if git diff --cached --quiet; then
             echo "No model asset changes to commit."
             exit 0
           fi
-          RUN_DIR=$(cat ML/model_assets/latest.txt 2>/dev/null || echo "unknown")
-          METRICS_FILE="ML/${RUN_DIR}/metrics.json"
-          if [ -f "$METRICS_FILE" ]; then
-            WINNER=$(python3 -c "import json; m=json.load(open('$METRICS_FILE')); w=m.get('winner',{}); print(f\"{w.get('winner','?')} | MAPE {w.get('test_mape','?')}% | RMSE {w.get('test_rmse','?')}\")" 2>/dev/null || echo "metrics unavailable")
-          else
-            WINNER="metrics unavailable"
-          fi
+
           git commit -m "chore(ml): retrain model [$(date -u +%Y-%m-%d)]
 
           Run: $(basename \"$RUN_DIR\")
+          Winner: ${WINNER_NAME}_model.pkl
           Results: $WINNER
           Triggered by: ${{ github.event_name }}"
           git pull --rebase origin main

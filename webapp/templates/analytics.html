@@ -2236,7 +2236,9 @@ function setLoading(canvasId, loading) {
 async function loadPriceTrend() {
     setLoading('priceTrendChart', true);
     try {
-        const raw  = await fetchJSON('/api/price_trend_simple?' + buildFilterParams().toString());
+        const params = buildFilterParams();
+        params.set('source', 'analytics');
+        const raw  = await fetchJSON('/api/price_trend_simple?' + params.toString());
         syncYearSelectors(raw);
         const data = clipByYear(raw);
         latestTrendData = data;

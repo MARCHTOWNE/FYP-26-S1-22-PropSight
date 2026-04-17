@@ -2267,7 +2267,9 @@ def api_premium_required(f):
 
 # Weekly view limits for general users per feature
 GENERAL_WEEKLY_VIEW_LIMITS = {"map": 3, "analytics": 3, "comparison": 3}
-FEATURE_VIEW_RELOAD_GRACE_SECONDS = 40
+FEATURE_VIEW_RELOAD_GRACE_SECONDS = 20
+ANALYTICS_SCOPE_SESSION_KEY = "_analytics_last_counted_scope"
+ANALYTICS_ALL_TOWNS_SCOPE = "__all_towns__"
 
 
 def _get_weekly_view_count(user_id, feature):
@@ -2315,6 +2317,27 @@ def _log_feature_view_once(user_id, feature):
     _log_feature_view(user_id, feature)
     view_times[feature] = now.isoformat().replace("+00:00", "Z")
     session[session_key] = view_times
+
+
+def _analytics_scope_token(town):
+    normalized = _normalize_town_name(town)
+    return normalized or ANALYTICS_ALL_TOWNS_SCOPE
+
+
+def _seed_analytics_scope(town):
+    session[ANALYTICS_SCOPE_SESSION_KEY] = _analytics_scope_token(town)
+
+
+def _log_analytics_scope_change(user_id, town):
+    scope = _analytics_scope_token(town)
+    last_scope = session.get(ANALYTICS_SCOPE_SESSION_KEY)
+    if last_scope is None:
+        session[ANALYTICS_SCOPE_SESSION_KEY] = scope
+        return
+    if last_scope == scope:
+        return
+    _log_feature_view(user_id, "analytics")
+    session[ANALYTICS_SCOPE_SESSION_KEY] = scope
 
 
 @app.before_request
@@ -4110,6 +4133,7 @@ def analytics():
         flash(f"You've used all {limit} free Analytics views this week. Upgrade to Premium for unlimited access.", "warning")
         return redirect(url_for("pricing"))
     _log_feature_view_once(session["user_id"], "analytics")
+    _seed_analytics_scope(request.args.get("town", ""))
     is_premium = session.get("subscription_tier", "general") == "premium"
     return render_template("analytics.html", towns=TOWNS, is_premium=is_premium,
                            ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT)
@@ -4284,11 +4308,17 @@ def api_price_trend_simple():
     flat_type = request.args.get("flat_type", "")
     street_name = request.args.get("street_name", "")
     block = request.args.get("block", "")
+    source = request.args.get("source", "")
     if town:
         try:
             _log_town_feature_view(session["user_id"], "analytics", town)
         except Exception:
             app.logger.warning("Could not log analytics town view", exc_info=True)
+    if source == "analytics":
+        try:
+            _log_analytics_scope_change(session["user_id"], town)
+        except Exception:
+            app.logger.warning("Could not log analytics scope change", exc_info=True)
 
     try:
         return jsonify(_supabase_rpc("rpc_api_price_trend_simple", {

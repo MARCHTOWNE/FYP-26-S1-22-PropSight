@@ -492,6 +492,25 @@
 .premium-compare-table.table > :not(caption) > * > * {
   box-shadow: none;
 }
+
+.ai-fallback-panel, .ai-fallback-bubble {
+  background: rgba(37, 99, 235, 0.04);
+  border: 1px dashed rgba(37, 99, 235, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.82rem;
+  color: #334155;
+}
+.ai-fallback-title { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.ai-fallback-title .bi { margin-right: 4px; color: #64748b; }
+.ai-fallback-sub { color: #64748b; font-size: 0.78rem; margin-bottom: 6px; }
+.ai-fallback-links { display: flex; flex-direction: column; gap: 4px; }
+.ai-fallback-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #2563eb; text-decoration: none; font-weight: 600; font-size: 0.82rem;
+}
+.ai-fallback-link:hover { text-decoration: underline; }
+.ai-fallback-link .bi { font-size: 0.9rem; }
 </style>
 {% endblock %}
 
@@ -1224,6 +1243,21 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
             }).catch(function() {});
     });
 
+    function escapeComparisonText(s) {
+        return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function buildComparisonAiFallback() {
+        return '<div class="ai-fallback-panel">' +
+            '<div class="ai-fallback-title"><i class="bi bi-cloud-slash"></i> AI analysis offline</div>' +
+            '<div class="ai-fallback-sub">The factor rankings above are still live. You can also:</div>' +
+            '<div class="ai-fallback-links">' +
+                '<a href="/analytics" class="ai-fallback-link"><i class="bi bi-graph-up"></i>See the full analytics dashboard</a>' +
+                '<a href="/my_predictions" class="ai-fallback-link"><i class="bi bi-bookmark-star"></i>Manage saved predictions</a>' +
+            '</div>' +
+        '</div>';
+    }
+
     // Fetch AI "why that price?" explanations
     var aiContent = document.getElementById('aiComparisonContent');
     if (aiContent) {
@@ -1235,7 +1269,10 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.error) {
-                aiContent.innerHTML = '<div class="text-muted small">AI analysis unavailable: ' + data.error + '</div>';
+                var isOutage = /unavailable|generation failed|not configured|AI error/i.test(String(data.error || ''));
+                aiContent.innerHTML = isOutage
+                    ? buildComparisonAiFallback()
+                    : '<div class="text-muted small">' + escapeComparisonText(data.error) + '</div>';
                 return;
             }
             var html = '';
@@ -1248,7 +1285,7 @@ if (IS_PREMIUM && HAS_RESULTS && PAYLOADS.length >= 2) {
             aiContent.innerHTML = html;
         })
         .catch(function() {
-            aiContent.innerHTML = '<div class="text-muted small">AI analysis could not be loaded.</div>';
+            aiContent.innerHTML = buildComparisonAiFallback();
         });
     }
 }

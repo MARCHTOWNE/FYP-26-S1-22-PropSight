@@ -809,6 +809,32 @@
         .myflat-details-grid { grid-template-columns: repeat(2, 1fr); }
         .position-metrics { grid-template-columns: repeat(2, 1fr); }
     }
+
+    .ai-fallback-panel, .ai-fallback-bubble {
+        background: rgba(37, 99, 235, 0.04);
+        border: 1px dashed rgba(37, 99, 235, 0.3);
+        border-radius: 10px;
+        padding: 0.75rem 0.9rem;
+        font-size: 0.82rem;
+        color: #334155;
+    }
+    .ai-fallback-title { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .ai-fallback-title .bi { margin-right: 4px; color: #64748b; }
+    .ai-fallback-sub { color: #64748b; font-size: 0.78rem; margin-bottom: 6px; }
+    .ai-fallback-links { display: flex; flex-direction: column; gap: 4px; }
+    .ai-fallback-link {
+        display: inline-flex; align-items: center; gap: 6px;
+        color: #2563eb; text-decoration: none; font-weight: 600; font-size: 0.82rem;
+    }
+    .ai-fallback-link:hover { text-decoration: underline; }
+    .ai-fallback-link .bi { font-size: 0.9rem; }
+    .ai-fallback-inline {
+        font-size: 0.83rem;
+        color: #64748b;
+        padding: 4px 0;
+    }
+    .ai-fallback-inline a { color: #2563eb; font-weight: 600; text-decoration: none; }
+    .ai-fallback-inline a:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -1555,6 +1581,47 @@ function renderAiMarkdown(text) {
         ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'ul', 'ol', 'li', 'code', 'blockquote', 'a'],
         ALLOWED_ATTR: ['href', 'target', 'rel'],
     });
+}
+
+function buildAiFallbackHtml(variant) {
+    const filters = (typeof getFilters === 'function') ? getFilters() : {};
+    const townQ = filters.town ? ('?town=' + encodeURIComponent(filters.town)) : '';
+    const leaseLink   = '/analytics' + townQ + (townQ ? '&' : '?') + 'section=lease';
+    const mapLink     = '/map' + townQ;
+    const compareLink = '/comparison';
+    const savedLink   = '/my_predictions';
+
+    const items = [
+        { href: leaseLink,   icon: 'bi-hourglass-split',   label: 'Lease decay chart' },
+        { href: compareLink, icon: 'bi-columns-gap',        label: 'Compare your saved flats' },
+        { href: mapLink,     icon: 'bi-geo-alt',            label: filters.town ? ('Map of ' + filters.town) : 'Transaction map' },
+        { href: savedLink,   icon: 'bi-bookmark-star',      label: 'My saved predictions' },
+    ];
+
+    const linksHtml = items.slice(0, 3).map(i =>
+        '<a href="' + i.href + '" class="ai-fallback-link"><i class="bi ' + i.icon + '"></i>' + i.label + '</a>'
+    ).join('');
+
+    if (variant === 'bubble') {
+        return '<div class="ai-fallback-bubble">' +
+            '<div class="ai-fallback-title"><i class="bi bi-cloud-slash"></i> AI is offline right now</div>' +
+            '<div class="ai-fallback-sub">Try these instead:</div>' +
+            '<div class="ai-fallback-links">' + linksHtml + '</div>' +
+        '</div>';
+    }
+    if (variant === 'inline') {
+        return '<div class="ai-fallback-inline">' +
+            '<i class="bi bi-cloud-slash me-1"></i>AI is offline — try the ' +
+            '<a href="' + leaseLink + '">lease decay chart</a> or ' +
+            '<a href="' + compareLink + '">comparison tool</a> instead.' +
+        '</div>';
+    }
+    // 'panel' (default)
+    return '<div class="ai-fallback-panel">' +
+        '<div class="ai-fallback-title"><i class="bi bi-cloud-slash"></i> AI is offline</div>' +
+        '<div class="ai-fallback-sub">In the meantime:</div>' +
+        '<div class="ai-fallback-links">' + linksHtml + '</div>' +
+    '</div>';
 }
 
 function buildMyFlatContext() {
@@ -2983,10 +3050,12 @@ async function loadAiFaqQuestions() {
         aiAnswersRemaining = result.remaining >= 0 ? result.remaining : Infinity;
 
         if (result.ai_unavailable) {
-            const msg = '<div class="text-muted" style="font-size:0.83rem;"><i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
-            ['aiFaqValue','aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
+            const fallback = buildAiFallbackHtml('panel');
+            const firstEl = document.getElementById('aiFaqValue');
+            if (firstEl) firstEl.innerHTML = fallback;
+            ['aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
                 const el = document.getElementById(id);
-                if (el) el.innerHTML = msg;
+                if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.78rem;">—</div>';
             });
             return;
         }
@@ -2994,9 +3063,12 @@ async function loadAiFaqQuestions() {
         renderAiFaqFromGroups(groups);
     } catch (e) {
         if (token !== aiFaqReqToken) return;
-        ['aiFaqValue','aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
+        const fallback = buildAiFallbackHtml('panel');
+        const firstEl = document.getElementById('aiFaqValue');
+        if (firstEl) firstEl.innerHTML = fallback;
+        ['aiFaqDemand','aiFaqPosition','aiFaqLease'].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.83rem;"><i class="bi bi-cloud-slash me-1"></i>AI temporarily unavailable — try again shortly.</div>';
+            if (el) el.innerHTML = '<div class="text-muted" style="font-size:0.78rem;">—</div>';
         });
     }
 }
@@ -3068,7 +3140,7 @@ async function expandFaqItem(item) {
             document.querySelectorAll('.ai-faq-item:not(.expanded)').forEach(el => el.classList.add('locked'));
         }
     } catch (e) {
-        answerEl.innerHTML = '<span class="text-muted">Could not generate answer. Try again later.</span>';
+        answerEl.innerHTML = buildAiFallbackHtml('inline');
     }
 }
 
@@ -3218,7 +3290,13 @@ if (IS_PREMIUM) {
             removeTyping();
             if (!resp.ok) {
                 const err = await resp.json().catch(() => ({}));
-                appendBubble(err.error || 'Something went wrong. Please try again.', 'bot');
+                const isOutage = !err.error || /unavail|temporarily|not configured|went wrong/i.test(err.error);
+                if (isOutage) {
+                    const bubble = appendBubble('__FALLBACK__', 'bot');
+                    bubble.innerHTML = buildAiFallbackHtml('bubble');
+                } else {
+                    appendBubble(err.error, 'bot');
+                }
             } else {
                 const result = await resp.json();
                 chatHistory.push({ role: 'user', text });
@@ -3228,7 +3306,8 @@ if (IS_PREMIUM) {
             }
         } catch (e) {
             removeTyping();
-            appendBubble('Connection error. Please try again.', 'bot');
+            const bubble = appendBubble('__FALLBACK__', 'bot');
+            bubble.innerHTML = buildAiFallbackHtml('bubble');
         }
         chatBusy = false;
         chatSendBtn.disabled = false;

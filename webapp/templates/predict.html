@@ -814,6 +814,32 @@
   .summary-pills { gap: 6px; }
   .spill { flex: none; min-width: 80px; }
 }
+
+.ai-fallback-panel, .ai-fallback-bubble {
+  background: rgba(37, 99, 235, 0.04);
+  border: 1px dashed rgba(37, 99, 235, 0.3);
+  border-radius: 10px;
+  padding: 0.75rem 0.9rem;
+  font-size: 0.82rem;
+  color: #334155;
+}
+.ai-fallback-title { font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+.ai-fallback-title .bi { margin-right: 4px; color: #64748b; }
+.ai-fallback-sub { color: #64748b; font-size: 0.78rem; margin-bottom: 6px; }
+.ai-fallback-links { display: flex; flex-direction: column; gap: 4px; }
+.ai-fallback-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  color: #2563eb; text-decoration: none; font-weight: 600; font-size: 0.82rem;
+}
+.ai-fallback-link:hover { text-decoration: underline; }
+.ai-fallback-link .bi { font-size: 0.9rem; }
+.ai-fallback-inline {
+  font-size: 0.83rem;
+  color: #64748b;
+  padding: 4px 0;
+}
+.ai-fallback-inline a { color: #2563eb; font-weight: 600; text-decoration: none; }
+.ai-fallback-inline a:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -1590,6 +1616,30 @@ if (pForm && subBtn) {
       ALLOWED_ATTR: ['href', 'target', 'rel'],
     });
   }
+
+  function buildAiFallbackHtml() {
+    var town = (ctx.town || '').trim();
+    var townQ = town ? ('?town=' + encodeURIComponent(town)) : '';
+    var leaseLink   = '/analytics' + townQ + (townQ ? '&' : '?') + 'section=lease';
+    var compareLink = '/comparison';
+    var savedLink   = '/my_predictions';
+
+    var items = [
+      { href: leaseLink,   icon: 'bi-hourglass-split', label: 'Lease decay chart' },
+      { href: compareLink, icon: 'bi-columns-gap',      label: 'Compare with another flat' },
+      { href: savedLink,   icon: 'bi-bookmark-star',    label: 'My saved predictions' },
+    ];
+    var linksHtml = items.map(function(i) {
+      return '<a href="' + i.href + '" class="ai-fallback-link"><i class="bi ' + i.icon + '"></i>' + i.label + '</a>';
+    }).join('');
+
+    return '<div class="ai-fallback-bubble">' +
+      '<div class="ai-fallback-title"><i class="bi bi-cloud-slash"></i> AI is offline right now</div>' +
+      '<div class="ai-fallback-sub">Try these instead:</div>' +
+      '<div class="ai-fallback-links">' + linksHtml + '</div>' +
+    '</div>';
+  }
+
   var hist   = [];  /* premium multi-turn history */
 
   var apiCtx = {
@@ -1722,7 +1772,7 @@ if (pForm && subBtn) {
         if (err.error === 'limit_reached') {
           appendBubble('ai', "You've used all your AI answers for today. Upgrade to Premium for unlimited questions.", true);
         } else {
-          appendBubble('ai', "Couldn't get an answer right now. Please try again shortly.", true);
+          appendBubble('ai', buildAiFallbackHtml(), false, true);
         }
         return;
       }
@@ -1747,18 +1797,20 @@ if (pForm && subBtn) {
 
     } catch(e) {
       removeEl(tyEl);
-      appendBubble('ai', 'Something went wrong. Please check your connection and try again.', true);
+      appendBubble('ai', buildAiFallbackHtml(), false, true);
     } finally {
       busy = false; sendBtn2.disabled = false;
     }
   };
 
-  function appendBubble(role, text, isErr) {
+  function appendBubble(role, text, isErr, isHtml) {
     var wrap = document.createElement('div');
     wrap.className = 'bwrap ' + role;
     var b = document.createElement('div');
     b.className = 'cbubble ' + (role === 'user' ? 'user' : (isErr ? 'ai-err' : 'ai'));
-    if (role === 'user' || isErr) {
+    if (isHtml) {
+      b.innerHTML = text;
+    } else if (role === 'user' || isErr) {
       b.textContent = text;
     } else {
       b.innerHTML = renderAiMarkdown(text);

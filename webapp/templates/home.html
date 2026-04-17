@@ -77,7 +77,15 @@
                                                 <label class="mb-0 premium-field-label" for="account-gateway-password">Password</label>
                                                 <a href="{{ url_for('forgot_password') }}" class="premium-forgot-link">Forgot?</a>
                                             </div>
-                                            <input id="account-gateway-password" type="password" name="password" class="form-control premium-input w-100" required autocomplete="current-password" placeholder="••••••••">
+                                            <div class="position-relative">
+                                                <input id="account-gateway-password" type="password" name="password" class="form-control premium-input w-100" required autocomplete="current-password" placeholder="••••••••">
+                                                <button
+                                                    type="button"
+                                                    data-toggle-password="account-gateway-password"
+                                                    aria-label="Show password"
+                                                    style="position:absolute;right:12px;top:50%;transform:translateY(-50%);border:none;background:transparent;color:#334155;padding:0;line-height:1;"
+                                                ><i class="bi bi-eye"></i></button>
+                                            </div>
                                         </div>
                                         <div class="premium-form-row__submit">
                                             <button type="submit" class="btn btn-primary w-100 premium-gateway-submit">Log in</button>
@@ -424,6 +432,18 @@ document.querySelectorAll('.mini-map-header').forEach(function(el) {
         fillOpacity: 1,
         className: 'mini-map-dot'
     }).addTo(miniMap);
+});
+
+document.addEventListener("click", function(event) {
+    var toggleButton = event.target.closest("[data-toggle-password]");
+    if (!toggleButton) return;
+    var inputId = toggleButton.getAttribute("data-toggle-password");
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    var shouldShow = input.type === "password";
+    input.type = shouldShow ? "text" : "password";
+    toggleButton.innerHTML = shouldShow ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+    toggleButton.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
 });
 </script>
 {% if not g.user %}

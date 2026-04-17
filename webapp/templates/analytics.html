@@ -530,6 +530,45 @@
         color: #334155;
         min-height: 80px;
     }
+    .ai-locked-wrap {
+        position: relative;
+    }
+    .ai-locked-blur {
+        filter: blur(5px);
+        pointer-events: none;
+        user-select: none;
+    }
+    .ai-locked-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: rgba(248, 250, 252, 0.42);
+        backdrop-filter: saturate(120%);
+        z-index: 2;
+        text-align: center;
+        padding: 1rem;
+    }
+    .ai-locked-panel {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 0;
+        box-shadow: none;
+        max-width: 260px;
+    }
+    .ai-locked-title {
+        margin: 0 0 0.25rem 0;
+        font-size: 0.86rem;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .ai-locked-sub {
+        margin: 0 0 0.6rem 0;
+        font-size: 0.75rem;
+        color: #475569;
+    }
     .ai-insight-shimmer {
         height: 14px;
         border-radius: 6px;
@@ -1296,14 +1335,25 @@
             </div>
 
             <!-- AI Insight -->
-            <div class="ai-insight-rail">
-                <div class="ai-insight-rail-header">
-                    <span class="ai-insight-rail-title"><i class="bi bi-stars me-1"></i>AI Market Insight</span>
-                    <span class="ai-insight-rail-badge">PREMIUM</span>
+            <div class="ai-insight-rail{% if not is_premium %} ai-locked-wrap{% endif %}">
+                <div{% if not is_premium %} class="ai-locked-blur"{% endif %}>
+                    <div class="ai-insight-rail-header">
+                        <span class="ai-insight-rail-title"><i class="bi bi-stars me-1"></i>AI Market Insight</span>
+                        <span class="ai-insight-rail-badge">PREMIUM</span>
+                    </div>
+                    <div id="railInsightText" class="ai-insight-rail-body">
+                        Apply filters and click Refresh to generate a contextual market insight.
+                    </div>
                 </div>
-                <div id="railInsightText" class="ai-insight-rail-body">
-                    Apply filters and click Refresh to generate a contextual market insight.
+                {% if not is_premium %}
+                <div class="ai-locked-overlay">
+                    <div class="ai-locked-panel">
+                        <p class="ai-locked-title">Premium AI Insight</p>
+                        <p class="ai-locked-sub">Upgrade to unlock this analytics interpretation.</p>
+                        <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-sm">Unlock AI Insights</a>
+                    </div>
                 </div>
+                {% endif %}
             </div>
 
         </div><!-- end .dash-rail -->
@@ -1313,12 +1363,12 @@
 
     <!-- ④ PREDICTION INSIGHTS (shown when launched from Predict page) ───── -->
     <!-- ⑤ AI FAQ SECTIONS ───────────────────────────────────────────────── -->
-    <div class="faq-section mt-4">
+    <div class="faq-section mt-4{% if not is_premium %} ai-locked-wrap{% endif %}">
         <div class="section-kicker mb-1">AI-Powered Questions</div>
         <h5 class="mb-3">
             <i class="bi bi-stars me-2 text-primary"></i>Insights About Your Data
         </h5>
-        <div class="row g-3">
+        <div class="row g-3{% if not is_premium %} ai-locked-blur{% endif %}">
             <!-- Value FAQ -->
             <div class="col-lg-3">
                 <div class="card panel-card h-100">
@@ -1376,6 +1426,15 @@
                 </div>
             </div>
         </div>
+        {% if not is_premium %}
+        <div class="ai-locked-overlay">
+            <div class="ai-locked-panel">
+                <p class="ai-locked-title">Premium AI Q&A</p>
+                <p class="ai-locked-sub">Unlock tailored analytics questions and answers.</p>
+                <a href="{{ url_for('pricing') }}" class="btn btn-primary btn-sm">Unlock AI Insights</a>
+            </div>
+        </div>
+        {% endif %}
     </div>
 
     {% if is_premium %}
@@ -2564,7 +2623,7 @@ async function refreshDashboard() {
 /* ── Event wiring ─────────────────────────────────────────────────────────── */
 document.getElementById('refreshDashboardBtn').addEventListener('click', () => {
     refreshDashboard();
-    debouncedLoadAiFaq();
+    if (IS_PREMIUM) debouncedLoadAiFaq();
 });
 
 document.getElementById('clearLocationBtn').addEventListener('click', clearLocationFilters);
@@ -2897,6 +2956,7 @@ function renderAiFaqFromGroups(groups) {
 }
 
 async function loadAiFaqQuestions() {
+    if (!IS_PREMIUM) return;
     const token    = ++aiFaqReqToken;
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
@@ -2942,6 +3002,7 @@ async function loadAiFaqQuestions() {
 }
 
 function debouncedLoadAiFaq() {
+    if (!IS_PREMIUM) return;
     clearTimeout(aiFaqDebounceTimer);
     const cacheKey = getAiFaqCacheKey();
     if (aiFaqQuestionsCache[cacheKey]) { renderAiFaqFromGroups(aiFaqQuestionsCache[cacheKey]); return; }
@@ -3012,6 +3073,7 @@ async function expandFaqItem(item) {
 }
 
 document.addEventListener('click', e => {
+    if (!IS_PREMIUM) return;
     const item = e.target.closest('.ai-faq-item');
     if (item) expandFaqItem(item);
 });

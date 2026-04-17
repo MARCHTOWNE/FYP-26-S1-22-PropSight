@@ -70,6 +70,31 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
 
+    .password-field-wrap {
+        position: relative;
+    }
+
+    .password-field-wrap .auth-input {
+        padding-right: 44px;
+    }
+
+    .password-toggle-btn {
+        position: absolute;
+        top: 50%;
+        right: 12px;
+        transform: translateY(-50%);
+        border: none;
+        background: transparent;
+        color: #334155;
+        font-size: 1rem;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .password-toggle-btn:hover {
+        color: #0f172a;
+    }
+
     .auth-hint {
         margin-top: 8px;
         color: #64748b;
@@ -127,6 +152,9 @@
         <p class="auth-subheading">Set up your PropSight access in less than a minute.</p>
 
         <form method="POST" action="{{ url_for('register') }}">
+            {% if next_url %}
+            <input type="hidden" name="next" value="{{ next_url }}">
+            {% endif %}
             <div class="auth-field">
                 <label class="auth-label" for="username">Username</label>
                 <input id="username" type="text" name="username" class="auth-input" required autofocus minlength="3">
@@ -139,7 +167,12 @@
 
             <div class="auth-field">
                 <label class="auth-label" for="password">Password</label>
-                <input id="password" type="password" name="password" class="auth-input" required minlength="6">
+                <div class="password-field-wrap">
+                    <input id="password" type="password" name="password" class="auth-input" required minlength="6">
+                    <button type="button" class="password-toggle-btn" data-toggle-password="password" aria-label="Show password">
+                        <i class="bi bi-eye"></i>
+                    </button>
+                </div>
                 <div class="auth-hint">Minimum 6 characters.</div>
             </div>
 
@@ -148,8 +181,24 @@
 
         <p class="auth-footnote">
             Already have an account?
-            <a href="{{ url_for('login') }}" class="auth-link">Sign in</a>
+            <a href="{{ url_for('login', next=next_url) if next_url else url_for('login') }}" class="auth-link">Sign in</a>
         </p>
     </div>
 </section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.addEventListener("click", (event) => {
+        const toggleButton = event.target.closest("[data-toggle-password]");
+        if (!toggleButton) return;
+        const inputId = toggleButton.getAttribute("data-toggle-password");
+        const input = document.getElementById(inputId);
+        if (!input) return;
+        const shouldShow = input.type === "password";
+        input.type = shouldShow ? "text" : "password";
+        toggleButton.innerHTML = shouldShow ? '<i class="bi bi-eye-slash"></i>' : '<i class="bi bi-eye"></i>';
+        toggleButton.setAttribute("aria-label", shouldShow ? "Hide password" : "Show password");
+    });
+</script>
 {% endblock %}

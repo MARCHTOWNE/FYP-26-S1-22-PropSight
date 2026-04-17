@@ -188,6 +188,32 @@
         });
     });
     </script>
+    <script>
+    (function () {
+        var msg = sessionStorage.getItem("flash_success");
+        if (!msg) return;
+        sessionStorage.removeItem("flash_success");
+        var container = document.querySelector(".premium-toast-container");
+        if (!container) {
+            container = document.createElement("div");
+            container.className = "premium-toast-container";
+            container.setAttribute("aria-live", "polite");
+            container.setAttribute("aria-atomic", "true");
+            var main = document.querySelector("main");
+            if (main) main.insertBefore(container, main.firstChild);
+        }
+        var toast = document.createElement("div");
+        toast.className = "premium-toast premium-toast--success";
+        toast.setAttribute("role", "status");
+        toast.innerHTML = '<i class="bi bi-check-circle-fill premium-toast__icon"></i>'
+            + '<span class="premium-toast__message">' + msg + '</span>';
+        container.appendChild(toast);
+        setTimeout(function () {
+            toast.classList.add("is-dismissing");
+            setTimeout(function () { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 300);
+        }, 4000);
+    }());
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

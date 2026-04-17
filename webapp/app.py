@@ -1084,6 +1084,27 @@ def _supabase_auth(path, method="POST", payload=None, access_token=None):
         raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
 
 
+def _supabase_auth_update_user(access_token, payload):
+    """Update the authenticated Supabase user (e.g. change password)."""
+    if not SUPABASE_ENABLED:
+        raise SupabaseError("Supabase is not configured.")
+    url = f"{SUPABASE_URL}/auth/v1/user"
+    headers = {
+        "apikey": SUPABASE_KEY,
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {access_token}",
+    }
+    data = json.dumps(payload).encode()
+    req = urllib_request.Request(url, data=data, headers=headers, method="PUT")
+    try:
+        with urllib_request.urlopen(req) as resp:
+            raw = resp.read().decode()
+            return json.loads(raw) if raw else None
+    except error.HTTPError as exc:
+        details = exc.read().decode()
+        raise SupabaseError(details or f"Auth API failed with {exc.code}") from exc
+
+
 def _gemini_request(url, body_dict, timeout=25):
     """Make a single Gemini API request and return the text, or raise on failure."""
     body = json.dumps(body_dict).encode("utf-8")
@@ -3363,13 +3384,42 @@ def forgot_password():
     if request.method == "POST":
         email = request.form["email"].strip().lower()
         try:
-            _supabase_auth("/recover", payload={"email": email})
+            _supabase_auth("/recover", payload={
+                "email": email,
+                "redirect_to": url_for("reset_password", _external=True),
+            })
         except SupabaseError:
             pass  # Don't reveal whether the email exists
         flash("If that email is registered, you'll receive a password reset link.", "info")
         return redirect(url_for("login"))
 
     return render_template("forgot_password.html")
+
+
+@app.route("/reset-password")
+def reset_password():
+    return render_template("reset_password.html")
+
+
+@app.route("/api/reset-password", methods=["POST"])
+def api_reset_password():
+    body = request.get_json(silent=True) or {}
+    access_token = body.get("access_token", "")
+    new_password = body.get("new_password", "")
+    if not access_token:
+        return jsonify({"error": "Missing access token."}), 400
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
+    try:
+        _supabase_auth_update_user(access_token, {"password": new_password})
+    except SupabaseError as exc:
+        raw = str(exc)
+        try:
+            msg = json.loads(raw).get("msg") or raw
+        except (ValueError, AttributeError):
+            msg = raw
+        return jsonify({"error": msg}), 400
+    return jsonify({"success": True})
 
 
 @app.route("/logout")

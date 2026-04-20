@@ -2727,7 +2727,67 @@ def _feature_label(feature_name, raw_values):
         return f"Town 5Y CAGR ({_format_rate_label(raw_values.get(feature_name))})"
     if feature_name in {"month_sin", "month_cos"}:
         return "Seasonal timing"
+    if feature_name == "town_flattype_median_3m":
+        return "Recent market price (3mo)"
+    if feature_name == "town_flattype_median_6m":
+        return "Recent market price (6mo)"
+    if feature_name == "town_flattype_psf_3m":
+        return "Recent $/sqm (3mo)"
+    if feature_name == "town_median_3m":
+        return "Town-wide price (3mo)"
+    if feature_name == "town_txn_volume_3m":
+        return "Town activity (3mo)"
+    if feature_name == "price_momentum_3m":
+        return "Price momentum (3mo)"
+    if feature_name == "national_median_psf_3m":
+        return "National $/sqm (3mo)"
+    if feature_name == "sora_3m":
+        return "Home loan rate (3mo SORA)"
     return feature_name.replace("_", " ").title()
+
+
+FEATURE_DESCRIPTIONS = {
+    # Property basics
+    "floor_area_sqm": "How big your flat is. Larger flats sell for more.",
+    "flat_type_ordinal": "The size category of your flat (3-Room, 4-Room, Executive, etc.). Bigger types usually sell for more.",
+    "flat_model_enc": "The design type of your flat (Improved, DBSS, Premium, Maisonette, etc.). Newer or special designs often fetch a premium.",
+    "storey_midpoint": "How high up your unit is. Higher floors usually sell for more thanks to better views and less noise.",
+    "flat_age": "How old your flat is. Older flats generally sell for less than newer ones with the same size and location.",
+    "remaining_lease": "How many years are left on your 99-year lease. Shorter leases mean lower prices — and make it harder for buyers to get bank loans or use their CPF.",
+    "lease_commence_date": "The year your flat's 99-year lease started.",
+    "is_mature_estate": "Whether your town is a 'mature estate' (like Bedok, Tampines, Queenstown). These have more amenities and MRTs, so flats there cost more.",
+    # Location / amenities
+    "dist_mrt": "How far your flat is from the nearest MRT or LRT station. Closer is more convenient and usually pricier.",
+    "dist_cbd": "How far your flat is from the city centre (Raffles Place). Shorter commutes push prices up.",
+    "dist_primary_school": "How far your flat is from the nearest primary school. Families with young kids pay a premium to live near schools.",
+    "dist_high_demand_primary_school": "How far your flat is from a popular primary school. These schools have stricter admissions, so nearby flats trade at a premium.",
+    "high_demand_primary_count_1km": "How many popular primary schools are within 1 km of your flat. More top schools nearby means stronger demand from families.",
+    "dist_major_mall": "How far your flat is from a big shopping mall. Convenience adds to value.",
+    "dist_hawker_centre": "How far your flat is from the nearest hawker centre. Affordable food access is a valued amenity in Singapore.",
+    "hawker_count_1km": "How many hawker centres are within 1 km of your flat. More food options nearby is a small plus.",
+    # Town pricing profile (learned from history)
+    "town_enc": "The overall price level of your town, learned from thousands of past sales. Towns like Queenstown trade higher than Yishun or Woodlands.",
+    "town_yoy_appreciation_lag1": "How much your town's prices rose (or fell) over the past year. If your town has been heating up, your flat gets a lift.",
+    "town_5yr_cagr_lag1": "Your town's average yearly price growth over the past 5 years. Towns with steady long-term growth hold a premium.",
+    # Recent local market (rolling windows)
+    "town_flattype_median_3m": "The typical selling price for flats like yours in your town over the past 3 months. This is the latest market rate for your type of flat.",
+    "town_flattype_median_6m": "The typical selling price for flats like yours in your town over the past 6 months. A longer view that smooths out month-to-month noise.",
+    "town_flattype_psf_3m": "The recent price per square metre for flats like yours in your town. Useful for comparing flats of different sizes fairly.",
+    "town_median_3m": "The typical selling price across all flat types in your town over the past 3 months. Captures your town's overall price level right now.",
+    "town_txn_volume_3m": "How many flats have sold in your town over the past 3 months. Busy towns tend to hold firmer prices; quiet towns can soften.",
+    "price_momentum_3m": "Whether your town's prices have been trending up or down recently. Rising momentum adds value; falling momentum pulls it down.",
+    # National market context
+    "national_median_psf_3m": "The typical price per square metre across all of Singapore in the past 3 months. Sets the backdrop for the overall resale market.",
+    "sora_3m": "The 3-month SORA — the benchmark rate banks use for home loans. Higher SORA makes mortgages more expensive and tends to cool prices; lower SORA supports them.",
+    # Seasonal / timing
+    "year": "The current year. The model uses this to anchor predictions to today's market level.",
+    "month_sin": "Which month of the year. HDB prices shift slightly with the seasons — the model accounts for this.",
+    "month_cos": "Which month of the year. HDB prices shift slightly with the seasons — the model accounts for this.",
+}
+
+
+def _feature_description(feature_name):
+    return FEATURE_DESCRIPTIONS.get(feature_name, "Contributes to the model's price estimate.")
 
 
 def _feature_phrase(label):
@@ -2874,6 +2934,7 @@ def compute_shap_explanation(town, flat_type, flat_model, floor_area, storey_ran
         rounded_items.append({
             "key": item["key"],
             "label": item["label"],
+            "description": _feature_description(item["key"]),
             "dollar_impact": rounded_impact,
             "is_positive": rounded_impact >= 0,
         })

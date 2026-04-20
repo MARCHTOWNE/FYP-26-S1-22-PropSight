@@ -494,7 +494,7 @@
 .shap-bars { display: flex; flex-direction: column; gap: 9px; margin-bottom: 22px; }
 .shap-row {
   display: grid;
-  grid-template-columns: 155px 1fr 92px;
+  grid-template-columns: 190px 1fr 92px;
   align-items: center;
   gap: 11px;
 }
@@ -502,9 +502,44 @@
   font-size: 12.5px;
   font-weight: 600;
   color: #374151;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.shap-feat-label { white-space: normal; line-height: 1.35; }
+.shap-info-icon {
+  position: relative;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.shap-info-icon:hover { color: #2563eb; }
+.shap-info-icon::after {
+  content: attr(data-shap-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.55;
+  padding: 8px 12px;
+  border-radius: 8px;
+  width: 240px;
+  white-space: normal;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.22);
+}
+.shap-info-icon[data-shap-tip=""]::after { display: none; }
+.shap-info-icon:hover::after,
+.shap-info-icon.tip-open::after {
+  opacity: 1;
+  visibility: visible;
 }
 .shap-track {
   height: 7px;
@@ -799,7 +834,7 @@
 @media (max-width: 920px) {
   .predict-shell { flex-direction: column; padding: 16px 16px 40px; gap: 16px; }
   .predict-sidebar { width: 100%; position: static; }
-  .shap-row { grid-template-columns: 110px 1fr 80px; }
+  .shap-row { grid-template-columns: 150px 1fr 80px; }
 }
 @media (max-width: 600px) {
   .price-main-val { font-size: 34px; }
@@ -852,7 +887,7 @@
     {% set avg_diff_pct = ((avg_diff | abs / town_avg_price) * 100) | round(1) %}
   {% endif %}
   {% if explanation and explanation.features %}
-    {% set ns = namespace(max_abs=1) %}
+    {% set ns = namespace(max_abs=0) %}
     {% for f in explanation.features %}
       {% if (f.dollar_impact | abs) > ns.max_abs %}{% set ns.max_abs = f.dollar_impact | abs %}{% endif %}
     {% endfor %}
@@ -1155,12 +1190,18 @@
         </div>
       </div>
 
+      {% if ns.max_abs > 0 %}
       <div class="shap-bars">
         {% for f in explanation.features %}
         {% set bar_pct = ((f.dollar_impact | abs) / ns.max_abs * 100) | int %}
         {% set is_pos = f.dollar_impact >= 0 %}
         <div class="shap-row">
-          <div class="shap-feat" title="{{ f.label }}">{{ f.label }}</div>
+          <div class="shap-feat">
+            <span class="shap-feat-label">{{ f.label }}</span>
+            <span class="shap-info-icon" data-shap-tip="{{ f.description or 'Contributes to the model price estimate.' }}">
+              <i class="bi bi-info-circle"></i>
+            </span>
+          </div>
           <div class="shap-track">
             <div class="shap-fill {{ 'pos' if is_pos else 'neg' }}" style="width:{{ bar_pct }}%;"></div>
           </div>
@@ -1170,6 +1211,9 @@
         </div>
         {% endfor %}
       </div>
+      {% else %}
+      <div style="padding:14px 0;color:#94a3b8;font-size:13px;text-align:center;">Feature contributions are too small to visualise for this flat.</div>
+      {% endif %}
 
       <div class="shap-narrative">
         <div class="narrative-kicker">Plain-English Summary</div>
@@ -1672,9 +1716,10 @@ if (pForm && subBtn) {
     // SHAP-based pills (if available)
     if (shapFeats.length) {
       var topFeat = shapFeats[0];
+      var cleanLabel = (topFeat.label || '').split(' (')[0].toLowerCase();
       pills.push({
-        label: 'Why does ' + topFeat.label.toLowerCase() + ' matter most?',
-        q: 'Why does ' + topFeat.label.toLowerCase() + ' have the biggest impact on my flat\'s price?'
+        label: 'Why does ' + cleanLabel + ' matter most?',
+        q: 'Why does ' + cleanLabel + ' have the biggest impact on my flat\'s price?'
       });
 
       var negFeats = shapFeats.filter(function(f) { return f.dollar_impact < 0; });
@@ -1862,5 +1907,13 @@ if (pForm && subBtn) {
     thread.scrollTop = thread.scrollHeight;
   }
 })();
+
+document.addEventListener('click', function(e) {
+  var icon = e.target.closest('[data-shap-tip]');
+  document.querySelectorAll('[data-shap-tip].tip-open').forEach(function(el) {
+    if (el !== icon) el.classList.remove('tip-open');
+  });
+  if (icon) icon.classList.toggle('tip-open');
+});
 </script>
 {% endblock %}

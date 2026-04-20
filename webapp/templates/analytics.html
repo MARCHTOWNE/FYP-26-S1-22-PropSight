@@ -1563,6 +1563,29 @@ const predictionSeed = {
 
 const COLORS = ['#1d4ed8','#3b82f6','#0ea5e9','#22c55e','#f59e0b','#ef4444','#64748b','#0f172a'];
 
+/* ── Fix Chart.js tooltip offset (canvas CSS scaling bug) ── */
+Chart.defaults.plugins.tooltip.animation = false;
+Chart.defaults.plugins.tooltip.delay = 0;
+
+const _tooltipPosFix = {
+    id: 'tooltipPosFix',
+    beforeEvent(chart, args) {
+        const e = args.event;
+        if (e.type !== 'mousemove') return;
+        const canvas = chart.canvas;
+        const rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height) return;
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        if (Math.abs(scaleX - 1) > 0.02 || Math.abs(scaleY - 1) > 0.02) {
+            e.x = Math.round(e.x * scaleX);
+            e.y = Math.round(e.y * scaleY);
+        }
+    }
+};
+Chart.register(_tooltipPosFix);
+
+
 /* ── Helpers ──────────────────────────────────────────────────────────────── */
 function escapeHtml(value) {
     return String(value || '')
@@ -2267,7 +2290,7 @@ async function loadPriceTrend() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) } },
+                    tooltip: { callbacks: { label: tCtx => ' Price: ' + formatMoney(tCtx.parsed.y) } },
                     legend:  { display: false }
                 },
                 scales: {
@@ -2313,10 +2336,10 @@ async function loadFlatType() {
                     legend: { position: 'bottom', labels: { boxWidth: 11, font: { size: 11 } } },
                     tooltip: {
                         callbacks: {
-                            label: ctx => {
-                                const row = data[ctx.dataIndex];
-                                return ' ' + row.flat_type + ': ' + Number(row.txn_count || 0).toLocaleString() +
-                                    ' txns (avg ' + formatMoney(row.avg_price) + ')';
+                            label: tCtx => {
+                                const row = data.find(d => d.flat_type === tCtx.label);
+                                if (!row) return '';
+                                return ' ' + Number(row.txn_count||0).toLocaleString() + ' txns (avg ' + formatMoney(row.avg_price) + ')';
                             }
                         }
                     }
@@ -2415,13 +2438,13 @@ async function loadLocationComparison() {
                 layout: { padding: { left: 20, right: 6 } },
                 indexAxis: 'y',
                 interaction: {
-                    mode: 'index',
+                    mode: 'nearest',
                     axis: 'y',
-                    intersect: false,
+                    intersect: true,
                 },
                 plugins: {
                     legend:  { display: false },
-                    tooltip: { callbacks: { label: ctx => ' ' + formatMoney(ctx.parsed.x) } }
+                    tooltip: { callbacks: { label: tCtx => ' Avg Price: ' + formatMoney(tCtx.parsed.x) } }
                 },
                 scales: {
                     x: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } },
@@ -2479,7 +2502,8 @@ async function loadVolume() {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: { legend: { display: false } }
+                interaction: { mode: 'index', axis: 'x', intersect: false },
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: tCtx => ' Transactions: ' + Number(tCtx.parsed.y||0).toLocaleString() } } }
             }
         });
     } finally {
@@ -2557,11 +2581,11 @@ async function loadPSF() {
                 layout: { padding: { left: 20, right: 6 } },
                 indexAxis: 'y',
                 interaction: {
-                    mode: 'index',
+                    mode: 'nearest',
                     axis: 'y',
-                    intersect: false,
+                    intersect: true,
                 },
-                plugins: { legend: { display: false } },
+                plugins: { legend: { display: false }, tooltip: { callbacks: { label: tCtx => ' $/sqm: ' + formatMoney(tCtx.parsed.x) } } },
                 scales: {
                     x: { ticks: { callback: v => '$' + Number(v || 0).toLocaleString() } },
                     y: getHorizontalCategoryAxisOptions(labelField)
@@ -2652,9 +2676,10 @@ async function loadFuturePredictions() {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + formatMoney(ctx.parsed.y) } },
+                    tooltip: { callbacks: { label: tCtx => ' ' + tCtx.dataset.label + ': ' + formatMoney(tCtx.parsed.y) } },
                     legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
                 },
+                interaction: { mode: 'index', axis: 'x', intersect: false },
                 scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
             }
         });
@@ -2867,9 +2892,10 @@ async function loadTrendVsPrediction() {
             options: {
                 responsive: true, maintainAspectRatio: false,
                 plugins: {
-                    tooltip: { callbacks: { label: ctx => ctx.dataset.label + ': ' + formatMoney(ctx.parsed.y) } },
+                    tooltip: { callbacks: { label: tCtx => ' ' + tCtx.dataset.label + ': ' + formatMoney(tCtx.parsed.y) } },
                     legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } }
                 },
+                interaction: { mode: 'index', axis: 'x', intersect: false },
                 scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
             }
         });
@@ -2911,7 +2937,7 @@ async function loadPredictionContext() {
                     },
                     options: {
                         responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => formatMoney(ctx.parsed.y) + ' (' + Number(counts[ctx.dataIndex] || 0).toLocaleString() + ' txns)' } } },
+                        plugins: { legend: { display: false }, tooltip: { callbacks: { label: tCtx => ' ' + formatMoney(tCtx.parsed.y) + ' (' + Number(counts[tCtx.dataIndex]||0).toLocaleString() + ' txns)' } } },
                         scales: { y: { ticks: { callback: v => '$' + (v / 1000).toFixed(0) + 'K' } } }
                     }
                 });

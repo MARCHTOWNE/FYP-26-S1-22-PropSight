@@ -2944,6 +2944,9 @@ def _get_recent_similar_transactions(
     return_scope_meta=False,
 ):
     """Return recent transactions for same town + flat_type, broadening scope if needed."""
+    from datetime import datetime as _dt
+    min_year = _dt.now().year - 5
+
     def _fetch_rows(query_street_name, query_block, query_storey_range):
         return _supabase_rpc("rpc_recent_similar_transactions", {
             "p_town": town,
@@ -2952,6 +2955,7 @@ def _get_recent_similar_transactions(
             "p_street_name": query_street_name,
             "p_block": query_block,
             "p_storey_range": query_storey_range,
+            "p_min_year": min_year,
         }) or []
 
     try:

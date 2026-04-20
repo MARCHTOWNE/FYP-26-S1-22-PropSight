@@ -547,20 +547,22 @@ LANGUAGE SQL STABLE AS $$
 $$;
 
 -- Recent similar transactions for prediction context
+DROP FUNCTION IF EXISTS rpc_recent_similar_transactions(TEXT, TEXT, INTEGER, TEXT, TEXT, TEXT);
 CREATE OR REPLACE FUNCTION rpc_recent_similar_transactions(
     p_town TEXT,
     p_flat_type TEXT,
     p_limit INTEGER DEFAULT 20,
     p_street_name TEXT DEFAULT NULL,
     p_block TEXT DEFAULT NULL,
-    p_storey_range TEXT DEFAULT NULL
+    p_storey_range TEXT DEFAULT NULL,
+    p_min_year INTEGER DEFAULT NULL
 )
 RETURNS TABLE(
     block TEXT, street_name TEXT, storey_range TEXT,
-    floor_area_sqm DOUBLE PRECISION, resale_price DOUBLE PRECISION, month TEXT
+    floor_area_sqm DOUBLE PRECISION, resale_price DOUBLE PRECISION, month TEXT, year INTEGER
 ) LANGUAGE SQL STABLE AS $$
     SELECT b.block, b.street_name, tx.storey_range,
-           tx.floor_area_sqm, tx.resale_price, tx.month
+           tx.floor_area_sqm, tx.resale_price, tx.month, tx.year
     FROM transactions tx
     JOIN blocks b ON tx.block_id = b.id
     JOIN towns t ON b.town_id = t.id
@@ -570,6 +572,7 @@ RETURNS TABLE(
       AND (p_street_name IS NULL OR b.street_name = p_street_name)
       AND (p_block IS NULL OR b.block = p_block)
       AND (p_storey_range IS NULL OR tx.storey_range = p_storey_range)
+      AND (p_min_year IS NULL OR tx.year >= p_min_year)
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT p_limit;
 $$;

@@ -1813,16 +1813,28 @@ def _extract_prediction_form_data(source, prefix, seed=None):
         form_data.update(seed)
 
     for field in ("town", "flat_type", "flat_model", "storey_range", "street_name", "block"):
-        value = source.get(f"{prefix}_{field}", "")
+        key = f"{prefix}_{field}" if prefix else field
+        value = source.get(key, "")
         if value:
             form_data[field] = value.strip()
 
     for field in ("floor_area", "lease_commence"):
-        value = source.get(f"{prefix}_{field}", "")
+        key = f"{prefix}_{field}" if prefix else field
+        value = source.get(key, "")
         if value != "":
             form_data[field] = value.strip() if isinstance(value, str) else value
 
     return form_data
+
+
+def _prediction_form_validation_error(form_data):
+    if not form_data.get("town") or not form_data.get("flat_type"):
+        return "Cannot get estimate. Please select a town and flat type."
+    if form_data["flat_type"] not in FLAT_TYPE_ORDINAL:
+        return "Cannot get estimate for this flat type."
+    if not form_data.get("street_name") or not form_data.get("block"):
+        return "Street and block are required for an accurate estimate."
+    return None
 
 
 def _run_prediction_form(form_data, infer_flat_type=False):
@@ -3988,15 +4000,9 @@ def predict():
             "block": request.form.get("block", "").strip(),
         }
 
-        if not form_data["town"] or not form_data["flat_type"]:
-            flash("Cannot get estimate. Please select a town and flat type.", "warning")
-            return _render_predict_empty()
-
-        if form_data["flat_type"] not in FLAT_TYPE_ORDINAL:
-            flash("Cannot get estimate for this flat type.", "warning")
-            return _render_predict_empty()
-        if not form_data["street_name"] or not form_data["block"]:
-            flash("Street and block are required for an accurate estimate.", "warning")
+        validation_error = _prediction_form_validation_error(form_data)
+        if validation_error:
+            flash(validation_error, "warning")
             return _render_predict_empty()
 
         prediction_input = dict(form_data)
@@ -4200,8 +4206,49 @@ def analytics():
     _log_feature_view_once(session["user_id"], "analytics")
     _seed_analytics_scope(request.args.get("town", ""))
     is_premium = session.get("subscription_tier", "general") == "premium"
-    return render_template("analytics.html", towns=TOWNS, is_premium=is_premium,
-                           ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT)
+    prediction_form_data = _extract_prediction_form_data(
+        request.args,
+        "",
+        seed={"flat_type": "", "flat_model": "", "storey_range": ""},
+    )
+    prediction_seed = None
+
+    legacy_predicted_price_raw = request.args.get("predicted_price", "").strip()
+    if legacy_predicted_price_raw:
+        legacy_predicted_price = _coerce_float(legacy_predicted_price_raw)
+        prediction_seed = {
+            **prediction_form_data,
+            "predicted_price": (
+                legacy_predicted_price
+                if legacy_predicted_price is not None
+                else legacy_predicted_price_raw
+            ),
+        }
+    elif request.args.get("predict_context", "").strip() == "1":
+        validation_error = _prediction_form_validation_error(prediction_form_data)
+        if validation_error:
+            flash(validation_error, "warning")
+        else:
+            try:
+                resolved_form, _, payload = _run_prediction_form(prediction_form_data)
+                prediction_form_data = resolved_form
+                prediction_seed = payload
+            except Exception:
+                app.logger.warning("Could not generate analytics prediction context", exc_info=True)
+                flash("Could not generate prediction context for analytics right now.", "danger")
+
+    return render_template(
+        "analytics.html",
+        towns=TOWNS,
+        flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+        storey_ranges=STOREY_RANGES,
+        default_floor_area=DEFAULT_FLOOR_AREA,
+        default_lease_year=_default_lease_year_range()["avg_year"],
+        prediction_form_data=prediction_form_data,
+        prediction_seed=prediction_seed,
+        is_premium=is_premium,
+        ai_daily_limit=GENERAL_DAILY_AI_ANSWER_LIMIT,
+    )
 
 
 # ---------------------------------------------------------------------------

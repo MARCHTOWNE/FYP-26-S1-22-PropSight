@@ -52,7 +52,105 @@
         box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
         background-color: #ffffff;
     }
+    .pf-input {
+        width: 100%;
+        padding: 9px 12px;
+        border: 1.5px solid #e2e8f0;
+        border-radius: 14px;
+        font-size: 13.5px;
+        color: #0f172a;
+        background: #f8fafc;
+        transition: border-color 0.2s, box-shadow 0.2s, background-color 0.2s;
+    }
+    .pf-input:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+        background-color: #ffffff;
+    }
     .hint-text { font-size: 0.82rem; color: #64748b; }
+    .hero-context-card {
+        margin-top: 1rem;
+        padding: 1rem 1.05rem 1.05rem;
+        border-top: 1px solid rgba(15, 23, 42, 0.06);
+        background: linear-gradient(135deg, rgba(248, 250, 252, 0.96), rgba(239, 246, 255, 0.92));
+        border-radius: 18px;
+    }
+    .hero-context-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        align-items: flex-start;
+        margin-bottom: 0.5rem;
+    }
+    .hero-context-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+        padding: 0.4rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.06);
+        color: #475569;
+        font-size: 0.74rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .hero-context-badge.active {
+        background: rgba(16, 185, 129, 0.12);
+        color: #047857;
+    }
+    .context-status {
+        margin-bottom: 0.9rem;
+        padding: 0.78rem 0.9rem;
+        border-radius: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(255, 255, 255, 0.88);
+        color: #334155;
+        font-size: 0.84rem;
+        line-height: 1.55;
+    }
+    .context-status strong { color: #0f172a; }
+    .context-status.is-active {
+        border-color: rgba(16, 185, 129, 0.22);
+        background: rgba(236, 253, 245, 0.78);
+    }
+    .hero-context-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 0.8rem;
+    }
+    .hero-context-field label {
+        display: block;
+        margin-bottom: 0.35rem;
+        font-size: 0.74rem;
+        font-weight: 700;
+        color: #475569;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .context-inline-hint {
+        margin-top: 0.32rem;
+        min-height: 1.05rem;
+        font-size: 0.76rem;
+        color: #64748b;
+    }
+    .hero-context-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.65rem;
+        align-items: center;
+        margin-top: 0.95rem;
+    }
+    .hero-context-actions .btn {
+        border-radius: 999px;
+        font-weight: 700;
+    }
+    .hero-context-note {
+        font-size: 0.78rem;
+        color: #64748b;
+    }
     .panel-card {
         background: #ffffff;
         border: 1px solid rgba(15, 23, 42, 0.06);
@@ -803,8 +901,47 @@
         font-weight: 700;
         color: #0f172a;
     }
+    .myflat-transactions-meta {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin-bottom: 0.9rem;
+        padding: 0.42rem 0.72rem;
+        border-radius: 999px;
+        background: rgba(37, 99, 235, 0.08);
+        color: #1d4ed8;
+        font-size: 0.76rem;
+        font-weight: 700;
+    }
+    .myflat-transactions-table td {
+        vertical-align: middle;
+    }
+    .myflat-transactions-address {
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .myflat-transactions-price {
+        font-weight: 700;
+        color: #2563eb;
+        text-align: right;
+        white-space: nowrap;
+    }
+    .myflat-transactions-numeric {
+        text-align: right;
+        white-space: nowrap;
+    }
+
+    @media (max-width: 1199.98px) {
+        .hero-context-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
 
     @media (max-width: 768px) {
+        .hero-context-head,
+        .hero-context-actions {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        .hero-context-grid { grid-template-columns: 1fr; }
         .myflat-summary { flex-direction: column; }
         .myflat-details-grid { grid-template-columns: repeat(2, 1fr); }
         .position-metrics { grid-template-columns: repeat(2, 1fr); }
@@ -857,49 +994,9 @@
                     Explore HDB resale prices, 5-year forecasts, and market context for any Singapore town.
                 </p>
             </div>
-            <div class="d-flex flex-wrap align-items-end gap-2">
-                <div>
-                    <label class="form-label fw-bold small mb-1">Town</label>
-                    <select id="filterTown" class="form-select form-select-sm pf-select" style="min-width:160px;">
-                        <option value="">All Towns</option>
-                        {% for t in towns %}
-                        <option value="{{ t }}">{{ t }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button class="btn btn-primary btn-sm" id="refreshDashboardBtn" type="button">
-                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
-                </button>
-            </div>
         </div>
 
-        <!-- Compact secondary filters -->
         <div class="d-flex flex-wrap gap-2 align-items-end pt-2 dashboard-hero-filters">
-            <div>
-                <label class="form-label fw-bold small mb-1">Street</label>
-                <select id="filterStreet" class="form-select form-select-sm pf-select" style="min-width:160px;" disabled>
-                    <option value="">All Streets</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label fw-bold small mb-1">Block</label>
-                <select id="filterBlock" class="form-select form-select-sm pf-select" style="min-width:100px;" disabled>
-                    <option value="">All Blocks</option>
-                </select>
-            </div>
-            <div>
-                <label class="form-label fw-bold small mb-1">Flat Type</label>
-                <select id="filterFlat" class="form-select form-select-sm pf-select">
-                    <option value="">All Types</option>
-                    <option>1 Room</option>
-                    <option>2 Room</option>
-                    <option>3 Room</option>
-                    <option>4 Room</option>
-                    <option>5 Room</option>
-                    <option>Executive</option>
-                    <option>Multi-Generation</option>
-                </select>
-            </div>
             <div>
                 <label class="form-label fw-bold small mb-1">Trend Style</label>
                 <select id="trendStyle" class="form-select form-select-sm pf-select">
@@ -915,7 +1012,7 @@
                 <label class="form-label fw-bold small mb-1">To</label>
                 <select id="yearTo" class="form-select form-select-sm pf-select" style="min-width:80px;"></select>
             </div>
-            <div class="d-flex align-items-end gap-2">
+            <div class="d-flex flex-wrap align-items-end gap-2 ms-auto">
                 <div id="filterBreadcrumb" class="filter-breadcrumb">
                     <i class="bi bi-geo-alt"></i>
                     <span id="bcText"></span>
@@ -923,7 +1020,174 @@
                 <button id="clearLocationBtn" class="btn btn-outline-secondary btn-sm" type="button">
                     <i class="bi bi-x-circle me-1"></i>Clear
                 </button>
+                <button class="btn btn-primary btn-sm" id="refreshDashboardBtn" type="button">
+                    <i class="bi bi-arrow-clockwise me-1"></i>Refresh
+                </button>
             </div>
+        </div>
+
+        <div class="d-none" aria-hidden="true">
+            <select id="filterTown">
+                <option value="">All Towns</option>
+                {% for t in towns %}
+                <option value="{{ t }}">{{ t }}</option>
+                {% endfor %}
+            </select>
+            <select id="filterStreet" disabled>
+                <option value="">All Streets</option>
+            </select>
+            <select id="filterBlock" disabled>
+                <option value="">All Blocks</option>
+            </select>
+            <select id="filterFlat">
+                <option value="">All Types</option>
+                {% for flat_type in flat_types %}
+                <option value="{{ flat_type }}">{{ flat_type }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="hero-context-card">
+            <div class="hero-context-head">
+                <div>
+                    <div class="section-kicker mb-1">My Flat Context</div>
+                    <h5 class="mb-1" style="font-size:1.02rem; font-weight:700;">
+                        <i class="bi bi-house-heart me-2 text-primary"></i>Predict
+                    </h5>
+                    <p class="text-muted mb-0" style="font-size:0.84rem;">
+                        Generate a unit-specific prediction here to unlock My Flat and lease decay while staying on analytics
+                    </p>
+                </div>
+                <span class="hero-context-badge{% if prediction_seed and prediction_seed.get('predicted_price') %} active{% endif %}">
+                    {% if prediction_seed and prediction_seed.get('predicted_price') %}
+                    Context loaded
+                    {% else %}
+                    Context not loaded
+                    {% endif %}
+                </span>
+            </div>
+
+            {% if prediction_seed and prediction_seed.get('predicted_price') %}
+            <div class="context-status is-active">
+                Context is active for
+                <strong>
+                    {% if prediction_seed.get('block') %}Blk {{ prediction_seed.get('block') }} {% endif %}
+                    {% if prediction_seed.get('street_name') %}{{ prediction_seed.get('street_name') }}, {% endif %}
+                    {{ prediction_seed.get('town') }}
+                </strong>
+                at <strong>${{ "{:,.0f}".format(prediction_seed.get('predicted_price') | float) }}</strong>.
+                Update any fields below and regenerate if you want to compare a different flat.
+                {% if prediction_seed and prediction_seed.get('assumptions') %}
+                <div class="context-inline-hint" style="min-height:0; margin-top:0.45rem;">
+                    {{ prediction_seed.get('assumptions') | join(' ') }}
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            <form id="analyticsPredictionForm" method="GET" action="{{ url_for('analytics') }}">
+                <input type="hidden" name="predict_context" value="1">
+                <div class="hero-context-grid">
+                    <div class="hero-context-field">
+                        <label for="predictionTown">Town</label>
+                        <select id="predictionTown" name="town" class="pf-select" required>
+                            <option value="">Select town</option>
+                            {% for t in towns %}
+                            <option value="{{ t }}"{% if prediction_form_data.get('town') == t %} selected{% endif %}>{{ t }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionStreet">Street</label>
+                        <select id="predictionStreet" name="street_name" class="pf-select" required{% if not prediction_form_data.get('town') %} disabled{% endif %}>
+                            <option value="">{% if prediction_form_data.get('town') %}Select street{% else %}Select town first{% endif %}</option>
+                            {% if prediction_form_data.get('street_name') %}
+                            <option value="{{ prediction_form_data.get('street_name') }}" selected>{{ prediction_form_data.get('street_name') }}</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionBlock">Block</label>
+                        <select id="predictionBlock" name="block" class="pf-select" required{% if not prediction_form_data.get('street_name') %} disabled{% endif %}>
+                            <option value="">{% if prediction_form_data.get('street_name') %}Select block{% else %}Select street first{% endif %}</option>
+                            {% if prediction_form_data.get('block') %}
+                            <option value="{{ prediction_form_data.get('block') }}" selected>{{ prediction_form_data.get('block') }}</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionFlatType">Flat Type</label>
+                        <select id="predictionFlatType" name="flat_type" class="pf-select" required>
+                            <option value="">Select flat type</option>
+                            {% for flat_type in flat_types %}
+                            <option value="{{ flat_type }}"{% if prediction_form_data.get('flat_type') == flat_type %} selected{% endif %}>{{ flat_type }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionFlatModel">Flat Model</label>
+                        <select id="predictionFlatModel" name="flat_model" class="pf-select"{% if not prediction_form_data.get('flat_type') %} disabled{% endif %}>
+                            <option value="">{% if prediction_form_data.get('flat_type') %}Auto-select model{% else %}Select type first{% endif %}</option>
+                            {% if prediction_form_data.get('flat_model') %}
+                            <option value="{{ prediction_form_data.get('flat_model') }}" selected>{{ prediction_form_data.get('flat_model') }}</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionStorey">Storey</label>
+                        <select id="predictionStorey" name="storey_range" class="pf-select"{% if not prediction_form_data.get('flat_type') %} disabled{% endif %}>
+                            <option value="">{% if prediction_form_data.get('flat_type') %}Auto-select floor{% else %}Select type first{% endif %}</option>
+                            {% if prediction_form_data.get('storey_range') %}
+                            <option value="{{ prediction_form_data.get('storey_range') }}" selected>{{ prediction_form_data.get('storey_range') }}</option>
+                            {% endif %}
+                        </select>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionFloorArea">Floor Area (sqm)</label>
+                        <input
+                            id="predictionFloorArea"
+                            name="floor_area"
+                            type="number"
+                            min="1"
+                            step="0.1"
+                            class="pf-input"
+                            value="{{ prediction_form_data.get('floor_area', default_floor_area) }}"
+                            required
+                        >
+                        <div id="predictionFloorHint" class="context-inline-hint">
+                            Enter your flat area in square metres.
+                        </div>
+                    </div>
+                    <div class="hero-context-field">
+                        <label for="predictionLeaseCommence">Lease Start Year</label>
+                        <input
+                            id="predictionLeaseCommence"
+                            name="lease_commence"
+                            type="number"
+                            min="1960"
+                            step="1"
+                            class="pf-input"
+                            value="{{ prediction_form_data.get('lease_commence', default_lease_year) }}"
+                            required
+                        >
+                        <div id="predictionLeaseHint" class="context-inline-hint">
+                            Use the lease commencement year for your unit.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-context-actions">
+                    <button id="predictionSubmitBtn" class="btn btn-primary btn-sm" type="submit">
+                        <i class="bi bi-graph-up-arrow me-1"></i>Generate My Flat Context
+                    </button>
+                    <a href="{{ url_for('analytics') }}" class="btn btn-outline-secondary btn-sm">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Clear Context
+                    </a>
+                    <div class="hero-context-note">
+                        Uses the same valuation engine as the dedicated Predict page
+                    </div>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -1098,7 +1362,7 @@
                                     <div class="position-metric-value text-primary" id="posYourPrice">—</div>
                                 </div>
                                 <div class="position-metric">
-                                    <div class="position-metric-label">Area Average</div>
+                                    <div class="position-metric-label" id="posAreaAvgLabel">Comparable Avg</div>
                                     <div class="position-metric-value" id="posAreaAvg">—</div>
                                 </div>
                                 <div class="position-metric">
@@ -1124,6 +1388,42 @@
                             <i class="bi bi-speedometer2 text-muted" style="font-size:1.5rem;"></i>
                             <p class="text-muted mt-2 mb-0" style="font-size:0.84rem;">
                                 Position data will appear once the dashboard loads market data for your area.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Similar Transactions -->
+                <div class="card panel-card mb-3">
+                    <div class="card-body">
+                        <div class="section-kicker">Market Context</div>
+                        <h6 class="mb-1" style="font-size:0.95rem; font-weight:700;">
+                            <i class="bi bi-receipt-cutoff me-2 text-primary"></i>Recent Similar Transactions
+                            <span style="font-size:0.73rem;font-weight:600;color:#94a3b8;">(last 5 years)</span>
+                        </h6>
+                        <p class="chart-note">Comparable sales used to ground the market-position range for your flat.</p>
+
+                        <div id="myflatTransactionsMeta" class="myflat-transactions-meta d-none"></div>
+
+                        <div id="myflatTransactionsWrap" class="table-responsive d-none">
+                            <table class="table table-sm table-hover forecast-table mb-0 small myflat-transactions-table">
+                                <thead>
+                                    <tr>
+                                        <th>Address</th>
+                                        <th>Storey</th>
+                                        <th class="text-end">Area</th>
+                                        <th class="text-end">Price</th>
+                                        <th>Month</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="myflatTransactionsBody"></tbody>
+                            </table>
+                        </div>
+
+                        <div id="myflatTransactionsEmpty" class="section-empty" style="padding:1.5rem;text-align:center;">
+                            <i class="bi bi-table text-muted" style="font-size:1.5rem;"></i>
+                            <p class="text-muted mt-2 mb-0" style="font-size:0.84rem;">
+                                Comparable sales will appear once prediction context loads for your flat.
                             </p>
                         </div>
                     </div>
@@ -1276,7 +1576,8 @@
                         <h6>Prediction Required</h6>
                         <p>
                             The lease decay analysis requires a price prediction as context.
-                            <a href="{{ url_for('predict') }}" class="text-primary fw-semibold">Run a prediction</a>
+                            Use the <strong>Predict Inside Analytics</strong> form above, or
+                            <a href="{{ url_for('predict') }}" class="text-primary fw-semibold">run a prediction on the Predict page</a>
                             and return here via the <em>View Market Context</em> button.
                         </p>
                     </div>
@@ -1532,6 +1833,8 @@ let latestTrendData = [];
 let latestForecastData = [];
 let latestForecastMeta = {};
 let latestLeaseDecayData = [];
+let latestPredictionRecentTransactions = [];
+let latestPredictionContextMeta = { scope_broadened: false };
 let latestComparisonMeta = { rows: [], labelField: 'town' };
 let activeInsightSection = 'trend';
 
@@ -1549,16 +1852,21 @@ let latestPsfData = [];
 
 /* ── URL seed (from Predict page redirect) ────────────────────────────────── */
 const pageParams = new URLSearchParams(window.location.search);
+const serverPredictionSeed = {{ prediction_seed | tojson }};
+const predictionFormSeed = {{ prediction_form_data | tojson }};
 const predictionSeed = {
-    town:           pageParams.get('town') || '',
-    flat_type:      pageParams.get('flat_type') || '',
-    flat_model:     pageParams.get('flat_model') || '',
-    floor_area:     pageParams.get('floor_area') || '',
-    storey_range:   pageParams.get('storey_range') || '',
-    lease_commence: pageParams.get('lease_commence') || '',
-    predicted_price:pageParams.get('predicted_price') || '',
-    street_name:    pageParams.get('street_name') || pageParams.get('street') || '',
-    block:          pageParams.get('block') || '',
+    town:            (serverPredictionSeed && serverPredictionSeed.town) || pageParams.get('town') || '',
+    flat_type:       (serverPredictionSeed && serverPredictionSeed.flat_type) || pageParams.get('flat_type') || '',
+    flat_model:      (serverPredictionSeed && serverPredictionSeed.flat_model) || pageParams.get('flat_model') || '',
+    floor_area:      (serverPredictionSeed && serverPredictionSeed.floor_area) || pageParams.get('floor_area') || '',
+    storey_range:    (serverPredictionSeed && serverPredictionSeed.storey_range) || pageParams.get('storey_range') || '',
+    lease_commence:  (serverPredictionSeed && serverPredictionSeed.lease_commence) || pageParams.get('lease_commence') || '',
+    predicted_price: (serverPredictionSeed && serverPredictionSeed.predicted_price) || pageParams.get('predicted_price') || '',
+    street_name:     (serverPredictionSeed && serverPredictionSeed.street_name) || pageParams.get('street_name') || pageParams.get('street') || '',
+    block:           (serverPredictionSeed && serverPredictionSeed.block) || pageParams.get('block') || '',
+    price_low:       (serverPredictionSeed && serverPredictionSeed.price_low) || pageParams.get('price_low') || '',
+    price_high:      (serverPredictionSeed && serverPredictionSeed.price_high) || pageParams.get('price_high') || '',
+    assumptions:     (serverPredictionSeed && serverPredictionSeed.assumptions) || [],
 };
 
 const COLORS = ['#1d4ed8','#3b82f6','#0ea5e9','#22c55e','#f59e0b','#ef4444','#64748b','#0f172a'];
@@ -1778,6 +2086,325 @@ function buildFuturePredictionParams() {
         });
     }
     return params;
+}
+
+const predictionFormEls = {
+    form: document.getElementById('analyticsPredictionForm'),
+    town: document.getElementById('predictionTown'),
+    street: document.getElementById('predictionStreet'),
+    block: document.getElementById('predictionBlock'),
+    flatType: document.getElementById('predictionFlatType'),
+    flatModel: document.getElementById('predictionFlatModel'),
+    storey: document.getElementById('predictionStorey'),
+    floorArea: document.getElementById('predictionFloorArea'),
+    leaseCommence: document.getElementById('predictionLeaseCommence'),
+    floorHint: document.getElementById('predictionFloorHint'),
+    leaseHint: document.getElementById('predictionLeaseHint'),
+    submit: document.getElementById('predictionSubmitBtn'),
+};
+const dashboardFilterEls = {
+    town: document.getElementById('filterTown'),
+    street: document.getElementById('filterStreet'),
+    block: document.getElementById('filterBlock'),
+    flatType: document.getElementById('filterFlat'),
+};
+
+let predictionFormStreetReqToken = 0;
+let predictionFormBlockReqToken = 0;
+let predictionFormScopeReqToken = 0;
+
+function setPredictionSubmitLoading(isLoading) {
+    if (!predictionFormEls.submit) return;
+    if (isLoading) {
+        predictionFormEls.submit.disabled = true;
+        predictionFormEls.submit.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Generating...';
+        return;
+    }
+    predictionFormEls.submit.disabled = false;
+    predictionFormEls.submit.innerHTML = '<i class="bi bi-graph-up-arrow me-1"></i>Generate My Flat Context';
+}
+
+function setPredictionHint(el, text) {
+    if (!el) return;
+    el.textContent = text || '';
+}
+
+function setInputRange(inputEl, minValue, maxValue) {
+    if (!inputEl) return;
+    if (Number.isFinite(minValue)) {
+        inputEl.min = String(minValue);
+    } else {
+        inputEl.removeAttribute('min');
+    }
+    if (Number.isFinite(maxValue)) {
+        inputEl.max = String(maxValue);
+    } else {
+        inputEl.removeAttribute('max');
+    }
+}
+
+function cloneSelectState(sourceEl, targetEl, fallbackLabel) {
+    if (!targetEl) return;
+    if (sourceEl) {
+        targetEl.innerHTML = sourceEl.innerHTML;
+        targetEl.disabled = !!sourceEl.disabled;
+        return;
+    }
+    targetEl.innerHTML = '<option value="">' + escapeHtml(fallbackLabel || 'Select') + '</option>';
+    targetEl.disabled = true;
+}
+
+function syncDashboardFiltersFromPredictionForm() {
+    cloneSelectState(predictionFormEls.town, dashboardFilterEls.town, 'All Towns');
+    cloneSelectState(predictionFormEls.street, dashboardFilterEls.street, 'All Streets');
+    cloneSelectState(predictionFormEls.block, dashboardFilterEls.block, 'All Blocks');
+    cloneSelectState(predictionFormEls.flatType, dashboardFilterEls.flatType, 'All Types');
+
+    if (dashboardFilterEls.town) dashboardFilterEls.town.value = predictionFormEls.town ? predictionFormEls.town.value : '';
+    if (dashboardFilterEls.street) dashboardFilterEls.street.value = predictionFormEls.street ? predictionFormEls.street.value : '';
+    if (dashboardFilterEls.block) dashboardFilterEls.block.value = predictionFormEls.block ? predictionFormEls.block.value : '';
+    if (dashboardFilterEls.flatType) dashboardFilterEls.flatType.value = predictionFormEls.flatType ? predictionFormEls.flatType.value : '';
+}
+
+async function syncPredictionFormScope(scope) {
+    if (!predictionFormEls.form) return;
+
+    const nextTown = scope && Object.prototype.hasOwnProperty.call(scope, 'town')
+        ? (scope.town || '')
+        : (predictionFormEls.town ? predictionFormEls.town.value : '');
+    const nextStreet = scope && Object.prototype.hasOwnProperty.call(scope, 'street_name')
+        ? (scope.street_name || '')
+        : (predictionFormEls.street ? predictionFormEls.street.value : '');
+    const nextBlock = scope && Object.prototype.hasOwnProperty.call(scope, 'block')
+        ? (scope.block || '')
+        : (predictionFormEls.block ? predictionFormEls.block.value : '');
+    const nextFlatType = scope && Object.prototype.hasOwnProperty.call(scope, 'flat_type')
+        ? (scope.flat_type || '')
+        : (predictionFormEls.flatType ? predictionFormEls.flatType.value : '');
+
+    if (predictionFormEls.town) predictionFormEls.town.value = nextTown;
+    await loadPredictionStreetOptions(nextTown, nextStreet);
+    if (predictionFormEls.street) predictionFormEls.street.value = nextStreet;
+
+    if (nextTown && nextStreet) {
+        await loadPredictionBlockOptions(nextTown, nextStreet, nextBlock);
+    } else {
+        await loadPredictionBlockOptions(nextTown, '', '');
+    }
+    if (predictionFormEls.block) predictionFormEls.block.value = nextBlock;
+    if (predictionFormEls.flatType) predictionFormEls.flatType.value = nextFlatType;
+
+    await refreshPredictionScopeOptions();
+    syncDashboardFiltersFromPredictionForm();
+}
+
+async function applyPredictionScopeToDashboard() {
+    syncDashboardFiltersFromPredictionForm();
+    await refreshDashboard();
+    if (typeof chatHistory !== 'undefined' && !chatHistory.length) renderStarters();
+    if (IS_PREMIUM) debouncedLoadAiFaq();
+}
+
+function buildPredictionScopeParams() {
+    const params = new URLSearchParams();
+    if (predictionFormEls.town && predictionFormEls.town.value) {
+        params.set('town', predictionFormEls.town.value);
+    }
+    if (predictionFormEls.street && predictionFormEls.street.value) {
+        params.set('street_name', predictionFormEls.street.value);
+    }
+    if (predictionFormEls.block && predictionFormEls.block.value) {
+        params.set('block', predictionFormEls.block.value);
+    }
+    return params;
+}
+
+function resetPredictionModelAndStoreyState() {
+    populateSelect(predictionFormEls.flatModel, 'Auto-select model', [], '');
+    populateSelect(predictionFormEls.storey, 'Auto-select floor', [], '');
+    setDependentSelectState(predictionFormEls.flatModel, false);
+    setDependentSelectState(predictionFormEls.storey, false);
+}
+
+async function loadPredictionStreetOptions(town, selectedStreet) {
+    populateSelect(predictionFormEls.street, town ? 'Select street' : 'Select town first', [], '');
+    populateSelect(predictionFormEls.block, 'Select street first', [], '');
+    setDependentSelectState(predictionFormEls.block, false);
+    if (!town) {
+        setDependentSelectState(predictionFormEls.street, false);
+        return;
+    }
+    setDependentSelectState(predictionFormEls.street, true);
+    const token = ++predictionFormStreetReqToken;
+    try {
+        const data = await fetchJSON('/api/available_streets?town=' + encodeURIComponent(town));
+        if (token !== predictionFormStreetReqToken) return;
+        populateSelect(predictionFormEls.street, 'Select street', data.streets || [], selectedStreet || '');
+    } catch (e) {
+        populateSelect(predictionFormEls.street, 'Select street', [], '');
+    }
+}
+
+async function loadPredictionBlockOptions(town, street, selectedBlock) {
+    populateSelect(predictionFormEls.block, street ? 'Select block' : 'Select street first', [], '');
+    if (!town || !street) {
+        setDependentSelectState(predictionFormEls.block, false);
+        return;
+    }
+    setDependentSelectState(predictionFormEls.block, true);
+    const token = ++predictionFormBlockReqToken;
+    try {
+        const data = await fetchJSON(
+            '/api/available_blocks?town=' + encodeURIComponent(town) +
+            '&street_name=' + encodeURIComponent(street)
+        );
+        if (token !== predictionFormBlockReqToken) return;
+        populateSelect(predictionFormEls.block, 'Select block', data.blocks || [], selectedBlock || '');
+    } catch (e) {
+        populateSelect(predictionFormEls.block, 'Select block', [], '');
+    }
+}
+
+async function refreshPredictionScopeOptions() {
+    if (!predictionFormEls.form || !predictionFormEls.town) return;
+
+    const town = predictionFormEls.town.value;
+    const flatType = predictionFormEls.flatType ? predictionFormEls.flatType.value : '';
+    if (!town) {
+        resetPredictionModelAndStoreyState();
+        setPredictionHint(predictionFormEls.floorHint, 'Enter your flat area in square metres.');
+        setPredictionHint(predictionFormEls.leaseHint, 'Use the lease commencement year for your unit.');
+        return;
+    }
+
+    const baseParams = buildPredictionScopeParams();
+    const scopeToken = ++predictionFormScopeReqToken;
+
+    let leaseData = null;
+    let floorData = null;
+    let modelData = { models: [] };
+    let storeyData = { storey_ranges: [] };
+
+    try {
+        const leasePromise = fetchJSON('/api/lease_year_range?' + baseParams.toString());
+        if (flatType) {
+            const scopedParams = new URLSearchParams(baseParams);
+            scopedParams.set('flat_type', flatType);
+            const scopedQuery = scopedParams.toString();
+            [leaseData, floorData, modelData, storeyData] = await Promise.all([
+                leasePromise,
+                fetchJSON('/api/floor_area_stats?' + scopedQuery),
+                fetchJSON('/api/available_models?' + scopedQuery),
+                fetchJSON('/api/available_storey_ranges?' + scopedQuery),
+            ]);
+        } else {
+            leaseData = await leasePromise;
+        }
+    } catch (e) {
+        return;
+    }
+
+    if (scopeToken !== predictionFormScopeReqToken) return;
+
+    const leaseMin = Number(leaseData && leaseData.min_year);
+    const leaseMax = Number(leaseData && leaseData.max_year);
+    const leaseAvg = Number(leaseData && leaseData.avg_year);
+    setInputRange(predictionFormEls.leaseCommence, leaseMin, leaseMax);
+    if (predictionFormEls.leaseCommence && !predictionFormEls.leaseCommence.value && Number.isFinite(leaseAvg)) {
+        predictionFormEls.leaseCommence.value = String(Math.round(leaseAvg));
+    }
+    setPredictionHint(
+        predictionFormEls.leaseHint,
+        Number.isFinite(leaseAvg)
+            ? 'Typical lease start year nearby is around ' + Math.round(leaseAvg) + '.'
+            : 'Use the lease commencement year for your unit.'
+    );
+
+    if (!flatType) {
+        resetPredictionModelAndStoreyState();
+        setPredictionHint(predictionFormEls.floorHint, 'Enter your flat area in square metres.');
+        return;
+    }
+
+    const floorMin = Number(floorData && floorData.min_area);
+    const floorMax = Number(floorData && floorData.max_area);
+    const floorAvg = Number(floorData && floorData.avg_area);
+    setInputRange(predictionFormEls.floorArea, floorMin, floorMax);
+    if (predictionFormEls.floorArea && !predictionFormEls.floorArea.value && Number.isFinite(floorAvg)) {
+        predictionFormEls.floorArea.value = String(Math.round(floorAvg * 10) / 10);
+    }
+    setPredictionHint(
+        predictionFormEls.floorHint,
+        Number.isFinite(floorAvg)
+            ? 'Nearby ' + flatType + ' flats average about ' + (Math.round(floorAvg * 10) / 10) + ' sqm.'
+            : 'Enter your flat area in square metres.'
+    );
+
+    populateSelect(
+        predictionFormEls.flatModel,
+        'Auto-select model',
+        (modelData && modelData.models) || [],
+        (predictionFormEls.flatModel && predictionFormEls.flatModel.value) || ''
+    );
+    setDependentSelectState(predictionFormEls.flatModel, true);
+
+    populateSelect(
+        predictionFormEls.storey,
+        'Auto-select floor',
+        (storeyData && storeyData.storey_ranges) || [],
+        (predictionFormEls.storey && predictionFormEls.storey.value) || ''
+    );
+    setDependentSelectState(predictionFormEls.storey, true);
+}
+
+async function initPredictionContextForm() {
+    if (!predictionFormEls.form) return;
+
+    const seededTown = (predictionFormSeed && predictionFormSeed.town) || '';
+    const seededStreet = (predictionFormSeed && predictionFormSeed.street_name) || '';
+    const seededBlock = (predictionFormSeed && predictionFormSeed.block) || '';
+
+    if (seededTown) {
+        await loadPredictionStreetOptions(seededTown, seededStreet);
+        if (seededStreet) {
+            await loadPredictionBlockOptions(seededTown, seededStreet, seededBlock);
+        }
+    } else {
+        resetPredictionModelAndStoreyState();
+    }
+
+    await refreshPredictionScopeOptions();
+    syncDashboardFiltersFromPredictionForm();
+
+    predictionFormEls.town.addEventListener('change', async function() {
+        await loadPredictionStreetOptions(this.value, '');
+        await refreshPredictionScopeOptions();
+        await applyPredictionScopeToDashboard();
+    });
+    predictionFormEls.street.addEventListener('change', async function() {
+        await loadPredictionBlockOptions(predictionFormEls.town.value, this.value, '');
+        await refreshPredictionScopeOptions();
+        await applyPredictionScopeToDashboard();
+    });
+    predictionFormEls.block.addEventListener('change', async function() {
+        await refreshPredictionScopeOptions();
+        await applyPredictionScopeToDashboard();
+    });
+    predictionFormEls.flatType.addEventListener('change', async function() {
+        await refreshPredictionScopeOptions();
+        await applyPredictionScopeToDashboard();
+    });
+
+    predictionFormEls.form.addEventListener('submit', function() {
+        if (!predictionFormEls.form.checkValidity()) {
+            setPredictionSubmitLoading(false);
+            return;
+        }
+        setPredictionSubmitLoading(true);
+    });
+    window.addEventListener('pageshow', function() {
+        setPredictionSubmitLoading(false);
+    });
 }
 
 function updateBreadcrumb() {
@@ -2173,50 +2800,14 @@ function renderActiveRailInsight() {
 }
 
 /* ── Selectors ────────────────────────────────────────────────────────────── */
-function clearLocationFilters() {
-    const townEl   = document.getElementById('filterTown');
-    const streetEl = document.getElementById('filterStreet');
-    const blockEl  = document.getElementById('filterBlock');
-    townEl.value = '';
-    populateSelect(streetEl, 'All Streets', [], '');
-    populateSelect(blockEl,  'All Blocks',  [], '');
-    setDependentSelectState(streetEl, false);
-    setDependentSelectState(blockEl,  false);
-    updateBreadcrumb();
-    refreshDashboard();
-}
-
-let streetReqToken = 0;
-let blockReqToken  = 0;
-
-async function loadStreetOptions(town, selectedStreet) {
-    const streetEl = document.getElementById('filterStreet');
-    const blockEl  = document.getElementById('filterBlock');
-    populateSelect(streetEl, 'All Streets', [], '');
-    populateSelect(blockEl,  'All Blocks',  [], '');
-    setDependentSelectState(blockEl, false);
-    if (!town) { setDependentSelectState(streetEl, false); return; }
-    setDependentSelectState(streetEl, true);
-    const token = ++streetReqToken;
-    try {
-        const data = await fetchJSON('/api/available_streets?town=' + encodeURIComponent(town));
-        if (token !== streetReqToken) return;
-        populateSelect(streetEl, 'All Streets', data.streets || [], selectedStreet || '');
-    } catch (e) { populateSelect(streetEl, 'All Streets', [], ''); }
-}
-
-async function loadBlockOptions(town, street, selectedBlock) {
-    const blockEl = document.getElementById('filterBlock');
-    populateSelect(blockEl, 'All Blocks', [], '');
-    if (!town || !street) { setDependentSelectState(blockEl, false); return; }
-    setDependentSelectState(blockEl, true);
-    const token = ++blockReqToken;
-    try {
-        const data = await fetchJSON('/api/available_blocks?town=' + encodeURIComponent(town) +
-            '&street_name=' + encodeURIComponent(street));
-        if (token !== blockReqToken) return;
-        populateSelect(blockEl, 'All Blocks', data.blocks || [], selectedBlock || '');
-    } catch (e) { populateSelect(blockEl, 'All Blocks', [], ''); }
+async function clearLocationFilters() {
+    await syncPredictionFormScope({
+        town: '',
+        street_name: '',
+        block: '',
+        flat_type: '',
+    });
+    await applyPredictionScopeToDashboard();
 }
 
 /* ── Year selectors ───────────────────────────────────────────────────────── */
@@ -2455,15 +3046,22 @@ async function loadLocationComparison() {
                     const row = chartRows[activeEls[0].index];
                     if (!row) return;
                     if (labelField === 'street_name') {
-                        await loadStreetOptions(filters.town, row.street_name);
-                        await loadBlockOptions(filters.town, row.street_name, '');
-                        document.getElementById('filterStreet').value = row.street_name;
-                        refreshDashboard();
+                        await syncPredictionFormScope({
+                            town: filters.town,
+                            street_name: row.street_name,
+                            block: '',
+                            flat_type: filters.flat_type,
+                        });
+                        await applyPredictionScopeToDashboard();
                         return;
                     }
-                    document.getElementById('filterTown').value = row.town;
-                    await loadStreetOptions(row.town, '');
-                    refreshDashboard();
+                    await syncPredictionFormScope({
+                        town: row.town,
+                        street_name: '',
+                        block: '',
+                        flat_type: filters.flat_type,
+                    });
+                    await applyPredictionScopeToDashboard();
                 }
             }
         });
@@ -2715,22 +3313,15 @@ async function refreshDashboard() {
 }
 
 /* ── Event wiring ─────────────────────────────────────────────────────────── */
-document.getElementById('refreshDashboardBtn').addEventListener('click', () => {
-    refreshDashboard();
+document.getElementById('refreshDashboardBtn').addEventListener('click', async () => {
+    syncDashboardFiltersFromPredictionForm();
+    await refreshDashboard();
     if (IS_PREMIUM) debouncedLoadAiFaq();
 });
 
 document.getElementById('clearLocationBtn').addEventListener('click', clearLocationFilters);
 
-document.getElementById('filterTown').addEventListener('change', async function() {
-    await loadStreetOptions(this.value, '');
-    await loadBlockOptions(this.value, '', '');
-});
-document.getElementById('filterStreet').addEventListener('change', async function() {
-    await loadBlockOptions(document.getElementById('filterTown').value, this.value, '');
-});
-
-['filterTown','filterFlat','filterStreet','filterBlock','trendStyle','yearFrom','yearTo'].forEach(id => {
+['trendStyle','yearFrom','yearTo'].forEach(id => {
     document.getElementById(id).addEventListener('change', function() {
         const from = Number(document.getElementById('yearFrom').value || 0);
         const to   = Number(document.getElementById('yearTo').value   || 9999);
@@ -2742,16 +3333,10 @@ document.getElementById('filterStreet').addEventListener('change', async functio
 
 /* ── Bootstrap ────────────────────────────────────────────────────────────── */
 (async function bootstrapAnalytics() {
-    if (predictionSeed.town) document.getElementById('filterTown').value = predictionSeed.town;
-    if (predictionSeed.flat_type) document.getElementById('filterFlat').value = predictionSeed.flat_type;
-    if (predictionSeed.town) {
-        await loadStreetOptions(predictionSeed.town, predictionSeed.street_name);
-        if (predictionSeed.street_name) {
-            await loadBlockOptions(predictionSeed.town, predictionSeed.street_name, predictionSeed.block);
-        }
-    }
+    await initPredictionContextForm();
+    syncDashboardFiltersFromPredictionForm();
     updateBreadcrumb();
-    refreshDashboard();
+    await refreshDashboard();
     const focusParam = pageParams.get('focus');
     if (focusParam) switchSection(focusParam);
 })();
@@ -2782,11 +3367,20 @@ function updateMyflatPosition() {
 
     const card = document.getElementById('myflatPositionCard');
     const empty = document.getElementById('myflatPositionEmpty');
+    const avgLabelEl = document.getElementById('posAreaAvgLabel');
 
     const avgText = document.getElementById('kpiAvgPrice').textContent.replace(/[$,]/g, '');
     const avg = parseFloat(avgText);
+    const comparablePrices = (latestPredictionRecentTransactions || [])
+        .map(row => Number(row && row.resale_price))
+        .filter(value => Number.isFinite(value) && value > 0);
 
-    if (!avg || isNaN(avg)) {
+    const hasComparableData = comparablePrices.length > 0;
+    const benchmarkAvg = hasComparableData
+        ? comparablePrices.reduce((sum, value) => sum + value, 0) / comparablePrices.length
+        : avg;
+
+    if (!benchmarkAvg || isNaN(benchmarkAvg)) {
         if (card) card.classList.add('d-none');
         if (empty) empty.classList.remove('d-none');
         return;
@@ -2795,22 +3389,29 @@ function updateMyflatPosition() {
     if (card) card.classList.remove('d-none');
     if (empty) empty.classList.add('d-none');
 
-    const rangeLow = avg * 0.7;
-    const rangeHigh = avg * 1.3;
+    const comparableLow = hasComparableData ? Math.min(...comparablePrices) : benchmarkAvg * 0.7;
+    const comparableHigh = hasComparableData ? Math.max(...comparablePrices) : benchmarkAvg * 1.3;
+    const rangeLow = Math.min(comparableLow, predicted);
+    const rangeHigh = Math.max(comparableHigh, predicted);
+    const paddedLow = rangeHigh > rangeLow ? rangeLow : Math.max(0, benchmarkAvg * 0.9);
+    const paddedHigh = rangeHigh > rangeLow ? rangeHigh : benchmarkAvg * 1.1;
     const clampedPct = Math.max(5, Math.min(95,
-        ((predicted - rangeLow) / (rangeHigh - rangeLow)) * 100
+        ((predicted - paddedLow) / (paddedHigh - paddedLow)) * 100
     ));
 
     document.getElementById('posRangeFill').style.width = clampedPct + '%';
     document.getElementById('posMarker').style.left = clampedPct + '%';
     document.getElementById('posLabelLow').textContent = formatMoney(Math.round(rangeLow));
-    document.getElementById('posLabelAvg').textContent = 'Avg: ' + formatMoney(Math.round(avg));
+    document.getElementById('posLabelAvg').textContent = 'Avg: ' + formatMoney(Math.round(benchmarkAvg));
     document.getElementById('posLabelHigh').textContent = formatMoney(Math.round(rangeHigh));
 
     document.getElementById('posYourPrice').textContent = formatMoney(predicted);
-    document.getElementById('posAreaAvg').textContent = formatMoney(Math.round(avg));
+    document.getElementById('posAreaAvg').textContent = formatMoney(Math.round(benchmarkAvg));
+    if (avgLabelEl) {
+        avgLabelEl.textContent = hasComparableData ? 'Comparable Avg' : 'Area Average';
+    }
 
-    const diffPct = ((predicted - avg) / avg * 100).toFixed(1);
+    const diffPct = ((predicted - benchmarkAvg) / benchmarkAvg * 100).toFixed(1);
     const diffEl = document.getElementById('posDiff');
     if (diffPct > 0) {
         diffEl.innerHTML = '<span class="text-success">+' + diffPct + '% above</span>';
@@ -2847,11 +3448,66 @@ function updateMyflatPosition() {
     const txnText = document.getElementById('railKpiTxn').textContent;
     const yoyText = document.getElementById('railKpiYoY').textContent;
     const actEl = document.getElementById('posActivity');
-    if (txnText && txnText !== '—') {
+    if (hasComparableData) {
+        actEl.textContent = comparablePrices.length + ' comps · last 5y' +
+            (latestPredictionContextMeta.scope_broadened ? ' · widened scope' : '');
+    } else if (txnText && txnText !== '—') {
         actEl.textContent = txnText + ' sales · ' + yoyText;
     } else {
         actEl.textContent = '—';
     }
+}
+
+function renderMyflatRecentTransactions() {
+    const wrapEl = document.getElementById('myflatTransactionsWrap');
+    const bodyEl = document.getElementById('myflatTransactionsBody');
+    const emptyEl = document.getElementById('myflatTransactionsEmpty');
+    const metaEl = document.getElementById('myflatTransactionsMeta');
+    if (!wrapEl || !bodyEl || !emptyEl || !metaEl) return;
+
+    const rows = latestPredictionRecentTransactions || [];
+    if (!rows.length) {
+        wrapEl.classList.add('d-none');
+        bodyEl.innerHTML = '';
+        metaEl.classList.add('d-none');
+        metaEl.textContent = '';
+        emptyEl.classList.remove('d-none');
+        emptyEl.innerHTML =
+            '<i class="bi bi-inbox text-muted" style="font-size:1.5rem;"></i>' +
+            '<p class="text-muted mt-2 mb-0" style="font-size:0.84rem;">' +
+            'No similar transactions recorded in the last 5 years for this scope.' +
+            '</p>';
+        return;
+    }
+
+    bodyEl.innerHTML = rows.map(row => {
+        const address = [row && row.block ? 'Blk ' + row.block : '', row && row.street_name ? row.street_name : '']
+            .filter(Boolean)
+            .join(' ');
+        const area = row && row.floor_area_sqm ? escapeHtml(String(row.floor_area_sqm)) + ' sqm' : '—';
+        const storey = row && row.storey_range ? escapeHtml(String(row.storey_range)) : '—';
+        const month = row && row.month ? escapeHtml(String(row.month)) : '—';
+        const price = row && row.resale_price ? formatMoney(row.resale_price) : '—';
+        return '' +
+            '<tr>' +
+                '<td class="myflat-transactions-address">' + escapeHtml(address || '—') + '</td>' +
+                '<td>' + storey + '</td>' +
+                '<td class="myflat-transactions-numeric">' + area + '</td>' +
+                '<td class="myflat-transactions-price">' + price + '</td>' +
+                '<td>' + month + '</td>' +
+            '</tr>';
+    }).join('');
+
+    if (latestPredictionContextMeta.scope_broadened) {
+        metaEl.innerHTML = '<i class="bi bi-arrows-angle-expand"></i>Scope widened beyond the exact block/storey to find enough comparable sales.';
+        metaEl.classList.remove('d-none');
+    } else {
+        metaEl.classList.add('d-none');
+        metaEl.textContent = '';
+    }
+
+    wrapEl.classList.remove('d-none');
+    emptyEl.classList.add('d-none');
 }
 
 /* ── loadTrendVsPrediction ────────────────────────────────────────────────── */
@@ -2914,6 +3570,10 @@ async function loadPredictionContext() {
     if (predictionSeed.storey_range) params.set('storey_range', predictionSeed.storey_range);
     try {
         const contextData = await fetchJSON('/api/prediction_context?' + params.toString());
+        latestPredictionRecentTransactions = contextData.recent_transactions || [];
+        latestPredictionContextMeta = {
+            scope_broadened: !!contextData.scope_broadened,
+        };
 
         // Lease decay charts
         const decay = contextData.lease_decay || [];
@@ -2943,9 +3603,15 @@ async function loadPredictionContext() {
                 });
             }
         }
+        renderMyflatRecentTransactions();
+        updateMyflatPosition();
         renderActiveRailInsight();
     } catch(e) {
         latestLeaseDecayData = [];
+        latestPredictionRecentTransactions = [];
+        latestPredictionContextMeta = { scope_broadened: false };
+        renderMyflatRecentTransactions();
+        updateMyflatPosition();
         renderActiveRailInsight();
     }
 }

@@ -344,6 +344,24 @@
   margin-top: 10px;
 }
 
+.price-disclaimer {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px auto 0;
+  max-width: 580px;
+  padding: 10px 14px;
+  background: rgba(245,158,11,0.12);
+  border: 1px solid rgba(245,158,11,0.3);
+  border-radius: 10px;
+  color: rgba(254,243,199,0.95);
+  font-size: 11.5px;
+  line-height: 1.55;
+  text-align: left;
+}
+.price-disclaimer .bi { color: #fbbf24; font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.price-disclaimer strong { color: #fde68a; font-weight: 700; }
+
 /* Action bar */
 .price-actions {
   display: flex;
@@ -1085,6 +1103,11 @@
         {% if result.model_trained_at %}
         <div class="price-trained">Model trained {{ result.model_trained_at }}</div>
         {% endif %}
+
+        <div class="price-disclaimer">
+          <i class="bi bi-exclamation-triangle-fill"></i>
+          <span>Based on historical market data only. Does not account for sudden external shocks like <strong>wars, pandemics, financial crises, or unannounced policy changes</strong>.</span>
+        </div>
       </div>
 
       {# Action buttons #}
@@ -1222,7 +1245,7 @@
 
       <details class="shap-disclaimer">
         <summary>What the model doesn't see</summary>
-        <p>This estimate does not capture renovation quality, interior condition, unit facing, corridor privacy, noise levels, layout quirks, ethnic quota timing, en-bloc potential, or sudden policy changes. Use the SHAP breakdown as model transparency — not a substitute for on-site judgment.</p>
+        <p>This estimate does not capture renovation quality, interior condition, unit facing, corridor privacy, noise levels, layout quirks, ethnic quota timing, en-bloc potential, or any sudden external shocks such as wars, pandemics, financial crises, or unannounced policy changes. Use the SHAP breakdown as model transparency — not a substitute for on-site judgment.</p>
       </details>
     </div>
 

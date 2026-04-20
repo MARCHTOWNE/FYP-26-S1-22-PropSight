@@ -1139,6 +1139,11 @@
            class="btn-act btn-act-outline">
           <i class="bi bi-geo-alt"></i> View on Map
         </a>
+
+        <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&flat_model={{ form_data.flat_model|urlencode }}&floor_area={{ form_data.floor_area }}&storey_range={{ form_data.storey_range|urlencode }}&lease_commence={{ form_data.lease_commence }}&street_name={{ form_data.get('street_name','')|urlencode }}&block={{ form_data.get('block','')|urlencode }}&predicted_price={{ result.predicted_price }}"
+           class="btn-act btn-act-outline">
+          <i class="bi bi-bar-chart-line"></i> Analysis
+        </a>
       </div>
 
       {# Summary pills: Town / Flat Type / Floor Area / Remaining Lease / Flat Age / vs Town Avg #}

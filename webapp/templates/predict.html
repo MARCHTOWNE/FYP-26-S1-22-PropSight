@@ -1194,9 +1194,9 @@
     </div>
     {# /PRICE CARD #}
 
-    {# ── SECTION 2: SHAP EXPLAINABILITY (delay 600ms) ── #}
+    {# ── SECTION 2: SHAP EXPLAINABILITY (delay 250ms) ── #}
     {% if explanation %}
-    <div class="result-block shap-card" style="animation-delay:600ms;">
+    <div class="result-block shap-card" style="animation-delay:250ms;">
       <div class="card-head">
         <div>
           <span class="p-kicker">Why This Price?</span>
@@ -1255,7 +1255,7 @@
     </div>
 
     {% elif is_premium %}
-    <div class="result-block shap-unavail-card" style="animation-delay:600ms;">
+    <div class="result-block shap-unavail-card" style="animation-delay:250ms;">
       <div class="card-head">
         <div>
           <span class="p-kicker">Why This Price?</span>
@@ -1267,7 +1267,7 @@
     </div>
 
     {% else %}
-    <div class="result-block shap-lock-card" style="animation-delay:600ms;">
+    <div class="result-block shap-lock-card" style="animation-delay:250ms;">
       <div class="card-head">
         <div>
           <span class="p-kicker">Why This Price?</span>
@@ -1290,8 +1290,8 @@
     {% endif %}
     {# /SHAP #}
 
-    {# ── SECTION 3: GENAI Q&A (delay 1200ms) ── #}
-    <div class="result-block genai-card" id="genaiPanel" style="animation-delay:1200ms;">
+    {# ── SECTION 3: GENAI Q&A (delay 500ms) ── #}
+    <div class="result-block genai-card" id="genaiPanel" style="animation-delay:500ms;">
       <div class="genai-header">
         <span class="p-kicker">AI Assistant</span>
         <h3 class="section-title-lg" style="font-size:19px;">Ask About This Prediction</h3>
@@ -1323,8 +1323,8 @@
     </div>
     {# /GENAI Q&A #}
 
-    {# ── SECTION 4: RECENT COMPARABLES (delay 1800ms) ── #}
-    <div class="result-block comp-card" style="animation-delay:1800ms;">
+    {# ── SECTION 4: RECENT COMPARABLES (delay 750ms) ── #}
+    <div class="result-block comp-card" style="animation-delay:750ms;">
       <span class="p-kicker">Market Context</span>
       <h3 class="section-title-lg" style="font-size:19px;margin-bottom:0;">Recent Similar Transactions <span style="font-size:12px;font-weight:500;color:#94a3b8;">(last 5 years)</span></h3>
       {% if recent_transactions %}
@@ -1360,7 +1360,7 @@
     {# /COMPARABLES #}
 
     {# Explore deeper #}
-    <div class="result-block" style="text-align:center;margin-top:4px;margin-bottom:16px;animation-delay:2200ms;">
+    <div class="result-block" style="text-align:center;margin-top:4px;margin-bottom:16px;animation-delay:900ms;">
       <a href="{{ url_for('analytics') }}?town={{ form_data.town|urlencode }}&flat_type={{ form_data.flat_type|urlencode }}&flat_model={{ form_data.flat_model|urlencode }}&floor_area={{ form_data.floor_area }}&storey_range={{ form_data.storey_range|urlencode }}&lease_commence={{ form_data.lease_commence }}&street_name={{ form_data.get('street_name','')|urlencode }}&block={{ form_data.get('block','')|urlencode }}&predicted_price={{ result.predicted_price }}"
          class="explore-btn">
         <i class="bi bi-bar-chart-line"></i> Explore Deeper Analytics

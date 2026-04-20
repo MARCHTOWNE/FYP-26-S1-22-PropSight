@@ -3957,6 +3957,25 @@ def predict():
     prediction_input = None
     explanation = None
 
+    def _render_predict_empty():
+        return render_template(
+            "predict.html",
+            result=None,
+            form_data=form_data,
+            towns=TOWNS,
+            flat_types=list(FLAT_TYPE_ORDINAL.keys()),
+            flat_models=FLAT_MODELS,
+            storey_ranges=STOREY_RANGES,
+            timeline=None,
+            flat_age=None,
+            remaining_lease=None,
+            town_avg_price=None,
+            recent_transactions=None,
+            prefill_source=prefill_source,
+            explanation=None,
+            is_premium=is_premium,
+        )
+
     if request.method == "POST":
         form_data = {
             "town": request.form.get("town", "").strip(),
@@ -3971,46 +3990,14 @@ def predict():
 
         if not form_data["town"] or not form_data["flat_type"]:
             flash("Cannot get estimate. Please select a town and flat type.", "warning")
-            return render_template(
-                "predict.html",
-                result=None,
-                form_data=form_data,
-                towns=TOWNS,
-                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
-                flat_models=FLAT_MODELS,
-                storey_ranges=STOREY_RANGES,
-                timeline=None,
-                flat_age=None,
-                remaining_lease=None,
-                town_avg_price=None,
-                recent_transactions=None,
-                prefill_source=prefill_source,
-                explanation=None,
-                is_premium=is_premium,
-            )
+            return _render_predict_empty()
 
         if form_data["flat_type"] not in FLAT_TYPE_ORDINAL:
             flash("Cannot get estimate for this flat type.", "warning")
-            return render_template(
-                "predict.html",
-                result=None,
-                form_data=form_data,
-                towns=TOWNS,
-                flat_types=list(FLAT_TYPE_ORDINAL.keys()),
-                flat_models=FLAT_MODELS,
-                storey_ranges=STOREY_RANGES,
-                timeline=None,
-                flat_age=None,
-                remaining_lease=None,
-                town_avg_price=None,
-                recent_transactions=None,
-                prefill_source=prefill_source,
-                explanation=None,
-                is_premium=is_premium,
-            )
+            return _render_predict_empty()
         if not form_data["street_name"] or not form_data["block"]:
             flash("Street and block are required for an accurate estimate.", "warning")
-            return render_template("predict.html", result=None, form_data=form_data, towns=TOWNS, flat_types=list(FLAT_TYPE_ORDINAL.keys()), flat_models=FLAT_MODELS, storey_ranges=STOREY_RANGES, timeline=None, flat_age=None, remaining_lease=None, town_avg_price=None, recent_transactions=None, prefill_source=prefill_source, explanation=None, is_premium=is_premium)
+            return _render_predict_empty()
 
         prediction_input = dict(form_data)
     elif form_data["town"]:

@@ -898,30 +898,18 @@
             </select>
           </div>
 
-          {# Street & Block (collapsible, optional — narrows model inputs when provided) #}
           <div class="pf-group">
-            <button type="button" class="addr-toggle"
-                    data-bs-toggle="collapse" data-bs-target="#addrCollapse"
-                    aria-expanded="{{ 'true' if form_data.get('street_name') else 'false' }}"
-                    id="addrToggleBtn">
-              <span><i class="bi bi-geo-alt me-1"></i>Street &amp; Block <em style="font-style:normal;font-weight:400;font-size:11.5px;color:#94a3b8;">optional</em></span>
-              <i class="bi bi-chevron-down chevron" style="font-size:12px;"></i>
-            </button>
-            <div class="collapse {{ 'show' if form_data.get('street_name') else '' }}"
-                 id="addrCollapse" style="margin-top:10px;">
-              <div class="pf-row">
-                <div class="pf-group" style="flex:2;">
-                  <label class="pf-label">Street</label>
-                  <select name="street_name" id="predictStreet" class="pf-select">
-                    <option value="">Any street...</option>
-                  </select>
-                </div>
-                <div class="pf-group">
-                  <label class="pf-label">Block</label>
-                  <select name="block" id="predictBlock" class="pf-select">
-                    <option value="">Any block...</option>
-                  </select>
-                </div>
+            <label class="pf-label">Street &amp; Block</label>
+            <div class="pf-row">
+              <div class="pf-group" style="flex:2;">
+                <select name="street_name" id="predictStreet" class="pf-select" required>
+                  <option value="">Select street...</option>
+                </select>
+              </div>
+              <div class="pf-group">
+                <select name="block" id="predictBlock" class="pf-select" required>
+                  <option value="">Select block...</option>
+                </select>
               </div>
             </div>
           </div>
@@ -1471,8 +1459,8 @@ function fillOpts(el, arr, pref, fb) {
 
 if (townSel) townSel.addEventListener('change', async function() {
   var t = this.value;
-  if (stSel)  stSel.innerHTML  = '<option value="">Any street...</option>';
-  if (blkSel) blkSel.innerHTML = '<option value="">Any block...</option>';
+  if (stSel)  stSel.innerHTML  = '<option value="">Select street...</option>';
+  if (blkSel) blkSel.innerHTML = '<option value="">Select block...</option>';
   if (!t) return;
   var tok = ++townToken; beginLoad();
   try {
@@ -1489,10 +1477,10 @@ if (townSel) townSel.addEventListener('change', async function() {
       Array.from(ftSel.options).forEach(function(o){if(o.value&&vt.length)o.disabled=!vt.includes(o.value);});
       if (vt.length&&(!nextFT||!vt.includes(nextFT))){nextFT=vt[0];ftSel.value=nextFT;}
     }
-    if (r3.ok && stSel) { var d3=await r3.json(); stSel.innerHTML='<option value="">Any street...</option>'+(d3.streets||[]).map(function(s){return'<option value="'+s+'">'+s+'</option>';}).join(''); }
+    if (r3.ok && stSel) { var d3=await r3.json(); stSel.innerHTML='<option value="">Select street...</option>'+(d3.streets||[]).map(function(s){return'<option value="'+s+'">'+s+'</option>';}).join(''); }
     if (nextFT && ftSel) ftSel.dispatchEvent(new Event('change'));
   } catch(e) { if(ftSel)ftSel.innerHTML=origFT; if(fmSel)fmSel.innerHTML=origFM; if(srSel)srSel.innerHTML=origSR; }
-  finally { if(blkSel)blkSel.innerHTML='<option value="">Any block...</option>'; endLoad(); }
+  finally { if(blkSel)blkSel.innerHTML='<option value="">Select block...</option>'; endLoad(); }
 });
 
 async function refreshForAddr() {
@@ -1521,13 +1509,13 @@ async function refreshForAddr() {
 
 if (stSel) stSel.addEventListener('change', async function() {
   var t=townSel?townSel.value:'', s=this.value;
-  if(blkSel)blkSel.innerHTML='<option value="">Any block...</option>';
+  if(blkSel)blkSel.innerHTML='<option value="">Select block...</option>';
   if(!t||!s){if(t)refreshForAddr();return;}
   var tok=++stToken;
   try {
     var r=await fetch('/api/available_blocks?town='+encodeURIComponent(t)+'&street_name='+encodeURIComponent(s));
     if(tok!==stToken)return;
-    if(r.ok&&blkSel){var d=await r.json();blkSel.innerHTML='<option value="">Any block...</option>'+(d.blocks||[]).map(function(b){return'<option value="'+b+'">'+b+'</option>';}).join('');}
+    if(r.ok&&blkSel){var d=await r.json();blkSel.innerHTML='<option value="">Select block...</option>'+(d.blocks||[]).map(function(b){return'<option value="'+b+'">'+b+'</option>';}).join('');}
   } catch(e){}
   refreshForAddr();
 });
@@ -1558,8 +1546,8 @@ if (ftSel) ftSel.addEventListener('change', async function() {
   try {
     var qs2 = (prefillStreet?'&street_name='+encodeURIComponent(prefillStreet):'')+(prefillBlock?'&block='+encodeURIComponent(prefillBlock):'');
     var [r0,r1,r2]=await Promise.all([fetch('/api/available_streets?town='+encodeURIComponent(t)),fetch('/api/flat_type_breakdown?town='+encodeURIComponent(t)+qs2),fetch('/api/lease_year_range?town='+encodeURIComponent(t)+qs2)]);
-    if(r0.ok&&stSel){var d=await r0.json();stSel.innerHTML='<option value="">Any street...</option>'+(d.streets||[]).map(function(s){return'<option value="'+s+'"'+(s===prefillStreet?' selected':'')+'>'+s+'</option>';}).join('');
-      if(prefillStreet&&blkSel){var br=await fetch('/api/available_blocks?town='+encodeURIComponent(t)+'&street_name='+encodeURIComponent(prefillStreet));if(br.ok){var bd=await br.json();blkSel.innerHTML='<option value="">Any block...</option>'+(bd.blocks||[]).map(function(b){return'<option value="'+b+'"'+(b===prefillBlock?' selected':'')+'>'+b+'</option>';}).join('');}}
+    if(r0.ok&&stSel){var d=await r0.json();stSel.innerHTML='<option value="">Select street...</option>'+(d.streets||[]).map(function(s){return'<option value="'+s+'"'+(s===prefillStreet?' selected':'')+'>'+s+'</option>';}).join('');
+      if(prefillStreet&&blkSel){var br=await fetch('/api/available_blocks?town='+encodeURIComponent(t)+'&street_name='+encodeURIComponent(prefillStreet));if(br.ok){var bd=await br.json();blkSel.innerHTML='<option value="">Select block...</option>'+(bd.blocks||[]).map(function(b){return'<option value="'+b+'"'+(b===prefillBlock?' selected':'')+'>'+b+'</option>';}).join('');}}
     }
     if(r1.ok&&ftSel){var d=await r1.json();var vt=d.filter(function(x){return x.txn_count>0;}).map(function(x){return x.flat_type;});Array.from(ftSel.options).forEach(function(o){if(o.value&&vt.length)o.disabled=!vt.includes(o.value);});if(vt.length&&(!ftSel.value||!vt.includes(ftSel.value)))ftSel.value=vt[0];}
     if(r2.ok){var d=await r2.json();setBounds(leaseEl,'predictLeaseVal',d.min_year,d.max_year,prefillLease,d.avg_year);knownLeaseBounds.min=+d.min_year;knownLeaseBounds.max=+d.max_year;checkLeaseBounds();}
@@ -1580,6 +1568,13 @@ if (ftSel) ftSel.addEventListener('change', async function() {
 if (pForm && subBtn) {
   pForm.addEventListener('submit', function(e) {
     if (pending > 0) { e.preventDefault(); setBtnState('opts'); return; }
+    var streetVal = stSel ? stSel.value : '';
+    var blockVal  = blkSel ? blkSel.value : '';
+    if (!streetVal || !blockVal) {
+      e.preventDefault();
+      if(ftStatus){ftStatus.textContent='Please select a street and block before estimating.';ftStatus.classList.add('visible');}
+      setBtnState('idle'); return;
+    }
     var idx = ftSel ? ftSel.selectedIndex : -1;
     var canEst = idx >= 0 && ftSel.options[idx] && ftSel.options[idx].value && !ftSel.options[idx].disabled;
     if (!canEst) {

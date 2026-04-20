@@ -3943,6 +3943,10 @@ def predict():
                 explanation=None,
                 is_premium=is_premium,
             )
+        if not form_data["street_name"] or not form_data["block"]:
+            flash("Street and block are required for an accurate estimate.", "warning")
+            return render_template("predict.html", result=None, form_data=form_data, towns=TOWNS, flat_types=list(FLAT_TYPE_ORDINAL.keys()), flat_models=FLAT_MODELS, storey_ranges=STOREY_RANGES, timeline=None, flat_age=None, remaining_lease=None, town_avg_price=None, recent_transactions=None, prefill_source=prefill_source, explanation=None, is_premium=is_premium)
+
         prediction_input = dict(form_data)
     elif form_data["town"]:
         if should_auto_predict and form_data["flat_type"] in FLAT_TYPE_ORDINAL:

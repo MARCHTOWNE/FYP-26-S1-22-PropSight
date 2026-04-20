@@ -1087,6 +1087,9 @@
 
             <form id="analyticsPredictionForm" method="GET" action="{{ url_for('analytics') }}">
                 <input type="hidden" name="predict_context" value="1">
+                <input type="hidden" id="predictionYearFromHidden" name="year_from" value="">
+                <input type="hidden" id="predictionYearToHidden" name="year_to" value="">
+                <input type="hidden" id="predictionTrendStyleHidden" name="trend_style" value="">
                 <div class="hero-context-grid">
                     <div class="hero-context-field">
                         <label for="predictionTown">Town</label>
@@ -1849,6 +1852,7 @@ let latestVolumeData = [];
 let latestFlatTypeData = [];
 let latestBenchmarkData = [];
 let latestPsfData = [];
+let hasAppliedYearParams = false;
 
 /* ── URL seed (from Predict page redirect) ────────────────────────────────── */
 const pageParams = new URLSearchParams(window.location.search);
@@ -2101,6 +2105,9 @@ const predictionFormEls = {
     floorHint: document.getElementById('predictionFloorHint'),
     leaseHint: document.getElementById('predictionLeaseHint'),
     submit: document.getElementById('predictionSubmitBtn'),
+    yearFromHidden: document.getElementById('predictionYearFromHidden'),
+    yearToHidden: document.getElementById('predictionYearToHidden'),
+    trendStyleHidden: document.getElementById('predictionTrendStyleHidden'),
 };
 const dashboardFilterEls = {
     town: document.getElementById('filterTown'),
@@ -2129,6 +2136,38 @@ function setPredictionHint(el, text) {
     el.textContent = text || '';
 }
 
+function clampNumericInputToRange(inputEl) {
+    if (!inputEl) return;
+    const raw = String(inputEl.value || '').trim();
+    if (!raw) return;
+
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return;
+
+    const minAttr = inputEl.getAttribute('min');
+    const maxAttr = inputEl.getAttribute('max');
+    const stepAttr = inputEl.getAttribute('step');
+    const min = minAttr === null ? NaN : Number(minAttr);
+    const max = maxAttr === null ? NaN : Number(maxAttr);
+    const step = stepAttr === null || stepAttr === 'any' ? NaN : Number(stepAttr);
+
+    let clamped = value;
+    if (Number.isFinite(min)) clamped = Math.max(clamped, min);
+    if (Number.isFinite(max)) clamped = Math.min(clamped, max);
+
+    if (Number.isFinite(step) && step > 0) {
+        const base = Number.isFinite(min) ? min : 0;
+        clamped = Math.round((clamped - base) / step) * step + base;
+        if (Number.isFinite(min)) clamped = Math.max(clamped, min);
+        if (Number.isFinite(max)) clamped = Math.min(clamped, max);
+    }
+
+    const decimals = Number.isFinite(step) && step > 0 && step < 1
+        ? Math.min(6, (String(step).split('.')[1] || '').length)
+        : 0;
+    inputEl.value = decimals > 0 ? clamped.toFixed(decimals) : String(Math.round(clamped));
+}
+
 function setInputRange(inputEl, minValue, maxValue) {
     if (!inputEl) return;
     if (Number.isFinite(minValue)) {
@@ -2141,6 +2180,26 @@ function setInputRange(inputEl, minValue, maxValue) {
     } else {
         inputEl.removeAttribute('max');
     }
+    clampNumericInputToRange(inputEl);
+}
+
+function applyPredictionFlatTypeAvailability(availableFlatTypes) {
+    if (!predictionFormEls.flatType) return '';
+    const allowed = Array.isArray(availableFlatTypes)
+        ? availableFlatTypes.map(value => String(value || '')).filter(Boolean)
+        : [];
+    const hasAllowed = allowed.length > 0;
+    const current = predictionFormEls.flatType.value || '';
+
+    Array.from(predictionFormEls.flatType.options).forEach(option => {
+        if (!option.value) return;
+        option.disabled = hasAllowed ? !allowed.includes(option.value) : false;
+    });
+
+    if (!hasAllowed) return current;
+    if (current && allowed.includes(current)) return current;
+    predictionFormEls.flatType.value = allowed[0];
+    return predictionFormEls.flatType.value;
 }
 
 function cloneSelectState(sourceEl, targetEl, fallbackLabel) {
@@ -2269,8 +2328,8 @@ async function refreshPredictionScopeOptions() {
     if (!predictionFormEls.form || !predictionFormEls.town) return;
 
     const town = predictionFormEls.town.value;
-    const flatType = predictionFormEls.flatType ? predictionFormEls.flatType.value : '';
     if (!town) {
+        applyPredictionFlatTypeAvailability([]);
         resetPredictionModelAndStoreyState();
         setPredictionHint(predictionFormEls.floorHint, 'Enter your flat area in square metres.');
         setPredictionHint(predictionFormEls.leaseHint, 'Use the lease commencement year for your unit.');
@@ -2281,30 +2340,25 @@ async function refreshPredictionScopeOptions() {
     const scopeToken = ++predictionFormScopeReqToken;
 
     let leaseData = null;
+    let flatTypeRows = [];
     let floorData = null;
     let modelData = { models: [] };
     let storeyData = { storey_ranges: [] };
 
-    try {
-        const leasePromise = fetchJSON('/api/lease_year_range?' + baseParams.toString());
-        if (flatType) {
-            const scopedParams = new URLSearchParams(baseParams);
-            scopedParams.set('flat_type', flatType);
-            const scopedQuery = scopedParams.toString();
-            [leaseData, floorData, modelData, storeyData] = await Promise.all([
-                leasePromise,
-                fetchJSON('/api/floor_area_stats?' + scopedQuery),
-                fetchJSON('/api/available_models?' + scopedQuery),
-                fetchJSON('/api/available_storey_ranges?' + scopedQuery),
-            ]);
-        } else {
-            leaseData = await leasePromise;
-        }
-    } catch (e) {
-        return;
-    }
+    const [leaseResult, flatTypeResult] = await Promise.allSettled([
+        fetchJSON('/api/lease_year_range?' + baseParams.toString()),
+        fetchJSON('/api/flat_type_breakdown?' + baseParams.toString()),
+    ]);
+    if (leaseResult.status === 'fulfilled') leaseData = leaseResult.value;
+    if (flatTypeResult.status === 'fulfilled') flatTypeRows = flatTypeResult.value || [];
 
     if (scopeToken !== predictionFormScopeReqToken) return;
+
+    const availableFlatTypes = (flatTypeRows || [])
+        .map(row => row && row.flat_type ? String(row.flat_type) : '')
+        .filter(Boolean);
+    const flatType = applyPredictionFlatTypeAvailability(availableFlatTypes)
+        || (predictionFormEls.flatType ? predictionFormEls.flatType.value : '');
 
     const leaseMin = Number(leaseData && leaseData.min_year);
     const leaseMax = Number(leaseData && leaseData.max_year);
@@ -2325,6 +2379,23 @@ async function refreshPredictionScopeOptions() {
         setPredictionHint(predictionFormEls.floorHint, 'Enter your flat area in square metres.');
         return;
     }
+
+    try {
+        const scopedParams = new URLSearchParams(baseParams);
+        scopedParams.set('flat_type', flatType);
+        const scopedQuery = scopedParams.toString();
+        [floorData, modelData, storeyData] = await Promise.all([
+            fetchJSON('/api/floor_area_stats?' + scopedQuery),
+            fetchJSON('/api/available_models?' + scopedQuery),
+            fetchJSON('/api/available_storey_ranges?' + scopedQuery),
+        ]);
+    } catch (e) {
+        resetPredictionModelAndStoreyState();
+        setPredictionHint(predictionFormEls.floorHint, 'Enter your flat area in square metres.');
+        return;
+    }
+
+    if (scopeToken !== predictionFormScopeReqToken) return;
 
     const floorMin = Number(floorData && floorData.min_area);
     const floorMax = Number(floorData && floorData.max_area);
@@ -2395,10 +2466,32 @@ async function initPredictionContextForm() {
         await applyPredictionScopeToDashboard();
     });
 
+    [predictionFormEls.floorArea, predictionFormEls.leaseCommence].forEach(inputEl => {
+        if (!inputEl) return;
+        inputEl.addEventListener('blur', function() {
+            clampNumericInputToRange(inputEl);
+        });
+        inputEl.addEventListener('change', function() {
+            clampNumericInputToRange(inputEl);
+        });
+    });
+
     predictionFormEls.form.addEventListener('submit', function() {
+        clampNumericInputToRange(predictionFormEls.floorArea);
+        clampNumericInputToRange(predictionFormEls.leaseCommence);
         if (!predictionFormEls.form.checkValidity()) {
             setPredictionSubmitLoading(false);
             return;
+        }
+        const trendStyleEl = document.getElementById('trendStyle');
+        if (predictionFormEls.yearFromHidden) {
+            predictionFormEls.yearFromHidden.value = document.getElementById('yearFrom').value || '';
+        }
+        if (predictionFormEls.yearToHidden) {
+            predictionFormEls.yearToHidden.value = document.getElementById('yearTo').value || '';
+        }
+        if (predictionFormEls.trendStyleHidden) {
+            predictionFormEls.trendStyleHidden.value = trendStyleEl ? (trendStyleEl.value || '') : '';
         }
         setPredictionSubmitLoading(true);
     });
@@ -2824,8 +2917,19 @@ function syncYearSelectors(data) {
     const needsReset = existingYears.length !== years.length ||
         existingYears.some((y, i) => y !== years[i]);
 
-    const currentFrom = Number(fromEl.value || years[0]);
-    const currentTo   = Number(toEl.value   || years[years.length - 1]);
+    let currentFrom = Number(fromEl.value || years[0]);
+    let currentTo = Number(toEl.value || years[years.length - 1]);
+
+    // Apply URL-provided year range only once on first selector sync.
+    if (!hasAppliedYearParams) {
+        const rawFrom = pageParams.get('year_from');
+        const rawTo = pageParams.get('year_to');
+        const urlFrom = rawFrom === null ? NaN : Number(rawFrom);
+        const urlTo = rawTo === null ? NaN : Number(rawTo);
+        if (Number.isFinite(urlFrom)) currentFrom = urlFrom;
+        if (Number.isFinite(urlTo)) currentTo = urlTo;
+        hasAppliedYearParams = true;
+    }
 
     if (needsReset) {
         const opts = years.map(y => '<option value="' + y + '">' + y + '</option>').join('');
@@ -3333,6 +3437,11 @@ document.getElementById('clearLocationBtn').addEventListener('click', clearLocat
 
 /* ── Bootstrap ────────────────────────────────────────────────────────────── */
 (async function bootstrapAnalytics() {
+    const trendStyleEl = document.getElementById('trendStyle');
+    const trendStyleParam = pageParams.get('trend_style');
+    if (trendStyleEl && (trendStyleParam === 'line' || trendStyleParam === 'bar')) {
+        trendStyleEl.value = trendStyleParam;
+    }
     await initPredictionContextForm();
     syncDashboardFiltersFromPredictionForm();
     updateBreadcrumb();

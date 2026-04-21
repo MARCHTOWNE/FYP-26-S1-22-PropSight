@@ -289,13 +289,15 @@
     "test_rmse": 34699.2,
     "test_r2": 0.973872,
     "test_mape": 3.6447,
-    "justification": "catboost achieved the lowest validation MAPE of 3.62%. Its locked test metrics are RMSE=36,416, R2=0.9712, MAPE=3.90%. Runner-up on validation: lgbm at 3.71% MAPE. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).",
+    "justification": "catboost achieved the lowest validation MAPE of 3.62%. Runner-up on validation: lgbm at 3.71% MAPE. Pre-refit winner test snapshot: RMSE=36,416  R2=0.9712  MAPE=3.90%. Final deployed test after train+val refit: RMSE=34,699  R2=0.9739  MAPE=3.64%. Refit test MAPE delta: -0.25pp. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).",
     "pre_refit_test_mape": 3.8969,
     "pre_refit_test_rmse": 36415.78,
     "pre_refit_test_r2": 0.971223,
     "refit_test_mape": 3.6447,
     "refit_test_rmse": 34699.2,
-    "refit_test_r2": 0.973872
+    "refit_test_r2": 0.973872,
+    "runner_up": "lgbm",
+    "runner_up_val_mape": 3.7139
   },
   "training_config": {
     "xgb_trials": 25,

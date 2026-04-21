@@ -19,8 +19,9 @@ Design decisions:
   - CatBoost uses cat_features for flat_type_ordinal and is_mature_estate.
   - Random Forest uses a sensible fixed configuration (no tuning).
   - Train set is for fitting; val set is for tuning and early stopping.
-  - Winner selection uses validation RMSE across XGBoost, LightGBM, and
-    CatBoost, keeping the test set locked for final reporting.
+  - Winner selection uses validation MAPE across XGBoost, LightGBM, and
+    CatBoost. After selection, the winning base model is refit on train + val
+    and its deployed test metrics are updated separately.
   - All random states are seeded to 42 for reproducibility.
   - Runs a data quality diagnostic before training and includes the
     findings in the training report.
@@ -580,6 +581,132 @@ def _fmt_metrics(m: dict) -> str:
         f"RMSE={m['rmse']:,.0f}  MAE={m['mae']:,.0f}  "
         f"R2={m['r2']:.4f}  MAPE={m['mape']:.2f}%"
     )
+
+
+def _fmt_compact_metrics(rmse: float, r2: float, mape: float) -> str:
+    """Format the headline winner metrics shown in summaries and reports."""
+    return f"RMSE={rmse:,.0f}  R2={r2:.4f}  MAPE={mape:.2f}%"
+
+
+def _build_winner_justification(winner: dict) -> str:
+    """Create a concise winner summary that distinguishes pre/post-refit test metrics."""
+    winner_name = str(winner.get("winner", "unknown"))
+    val_mape = winner.get("val_mape")
+    parts = []
+
+    if val_mape is not None:
+        parts.append(f"{winner_name} achieved the lowest validation MAPE of {val_mape:.2f}%.")
+    else:
+        parts.append(f"{winner_name} was selected as the production-safe base model.")
+
+    runner_up_name = winner.get("runner_up")
+    runner_up_mape = winner.get("runner_up_val_mape")
+    if runner_up_name and runner_up_mape is not None:
+        parts.append(f"Runner-up on validation: {runner_up_name} at {runner_up_mape:.2f}% MAPE.")
+
+    pre_refit_rmse = winner.get("pre_refit_test_rmse", winner.get("test_rmse"))
+    pre_refit_r2 = winner.get("pre_refit_test_r2", winner.get("test_r2"))
+    pre_refit_mape = winner.get("pre_refit_test_mape", winner.get("test_mape"))
+    if None not in (pre_refit_rmse, pre_refit_r2, pre_refit_mape):
+        prefix = (
+            "Pre-refit winner test snapshot"
+            if "pre_refit_test_mape" in winner
+            else "Winner test snapshot"
+        )
+        parts.append(
+            f"{prefix}: "
+            f"{_fmt_compact_metrics(pre_refit_rmse, pre_refit_r2, pre_refit_mape)}."
+        )
+
+    if None not in (
+        winner.get("refit_test_rmse"),
+        winner.get("refit_test_r2"),
+        winner.get("refit_test_mape"),
+    ):
+        parts.append(
+            "Final deployed test after train+val refit: "
+            f"{_fmt_compact_metrics(winner['refit_test_rmse'], winner['refit_test_r2'], winner['refit_test_mape'])}."
+        )
+        if winner.get("pre_refit_test_mape") is not None:
+            delta_pp = float(winner["refit_test_mape"]) - float(winner["pre_refit_test_mape"])
+            parts.append(f"Refit test MAPE delta: {delta_pp:+.2f}pp.")
+
+    if None not in (
+        winner.get("future_holdout_rmse"),
+        winner.get("future_holdout_r2"),
+        winner.get("future_holdout_mape"),
+    ):
+        parts.append(
+            "Future holdout snapshot: "
+            f"{_fmt_compact_metrics(winner['future_holdout_rmse'], winner['future_holdout_r2'], winner['future_holdout_mape'])}."
+        )
+
+    parts.append(
+        "The ensemble is excluded from winner selection "
+        "(meta-learner leakage + Render memory constraint)."
+    )
+    return " ".join(parts)
+
+
+def _winner_report_lines(winner: dict) -> list[str]:
+    """Render the winner section for training_report.txt."""
+    lines = [
+        f"  Selected base model: {str(winner.get('winner', 'unknown')).upper()}",
+    ]
+
+    if winner.get("val_mape") is not None:
+        lines.append(f"  Selection metric: validation MAPE={winner['val_mape']:.2f}%")
+
+    if winner.get("runner_up") and winner.get("runner_up_val_mape") is not None:
+        lines.append(
+            f"  Runner-up on validation: {winner['runner_up']} "
+            f"at {winner['runner_up_val_mape']:.2f}% MAPE"
+        )
+
+    lines.append(
+        "  Model Results above show the pre-refit candidate snapshots used for selection."
+    )
+
+    pre_refit_rmse = winner.get("pre_refit_test_rmse", winner.get("test_rmse"))
+    pre_refit_r2 = winner.get("pre_refit_test_r2", winner.get("test_r2"))
+    pre_refit_mape = winner.get("pre_refit_test_mape", winner.get("test_mape"))
+    if None not in (pre_refit_rmse, pre_refit_r2, pre_refit_mape):
+        prefix = (
+            "  Pre-refit winner TEST snapshot: "
+            if "pre_refit_test_mape" in winner
+            else "  Winner TEST snapshot: "
+        )
+        lines.append(
+            prefix + _fmt_compact_metrics(pre_refit_rmse, pre_refit_r2, pre_refit_mape)
+        )
+
+    if None not in (
+        winner.get("refit_test_rmse"),
+        winner.get("refit_test_r2"),
+        winner.get("refit_test_mape"),
+    ):
+        lines.append(
+            "  Final deployed TEST after train+val refit: "
+            f"{_fmt_compact_metrics(winner['refit_test_rmse'], winner['refit_test_r2'], winner['refit_test_mape'])}"
+        )
+        if winner.get("pre_refit_test_mape") is not None:
+            delta_pp = float(winner["refit_test_mape"]) - float(winner["pre_refit_test_mape"])
+            lines.append(f"  Refit vs pre-refit TEST MAPE delta: {delta_pp:+.2f}pp")
+
+    if None not in (
+        winner.get("future_holdout_rmse"),
+        winner.get("future_holdout_r2"),
+        winner.get("future_holdout_mape"),
+    ):
+        lines.append(
+            "  Future holdout snapshot: "
+            f"{_fmt_compact_metrics(winner['future_holdout_rmse'], winner['future_holdout_r2'], winner['future_holdout_mape'])}"
+        )
+
+    lines.append(
+        "  Ensemble exclusion: meta-learner leakage + Render memory constraint"
+    )
+    return lines
 
 
 def _error_by_flat_type(
@@ -1208,28 +1335,7 @@ def determine_winner(results: dict) -> dict:
     )
     best_name, best_val_mape = ranked[0]
     best_test = results[best_name]["test"]
-
-    justification = (
-        f"{best_name} achieved the lowest validation MAPE of {best_val_mape:.2f}%. "
-        f"Its locked test metrics are RMSE={best_test['rmse']:,.0f}, "
-        f"R2={best_test['r2']:.4f}, "
-        f"MAPE={best_test['mape']:.2f}%. "
-    )
-    if len(ranked) > 1:
-        runner_up_name, runner_up_mape = ranked[1]
-        justification += (
-            f"Runner-up on validation: {runner_up_name} at {runner_up_mape:.2f}% MAPE. "
-        )
-    if "future_holdout" in results[best_name]:
-        future_metrics = results[best_name]["future_holdout"]
-        justification += (
-            f"Future holdout metrics: RMSE={future_metrics['rmse']:,.0f}, "
-            f"R2={future_metrics['r2']:.4f}, "
-            f"MAPE={future_metrics['mape']:.2f}%."
-        )
-    justification += "The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint)."
-
-    return {
+    winner = {
         "winner": best_name,
         "selection_metric": "val_mape",
         "val_mape": round(best_val_mape, 4),
@@ -1237,8 +1343,18 @@ def determine_winner(results: dict) -> dict:
         "test_rmse": round(best_test["rmse"], 2),
         "test_r2": round(best_test["r2"], 6),
         "test_mape": round(best_test["mape"], 4),
-        "justification": justification,
     }
+    if len(ranked) > 1:
+        runner_up_name, runner_up_mape = ranked[1]
+        winner["runner_up"] = runner_up_name
+        winner["runner_up_val_mape"] = round(runner_up_mape, 4)
+    if "future_holdout" in results[best_name]:
+        future_metrics = results[best_name]["future_holdout"]
+        winner["future_holdout_rmse"] = round(future_metrics["rmse"], 2)
+        winner["future_holdout_r2"] = round(future_metrics["r2"], 6)
+        winner["future_holdout_mape"] = round(future_metrics["mape"], 4)
+    winner["justification"] = _build_winner_justification(winner)
+    return winner
 
 
 # ---------------------------------------------------------------------------
@@ -1367,6 +1483,7 @@ def save_outputs(
                 f"XGB_N_ESTIMATORS={training_config['xgb_n_estimators']}",
                 f"LGBM_N_ESTIMATORS={training_config['lgbm_n_estimators']}",
                 f"CATBOOST_N_ESTIMATORS={training_config['catboost_n_estimators']}",
+                f"EARLY_STOPPING_ROUNDS={training_config['early_stopping_rounds']}",
                 f"TUNING_SAMPLE_SIZE={int(training_config['tuning_sample_size']):,}",
                 f"RF_ESTIMATORS={training_config['rf_estimators']}",
                 f"MODEL_N_JOBS={training_config['model_n_jobs']}",
@@ -1382,6 +1499,8 @@ def save_outputs(
     report_lines.append("=" * 70)
     report_lines.append("MODEL RESULTS")
     report_lines.append("=" * 70)
+    report_lines.append("  Note: TEST rows below are pre-refit candidate snapshots.")
+    report_lines.append("  The selected winner's final deployed metrics appear in the WINNER section.")
 
     for name in results:
         report_lines.append(f"\n--- {name.upper()} ---")
@@ -1389,7 +1508,7 @@ def save_outputs(
             if split not in results[name]:
                 continue
             m = results[name][split]
-            split_label = split.replace("_", " ").upper()
+            split_label = "TEST (PRE-REFIT)" if split == "test" else split.replace("_", " ").upper()
             report_lines.append(f"  {split_label}: {_fmt_metrics(m)}")
             report_lines.append(f"  {split_label} flat_type breakdown:")
             for ft, info in sorted(m["flat_type_breakdown"].items()):
@@ -1401,7 +1520,7 @@ def save_outputs(
     report_lines.append("=" * 70)
     report_lines.append("WINNER")
     report_lines.append("=" * 70)
-    report_lines.append(f"  {winner['justification']}")
+    report_lines.extend(_winner_report_lines(winner))
     report_lines.append("")
 
     report_path = os.path.join(run_dir, "training_report.txt")
@@ -1595,6 +1714,7 @@ def main() -> None:
         f"XGB_N_ESTIMATORS={XGB_N_ESTIMATORS}, "
         f"LGBM_N_ESTIMATORS={LGBM_N_ESTIMATORS}, "
         f"CATBOOST_N_ESTIMATORS={CATBOOST_N_ESTIMATORS}, "
+        f"EARLY_STOPPING_ROUNDS={EARLY_STOPPING_ROUNDS}, "
         f"RF_ESTIMATORS={N_RF_ESTIMATORS}, "
         f"FRESH_TUNING={int(FRESH_TUNING)}, "
         f"DECAY_RATE={DECAY_RATE}"
@@ -1777,6 +1897,7 @@ def main() -> None:
     winner["test_mape"] = winner["refit_test_mape"]
     winner["test_rmse"] = winner["refit_test_rmse"]
     winner["test_r2"] = winner["refit_test_r2"]
+    winner["justification"] = _build_winner_justification(winner)
 
     # Step 7: Save outputs
     print("\n--- STEP 7: SAVING OUTPUTS ---")

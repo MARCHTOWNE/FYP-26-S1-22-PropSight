@@ -5,11 +5,13 @@ HDB RESALE PRICE PREDICTION — TRAINING REPORT
 ======================================================================
 TRAINING CONFIG
 ======================================================================
-  XGB_TRIALS=25, LGBM_TRIALS=25, CATBOOST_TRIALS=25, XGB_N_ESTIMATORS=2000, LGBM_N_ESTIMATORS=2000, CATBOOST_N_ESTIMATORS=2000, TUNING_SAMPLE_SIZE=250,000, RF_ESTIMATORS=300, MODEL_N_JOBS=-1, FRESH_TUNING=False
+  XGB_TRIALS=25, LGBM_TRIALS=25, CATBOOST_TRIALS=25, XGB_N_ESTIMATORS=2000, LGBM_N_ESTIMATORS=2000, CATBOOST_N_ESTIMATORS=2000, EARLY_STOPPING_ROUNDS=50, TUNING_SAMPLE_SIZE=250,000, RF_ESTIMATORS=300, MODEL_N_JOBS=-1, FRESH_TUNING=False
 
 ======================================================================
 MODEL RESULTS
 ======================================================================
+  Note: TEST rows below are pre-refit candidate snapshots.
+  The selected winner's final deployed metrics appear in the WINNER section.
 
 --- XGBOOST ---
   VAL: RMSE=35,093  MAE=24,535  R2=0.9722  MAPE=3.74%
@@ -21,8 +23,8 @@ MODEL RESULTS
     5 Room                MAE=SGD     29,598  (n=1,376)
     Executive             MAE=SGD     39,010  (n=352)
     Multi-Generation      MAE=SGD     84,722  (n=1)
-  TEST: RMSE=38,783  MAE=27,182  R2=0.9674  MAPE=4.13%
-  TEST flat_type breakdown:
+  TEST (PRE-REFIT): RMSE=38,783  MAE=27,182  R2=0.9674  MAPE=4.13%
+  TEST (PRE-REFIT) flat_type breakdown:
     1 Room                MAE=SGD     16,681  (n=3)
     2 Room                MAE=SGD     17,087  (n=134)
     3 Room                MAE=SGD     21,683  (n=1,039)
@@ -40,8 +42,8 @@ MODEL RESULTS
     5 Room                MAE=SGD     28,520  (n=1,376)
     Executive             MAE=SGD     39,607  (n=352)
     Multi-Generation      MAE=SGD     75,043  (n=1)
-  TEST: RMSE=38,284  MAE=27,064  R2=0.9682  MAPE=4.12%
-  TEST flat_type breakdown:
+  TEST (PRE-REFIT): RMSE=38,284  MAE=27,064  R2=0.9682  MAPE=4.12%
+  TEST (PRE-REFIT) flat_type breakdown:
     1 Room                MAE=SGD     10,514  (n=3)
     2 Room                MAE=SGD     17,080  (n=134)
     3 Room                MAE=SGD     21,540  (n=1,039)
@@ -59,8 +61,8 @@ MODEL RESULTS
     5 Room                MAE=SGD     28,435  (n=1,376)
     Executive             MAE=SGD     41,384  (n=352)
     Multi-Generation      MAE=SGD     37,923  (n=1)
-  TEST: RMSE=36,416  MAE=25,595  R2=0.9712  MAPE=3.90%
-  TEST flat_type breakdown:
+  TEST (PRE-REFIT): RMSE=36,416  MAE=25,595  R2=0.9712  MAPE=3.90%
+  TEST (PRE-REFIT) flat_type breakdown:
     1 Room                MAE=SGD     18,215  (n=3)
     2 Room                MAE=SGD     17,155  (n=134)
     3 Room                MAE=SGD     19,968  (n=1,039)
@@ -78,8 +80,8 @@ MODEL RESULTS
     5 Room                MAE=SGD     27,944  (n=1,376)
     Executive             MAE=SGD     39,928  (n=352)
     Multi-Generation      MAE=SGD     51,149  (n=1)
-  TEST: RMSE=36,258  MAE=25,416  R2=0.9715  MAPE=3.87%
-  TEST flat_type breakdown:
+  TEST (PRE-REFIT): RMSE=36,258  MAE=25,416  R2=0.9715  MAPE=3.87%
+  TEST (PRE-REFIT) flat_type breakdown:
     1 Room                MAE=SGD     14,554  (n=3)
     2 Room                MAE=SGD     16,516  (n=134)
     3 Room                MAE=SGD     20,135  (n=1,039)
@@ -90,4 +92,11 @@ MODEL RESULTS
 ======================================================================
 WINNER
 ======================================================================
-  catboost achieved the lowest validation MAPE of 3.62%. Its locked test metrics are RMSE=36,416, R2=0.9712, MAPE=3.90%. Runner-up on validation: lgbm at 3.71% MAPE. The ensemble is excluded from winner selection (meta-learner leakage + Render memory constraint).
+  Selected base model: CATBOOST
+  Selection metric: validation MAPE=3.62%
+  Runner-up on validation: lgbm at 3.71% MAPE
+  Model Results above show the pre-refit candidate snapshots used for selection.
+  Pre-refit winner TEST snapshot: RMSE=36,416  R2=0.9712  MAPE=3.90%
+  Final deployed TEST after train+val refit: RMSE=34,699  R2=0.9739  MAPE=3.64%
+  Refit vs pre-refit TEST MAPE delta: -0.25pp
+  Ensemble exclusion: meta-learner leakage + Render memory constraint

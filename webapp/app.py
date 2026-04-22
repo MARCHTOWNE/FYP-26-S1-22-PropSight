@@ -166,6 +166,86 @@ ASSETS_DIR = _first_existing_path([
     os.path.join(PROJECT_DIR, "ML", "model_assets"),
 ])
 
+SUBSCRIPTION_PLAN_CONFIG_PATH = os.path.join(BASE_DIR, "subscription_plan_config.json")
+_subscription_plan_lock = threading.Lock()
+_DEFAULT_SUBSCRIPTION_PLAN = {
+    "premium": {
+        "name": "Premium",
+        "price_monthly": 4.90,
+        "billing_period": "/month",
+        "description": "Unlock the full power of PropSight",
+        "benefits": [
+            "Price predictions",
+            "Unlimited saved predictions",
+            "Unlimited map access",
+            "Unlimited analytics access",
+            "Unlimited comparison access",
+        ],
+    }
+}
+
+
+def _normalize_subscription_plan_config(raw_config):
+    premium = (raw_config or {}).get("premium", {}) if isinstance(raw_config, dict) else {}
+    default_premium = _DEFAULT_SUBSCRIPTION_PLAN["premium"]
+    name = str(premium.get("name") or default_premium["name"]).strip()[:40] or default_premium["name"]
+    billing_period = str(premium.get("billing_period") or default_premium["billing_period"]).strip()[:20] or default_premium["billing_period"]
+    description = str(premium.get("description") or default_premium["description"]).strip()[:180] or default_premium["description"]
+    try:
+        price_monthly = float(premium.get("price_monthly", default_premium["price_monthly"]))
+    except (TypeError, ValueError):
+        price_monthly = float(default_premium["price_monthly"])
+    if price_monthly < 0:
+        price_monthly = 0.0
+    if price_monthly > 10000:
+        price_monthly = 10000.0
+
+    raw_benefits = premium.get("benefits")
+    benefits = []
+    if isinstance(raw_benefits, list):
+        for item in raw_benefits:
+            text = str(item or "").strip()
+            if text:
+                benefits.append(text[:120])
+    if not benefits:
+        benefits = list(default_premium["benefits"])
+
+    return {
+        "premium": {
+            "name": name,
+            "price_monthly": round(price_monthly, 2),
+            "billing_period": billing_period,
+            "description": description,
+            "benefits": benefits,
+        }
+    }
+
+
+def _load_subscription_plan_config():
+    with _subscription_plan_lock:
+        if not os.path.exists(SUBSCRIPTION_PLAN_CONFIG_PATH):
+            config = _normalize_subscription_plan_config(_DEFAULT_SUBSCRIPTION_PLAN)
+            try:
+                with open(SUBSCRIPTION_PLAN_CONFIG_PATH, "w", encoding="utf-8") as f:
+                    json.dump(config, f, indent=2)
+            except OSError:
+                return config
+            return config
+        try:
+            with open(SUBSCRIPTION_PLAN_CONFIG_PATH, encoding="utf-8") as f:
+                raw = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            return _normalize_subscription_plan_config(_DEFAULT_SUBSCRIPTION_PLAN)
+        return _normalize_subscription_plan_config(raw)
+
+
+def _save_subscription_plan_config(config):
+    normalized = _normalize_subscription_plan_config(config)
+    with _subscription_plan_lock:
+        with open(SUBSCRIPTION_PLAN_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(normalized, f, indent=2)
+    return normalized
+
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -3596,7 +3676,13 @@ def logout():
 
 @app.route("/pricing")
 def pricing():
-    return render_template("pricing.html")
+    plan_config = _load_subscription_plan_config()
+    premium = plan_config["premium"]
+    return render_template(
+        "pricing.html",
+        premium_plan=premium,
+        premium_price_display=f"${premium['price_monthly']:.2f}",
+    )
 
 
 @app.route("/upgrade", methods=["POST"])
@@ -3699,7 +3785,14 @@ def _attach_prediction_coordinates(predictions, town_coords):
 @app.route("/")
 def landing():
     """Public marketing landing page."""
-    return render_template("landing.html", landing_stats=_build_landing_stats())
+    plan_config = _load_subscription_plan_config()
+    premium = plan_config["premium"]
+    return render_template(
+        "landing.html",
+        landing_stats=_build_landing_stats(),
+        premium_plan=premium,
+        premium_price_display=f"${premium['price_monthly']:.2f}",
+    )
 
 
 @app.route("/review")
@@ -5429,10 +5522,63 @@ def admin_dashboard():
     return render_template("admin.html")
 
 
+@app.route("/api/admin/subscription-plan", methods=["GET"])
+@api_admin_required
+def api_admin_get_subscription_plan():
+    return jsonify(_load_subscription_plan_config())
+
+
+@app.route("/api/admin/subscription-plan", methods=["PUT"])
+@api_admin_required
+def api_admin_update_subscription_plan():
+    data = request.get_json(silent=True) or {}
+    premium = data.get("premium", {}) if isinstance(data, dict) else {}
+    if not isinstance(premium, dict):
+        return jsonify({"error": "premium payload must be an object"}), 400
+
+    try:
+        price_monthly = float(premium.get("price_monthly"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "price_monthly must be a valid number"}), 400
+    if price_monthly < 0 or price_monthly > 10000:
+        return jsonify({"error": "price_monthly must be between 0 and 10000"}), 400
+
+    name = str(premium.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+
+    description = str(premium.get("description") or "").strip()
+    if not description:
+        return jsonify({"error": "description is required"}), 400
+
+    billing_period = str(premium.get("billing_period") or "").strip() or "/month"
+    benefits = premium.get("benefits")
+    if not isinstance(benefits, list):
+        return jsonify({"error": "benefits must be an array"}), 400
+    clean_benefits = [str(item or "").strip()[:120] for item in benefits if str(item or "").strip()]
+    if not clean_benefits:
+        return jsonify({"error": "at least one benefit is required"}), 400
+
+    saved = _save_subscription_plan_config(
+        {
+            "premium": {
+                "name": name[:40],
+                "price_monthly": price_monthly,
+                "billing_period": billing_period[:20],
+                "description": description[:180],
+                "benefits": clean_benefits,
+            }
+        }
+    )
+    return jsonify(saved)
+
+
 @app.route("/api/admin/stats")
 @api_admin_required
 def api_admin_stats():
     try:
+        plan_config = _load_subscription_plan_config()
+        premium_price = float(plan_config["premium"]["price_monthly"])
         online_cutoff = (
             datetime.now(timezone.utc) - timedelta(minutes=15)
         ).replace(microsecond=0).isoformat().replace("+00:00", "Z")
@@ -5480,7 +5626,7 @@ def api_admin_stats():
             _admin_prediction_display_count(u.get("id"), log_by_user, saved_by_user)
             for u in users
         )
-        monthly_revenue = round(premium_users * 4.90, 2)
+        monthly_revenue = round(premium_users * premium_price, 2)
         weekly_revenue = round(monthly_revenue / 4.345, 2)
 
         # Real monthly revenue trend from user creation timeline:
@@ -5512,7 +5658,7 @@ def api_admin_stats():
         income_trend = []
         for m in month_starts:
             cumulative += premium_signup_by_month[m]
-            income_trend.append(round(cumulative * 4.90, 2))
+            income_trend.append(round(cumulative * premium_price, 2))
 
         return jsonify({
             "online_users": online_users,
@@ -5524,6 +5670,7 @@ def api_admin_stats():
             "total_predictions": total_predictions,
             "monthly_revenue": monthly_revenue,
             "weekly_revenue": weekly_revenue,
+            "premium_price_monthly": premium_price,
             "income_trend_labels": month_labels,
             "income_trend_data": income_trend,
         })

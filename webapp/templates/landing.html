@@ -2302,7 +2302,7 @@
         <div class="container">
             <div class="text-center mb-5 pb-4 reveal">
                 <h2 class="hero-title" style="font-size: 3.5rem;">Transparent Pricing</h2>
-                <p class="hero-subtitle mx-auto">Start exploring for free, upgrade when you need professional analytics.
+                <p class="hero-subtitle mx-auto">{{ premium_plan.description }}
                 </p>
             </div>
 
@@ -2330,23 +2330,19 @@
                 <div class="col-lg-4 col-md-6 reveal stagger-2">
                     <div class="pricing-card pro">
                         <div class="pro-badge">RECOMMENDED</div>
-                        <h4 class="fw-bold text-primary mb-2">Premium</h4>
+                        <h4 class="fw-bold text-primary mb-2">{{ premium_plan.name }}</h4>
                         <p class="text-gray mb-4 fw-medium">For serious buyers and analysts.</p>
                         <div class="d-flex align-items-baseline mb-5">
-                            <h2 class="price-value mb-0 text-dark">$4.90</h2>
-                            <span class="text-gray ms-2 fw-bold">/ mo</span>
+                            <h2 class="price-value mb-0 text-dark">{{ premium_price_display }}</h2>
+                            <span class="text-gray ms-2 fw-bold">{{ premium_plan.billing_period }}</span>
                         </div>
                         <a href="/register?plan=premium"
                             class="btn btn-primary-custom w-100 btn-custom py-3 fs-6">Upgrade to Premium</a>
 
                         <ul class="check-list mt-5">
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> <strong
-                                    class="text-dark">Unlimited</strong> saved predictions</li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> <strong
-                                    class="text-dark">Unlimited</strong> Map & Analytics</li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> <strong class="text-dark">Full
-                                    Explainable AI (XAI)</strong></li>
-                            <li><i class="bi bi-check-circle-fill text-primary"></i> Compare up to 5 properties</li>
+                            {% for benefit in premium_plan.benefits %}
+                            <li><i class="bi bi-check-circle-fill text-primary"></i> {{ benefit }}</li>
+                            {% endfor %}
                         </ul>
                     </div>
                 </div>

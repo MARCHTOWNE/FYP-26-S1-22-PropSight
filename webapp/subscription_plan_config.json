@@ -1,0 +1,15 @@
+{
+  "premium": {
+    "name": "Premium",
+    "price_monthly": 4.9,
+    "billing_period": "/month",
+    "description": "Unlock the full power of PropSight",
+    "benefits": [
+      "Price predictions",
+      "Unlimited saved predictions",
+      "Unlimited map access",
+      "Unlimited analytics access",
+      "Unlimited comparison access"
+    ]
+  }
+}

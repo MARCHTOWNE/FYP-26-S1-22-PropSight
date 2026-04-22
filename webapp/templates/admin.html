@@ -230,7 +230,7 @@
             <div class="metric-chip winner-chip"><div class="metric-chip-val" id="kpiTotalUsers">0</div><div class="metric-chip-label">Total Users</div><div class="metric-chip-sub">All account types</div></div>
             <div class="metric-chip"><div class="metric-chip-val" id="kpiOnlineUsers">0</div><div class="metric-chip-label">Online Now</div><div class="metric-chip-sub">Live status</div></div>
             <div class="metric-chip"><div class="metric-chip-val" id="kpiPredictionCount">0</div><div class="metric-chip-label">Predictions Run</div><div class="metric-chip-sub">All users</div></div>
-            <div class="metric-chip"><div class="metric-chip-val" id="kpiMonthlyRevenue">$0</div><div class="metric-chip-label">Monthly Revenue</div><div class="metric-chip-sub">Premium subscriptions</div></div>
+            <div class="metric-chip"><div class="metric-chip-val" id="kpiMonthlyRevenue">$0</div><div class="metric-chip-label">Monthly Revenue</div><div class="metric-chip-sub" id="kpi-monthly-sub-label">Premium subscriptions</div></div>
             <div class="metric-chip winner-chip"><div class="metric-chip-val" id="kpiActiveModelLabel">—</div><div class="metric-chip-label">Active Model</div><div class="metric-chip-sub" id="kpiActiveModelRun">Production predictor</div></div>
           </div>
           <div class="row g-4">
@@ -319,13 +319,56 @@
         <div class="dash-section" id="section-subscriptions">
           <div class="row g-4 mb-4">
             <div class="col-md-3"><div class="stat-card"><div class="stat-label">Premium Subscribers</div><div class="stat-value" id="sub-premium">0</div><div class="stat-sub">Active paid users</div></div></div>
-            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Monthly Revenue</div><div class="stat-value" id="sub-monthly">$0</div><div class="stat-sub">Premium price: $4.90</div></div></div>
+            <div class="col-md-3"><div class="stat-card"><div class="stat-label">Monthly Revenue</div><div class="stat-value" id="sub-monthly">$0</div><div class="stat-sub" id="sub-price-label">Premium price: $4.90</div></div></div>
             <div class="col-md-3"><div class="stat-card"><div class="stat-label">Weekly Revenue</div><div class="stat-value" id="sub-weekly">$0</div><div class="stat-sub">Estimated value</div></div></div>
             <div class="col-md-3"><div class="stat-card"><div class="stat-label">Unsubscribed (Registered)</div><div class="stat-value" id="sub-unsubscribed">0</div><div class="stat-sub">Users not on premium plan</div></div></div>
           </div>
           <div class="row g-4">
             <div class="col-lg-7"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Income Trend</div><div class="card-sub-custom">Feature kept from the second admin page.</div></div></div><div class="card-body-custom"><div class="chart-wrap"><canvas id="incomeChart"></canvas></div></div></div></div>
             <div class="col-lg-5"><div class="content-card"><div class="card-header-custom"><div><div class="card-title-custom">Manage Plans</div><div class="card-sub-custom">Upgrade or downgrade user subscriptions.</div></div></div><div class="card-body-custom" style="padding-top:0;"><table class="admin-table"><thead><tr><th>User</th><th>Plan</th><th>Action</th></tr></thead><tbody id="sub-tbody"></tbody></table></div></div></div>
+          </div>
+          <div class="row g-4 mt-1">
+            <div class="col-lg-12">
+              <div class="content-card">
+                <div class="card-header-custom">
+                  <div>
+                    <div class="card-title-custom">Subscription Plan Settings</div>
+                    <div class="card-sub-custom">Edit premium plan pricing, benefits, and display information.</div>
+                  </div>
+                </div>
+                <div class="card-body-custom">
+                  <div class="row g-3">
+                    <div class="col-md-4">
+                      <label class="form-label-m">Plan Name</label>
+                      <input type="text" class="form-input-m" id="plan-name" placeholder="Premium">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label-m">Monthly Price (SGD)</label>
+                      <input type="number" min="0" step="0.01" class="form-input-m" id="plan-price" placeholder="4.90">
+                    </div>
+                    <div class="col-md-4">
+                      <label class="form-label-m">Billing Period Label</label>
+                      <input type="text" class="form-input-m" id="plan-billing-period" placeholder="/month">
+                    </div>
+                    <div class="col-md-12">
+                      <label class="form-label-m">Pricing Page Description</label>
+                      <input type="text" class="form-input-m" id="plan-description" placeholder="Unlock the full power of PropSight">
+                    </div>
+                    <div class="col-md-12">
+                      <label class="form-label-m">Benefits (one per line)</label>
+                      <textarea class="form-input-m" id="plan-benefits" rows="6" placeholder="Unlimited saved predictions&#10;Unlimited map access"></textarea>
+                    </div>
+                  </div>
+                  <div style="display:flex;gap:12px;justify-content:flex-end;margin-top:16px;">
+                    <button class="btn-cancel" onclick="loadSubscriptionPlanConfig()">Reset</button>
+                    <button class="btn-primary-sm" onclick="saveSubscriptionPlanConfig()">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><use href="#ic-check"></use></svg>
+                      Save Plan Settings
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 </div>
@@ -347,6 +390,7 @@
     let accountsLoading = false;
     let modelsLoading = false;
     let overviewLoading = false;
+    let planConfigLoading = false;
     let lastAccountsSignature = '';
     let lastModelsSignature = '';
     let overviewData = {
@@ -410,6 +454,12 @@
         document.getElementById('sub-monthly').textContent = '$' + (d.monthly_revenue ?? 0).toFixed(2);
         document.getElementById('sub-weekly').textContent = '$' + (d.weekly_revenue ?? 0).toFixed(2);
         document.getElementById('sub-unsubscribed').textContent = d.unsubscribed_premium ?? 0;
+        const premiumPrice = Number(d.premium_price_monthly ?? 0);
+        const priceText = '$' + premiumPrice.toFixed(2);
+        const subPriceLabel = document.getElementById('sub-price-label');
+        if(subPriceLabel) subPriceLabel.textContent = 'Premium price: ' + priceText;
+        const kpiRevenueSub = document.getElementById('kpi-monthly-sub-label');
+        if(kpiRevenueSub) kpiRevenueSub.textContent = 'Premium plan (' + priceText + ')';
         if(charts.income){
           if(Array.isArray(d.income_trend_labels) && Array.isArray(d.income_trend_data) && d.income_trend_labels.length && d.income_trend_data.length){
             charts.income.data.labels = d.income_trend_labels;
@@ -424,6 +474,71 @@
         showToast(e.message || 'Failed to load dashboard stats.','error');
       } finally {
         statsLoading = false;
+      }
+    }
+
+    function parseBenefitLines(text){
+      return String(text || '')
+        .split('\n')
+        .map((line)=>line.trim())
+        .filter(Boolean);
+    }
+
+    async function loadSubscriptionPlanConfig(){
+      if(planConfigLoading) return;
+      planConfigLoading = true;
+      try{
+        const cfg = await fetchJson('/api/admin/subscription-plan');
+        const premium = cfg?.premium || {};
+        document.getElementById('plan-name').value = premium.name || 'Premium';
+        document.getElementById('plan-price').value = Number(premium.price_monthly ?? 0).toFixed(2);
+        document.getElementById('plan-billing-period').value = premium.billing_period || '/month';
+        document.getElementById('plan-description').value = premium.description || '';
+        document.getElementById('plan-benefits').value = Array.isArray(premium.benefits) ? premium.benefits.join('\n') : '';
+      } catch(e){
+        console.error('Subscription plan load failed', e);
+        showToast(e.message || 'Failed to load subscription settings.', 'error');
+      } finally {
+        planConfigLoading = false;
+      }
+    }
+
+    async function saveSubscriptionPlanConfig(){
+      const name = document.getElementById('plan-name')?.value?.trim() || '';
+      const priceValue = document.getElementById('plan-price')?.value;
+      const billingPeriod = document.getElementById('plan-billing-period')?.value?.trim() || '/month';
+      const description = document.getElementById('plan-description')?.value?.trim() || '';
+      const benefits = parseBenefitLines(document.getElementById('plan-benefits')?.value);
+
+      if(!name){ showToast('Plan name is required.', 'error'); return; }
+      if(!description){ showToast('Plan description is required.', 'error'); return; }
+      if(!benefits.length){ showToast('Add at least one benefit.', 'error'); return; }
+
+      const priceMonthly = Number(priceValue);
+      if(!Number.isFinite(priceMonthly) || priceMonthly < 0){
+        showToast('Monthly price must be a valid number.', 'error');
+        return;
+      }
+
+      try{
+        await fetchJson('/api/admin/subscription-plan', {
+          method:'PUT',
+          headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({
+            premium:{
+              name,
+              price_monthly: priceMonthly,
+              billing_period: billingPeriod,
+              description,
+              benefits
+            }
+          })
+        });
+        showToast('Subscription plan updated.','success');
+        await Promise.all([loadSubscriptionPlanConfig(), loadStats()]);
+      } catch(e){
+        console.error('Subscription plan save failed', e);
+        showToast(e.message || 'Failed to save subscription settings.', 'error');
       }
     }
 
@@ -781,7 +896,7 @@
       if(el) el.classList.add('active');
       if(META[id]){ document.getElementById('topbar-title').textContent=META[id].title; document.getElementById('topbar-sub').textContent=META[id].sub; }
       if(id==='accounts') loadAccounts();
-      if(id==='subscriptions'){ loadAccounts(false); loadStats(); }
+      if(id==='subscriptions'){ loadAccounts(false); loadStats(); loadSubscriptionPlanConfig(); }
       if(id==='overview') loadOverviewData();
       requestAnimationFrame(()=>requestAnimationFrame(()=>{
         initCharts();
@@ -794,7 +909,7 @@
       await new Promise((resolve)=>{
         requestAnimationFrame(()=>requestAnimationFrame(()=>{ initCharts(); resolve(); }));
       });
-      await Promise.all([loadStats(), loadAccounts(false), loadOverviewData(), loadNotifications()]);
+      await Promise.all([loadStats(), loadAccounts(false), loadOverviewData(), loadNotifications(), loadSubscriptionPlanConfig()]);
       await loadModelVersions();
       startAutoRefresh();
     }

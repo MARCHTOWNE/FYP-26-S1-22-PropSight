@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block title %}Share a Review | PropSight{% endblock %}
+
+{% block extra_head %}
+<style>
+    .review-page {
+        min-height: calc(100vh - 220px);
+        background: linear-gradient(160deg, #f8fafc 0%, #eef2f7 100%);
+        padding: 64px 16px;
+    }
+    .review-shell {
+        max-width: 720px;
+        margin: 0 auto;
+    }
+    .review-card {
+        border-radius: 28px;
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        background: rgba(255, 255, 255, 0.7);
+        backdrop-filter: blur(14px);
+        box-shadow: 0 22px 48px rgba(15, 23, 42, 0.08);
+        padding: 36px;
+    }
+    .review-stars {
+        display: flex;
+        gap: 10px;
+    }
+    .review-star-btn {
+        border: none;
+        background: transparent;
+        font-size: 1.9rem;
+        line-height: 1;
+        color: #cbd5e1;
+        cursor: pointer;
+        transition: transform 0.12s ease, color 0.15s ease;
+    }
+    .review-star-btn:hover,
+    .review-star-btn.active {
+        color: #f59e0b;
+        transform: translateY(-1px);
+    }
+    .review-success {
+        display: none;
+        text-align: center;
+        padding: 34px 18px 20px;
+    }
+    .review-success.is-visible {
+        display: block;
+    }
+    .review-success-icon {
+        width: 74px;
+        height: 74px;
+        margin: 0 auto 18px;
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+        background: linear-gradient(135deg, #0f172a, #334155);
+        color: #fff;
+        font-size: 1.8rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="review-page">
+    <div class="review-shell">
+        <div class="review-card">
+            <div id="review-form-wrap">
+                <div class="text-center mb-4">
+                    <span class="badge rounded-pill text-bg-light border mb-3 px-3 py-2">Community Reviews</span>
+                    <h1 class="fw-bold mb-2">Share Your PropSight Experience</h1>
+                    <p class="text-secondary mb-0">Your feedback helps fellow Singaporeans make better property decisions.</p>
+                </div>
+
+                <form id="review-form" novalidate>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label for="name" class="form-label fw-semibold">Name</label>
+                            <input id="name" name="name" type="text" class="form-control form-control-lg" maxlength="80" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="role" class="form-label fw-semibold">Role</label>
+                            <input id="role" name="role" type="text" class="form-control form-control-lg" maxlength="80" placeholder="e.g., First-time Buyer" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold d-block mb-2">Rating</label>
+                            <div class="review-stars" id="star-group" role="radiogroup" aria-label="Review rating">
+                                <button type="button" class="review-star-btn" data-value="1" aria-label="1 star">★</button>
+                                <button type="button" class="review-star-btn" data-value="2" aria-label="2 stars">★</button>
+                                <button type="button" class="review-star-btn" data-value="3" aria-label="3 stars">★</button>
+                                <button type="button" class="review-star-btn" data-value="4" aria-label="4 stars">★</button>
+                                <button type="button" class="review-star-btn" data-value="5" aria-label="5 stars">★</button>
+                            </div>
+                            <input id="rating" name="rating" type="hidden" value="5">
+                        </div>
+                        <div class="col-12">
+                            <label for="content" class="form-label fw-semibold">Your Review</label>
+                            <textarea id="content" name="content" class="form-control" rows="5" maxlength="1200" minlength="20" placeholder="Tell us what stood out for you..." required></textarea>
+                            <div class="form-text">20-1200 characters.</div>
+                        </div>
+                        <div class="col-12 d-grid mt-2">
+                            <button type="submit" id="submit-btn" class="btn btn-primary-custom btn-lg rounded-pill">
+                                Submit Review
+                            </button>
+                        </div>
+                        <div class="col-12">
+                            <div id="review-error" class="alert alert-danger d-none mb-0" role="alert"></div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <div id="review-success" class="review-success">
+                <div class="review-success-icon"><i class="bi bi-check2"></i></div>
+                <h3 class="fw-bold mb-2">Thank you for your review.</h3>
+                <p class="text-secondary mb-4">Your voice helps us improve and supports future buyers and sellers.</p>
+                <a href="/" class="btn btn-outline-dark rounded-pill px-4">
+                    <i class="bi bi-arrow-left"></i> Back to Landing
+                </a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    (function () {
+        var form = document.getElementById('review-form');
+        var starButtons = Array.prototype.slice.call(document.querySelectorAll('.review-star-btn'));
+        var ratingInput = document.getElementById('rating');
+        var errorEl = document.getElementById('review-error');
+        var submitBtn = document.getElementById('submit-btn');
+        var formWrap = document.getElementById('review-form-wrap');
+        var successEl = document.getElementById('review-success');
+
+        function setRating(value) {
+            var safeValue = Math.max(1, Math.min(5, Number(value) || 5));
+            ratingInput.value = String(safeValue);
+            starButtons.forEach(function (btn) {
+                btn.classList.toggle('active', Number(btn.dataset.value) <= safeValue);
+            });
+        }
+
+        starButtons.forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                setRating(btn.dataset.value);
+            });
+        });
+        setRating(5);
+
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            errorEl.classList.add('d-none');
+            errorEl.textContent = '';
+
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Submitting...';
+
+            var payload = {
+                name: document.getElementById('name').value.trim(),
+                role: document.getElementById('role').value.trim(),
+                rating: Number(ratingInput.value || 5),
+                content: document.getElementById('content').value.trim()
+            };
+
+            fetch('/api/reviews', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        return response.json().then(function (data) {
+                            var msg = (data && data.error) ? data.error : 'Unable to submit review right now.';
+                            throw new Error(msg);
+                        });
+                    }
+                    return response.json();
+                })
+                .then(function () {
+                    formWrap.style.display = 'none';
+                    successEl.classList.add('is-visible');
+                })
+                .catch(function (error) {
+                    errorEl.textContent = error.message || 'Something went wrong. Please try again.';
+                    errorEl.classList.remove('d-none');
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = 'Submit Review';
+                });
+        });
+    }());
+</script>
+{% endblock %}

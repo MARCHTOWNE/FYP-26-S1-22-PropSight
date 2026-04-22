@@ -14,8 +14,10 @@ Run:
 import json
 import math
 import os
+import random
 import threading
 from collections import Counter
+from dataclasses import dataclass
 import pickle
 import re
 from datetime import datetime, timedelta, timezone
@@ -182,6 +184,7 @@ SUPABASE_USERS_TABLE = os.environ.get("SUPABASE_USERS_TABLE", "users")
 SUPABASE_PREDICTIONS_TABLE = os.environ.get(
     "SUPABASE_PREDICTIONS_TABLE", "saved_predictions"
 )
+SUPABASE_REVIEWS_TABLE = os.environ.get("SUPABASE_REVIEWS_TABLE", "reviews")
 
 if not SUPABASE_ENABLED:
     raise RuntimeError(
@@ -1028,6 +1031,26 @@ def _normalize_town_name(value):
     if not town:
         return ""
     return town.upper()
+
+
+@dataclass
+class Review:
+    """Public review payload schema and serializer."""
+    name: str
+    role: str
+    rating: int
+    content: str
+    is_approved: bool = True
+
+    def to_insert_payload(self):
+        return {
+            "name": self.name,
+            "role": self.role,
+            "rating": self.rating,
+            "content": self.content,
+            "is_approved": self.is_approved,
+            "created_at": datetime.now(SGT).isoformat(),
+        }
 
 
 def _log_town_feature_view(user_id, feature, town):
@@ -3679,6 +3702,12 @@ def landing():
     return render_template("landing.html", landing_stats=_build_landing_stats())
 
 
+@app.route("/review")
+def review_page():
+    """Public review submission page."""
+    return render_template("review.html")
+
+
 @app.route("/home")
 def home():
     if _is_admin_session():
@@ -4618,6 +4647,93 @@ def api_public_recent_ticker():
         ])
     except SupabaseError:
         return jsonify([])
+
+
+@app.route("/api/reviews", methods=["POST"])
+def api_create_review():
+    """Create a user review from public landing/review page."""
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    role = str(payload.get("role") or "").strip()
+    content = str(payload.get("content") or "").strip()
+    rating_raw = payload.get("rating")
+
+    if not name or not role or not content:
+        return jsonify({"error": "name, role, rating, and content are required"}), 400
+
+    try:
+        rating = int(rating_raw)
+    except (TypeError, ValueError):
+        return jsonify({"error": "rating must be an integer between 1 and 5"}), 400
+
+    if rating < 1 or rating > 5:
+        return jsonify({"error": "rating must be an integer between 1 and 5"}), 400
+
+    if len(name) > 80 or len(role) > 80:
+        return jsonify({"error": "name and role must be 80 characters or less"}), 400
+    if len(content) < 20 or len(content) > 1200:
+        return jsonify({"error": "content must be between 20 and 1200 characters"}), 400
+
+    review = Review(
+        name=name,
+        role=role,
+        rating=rating,
+        content=content,
+        is_approved=True,
+    )
+
+    try:
+        _supabase_request(
+            SUPABASE_REVIEWS_TABLE,
+            method="POST",
+            payload=review.to_insert_payload(),
+            prefer="return=representation",
+        )
+    except SupabaseError as exc:
+        return jsonify({"error": "Unable to save review right now", "details": str(exc)}), 500
+
+    return jsonify({"ok": True, "message": "Review submitted successfully."}), 201
+
+
+@app.route("/api/public/reviews")
+def api_public_reviews():
+    """Return 3-5 random approved high-rating reviews."""
+    requested_limit = random.randint(3, 5)
+    try:
+        # Prefer RPC for true DB-side random ordering.
+        rows = _supabase_rpc(
+            "rpc_public_reviews",
+            {"p_limit": requested_limit, "p_min_rating": 4},
+        ) or []
+    except SupabaseError:
+        # Fallback if RPC has not been deployed yet.
+        try:
+            rows = _supabase_request(
+                SUPABASE_REVIEWS_TABLE,
+                filters={
+                    "select": "id,name,role,rating,content,created_at",
+                    "is_approved": "eq.true",
+                    "rating": "gte.4",
+                    "order": "created_at.desc",
+                    "limit": "50",
+                },
+            ) or []
+        except SupabaseError:
+            rows = []
+        random.shuffle(rows)
+        rows = rows[:requested_limit]
+
+    return jsonify([
+        {
+            "id": row.get("id"),
+            "name": row.get("name"),
+            "role": row.get("role"),
+            "rating": row.get("rating"),
+            "content": row.get("content"),
+            "created_at": row.get("created_at"),
+        }
+        for row in rows
+    ])
 
 
 # ---------------------------------------------------------------------------

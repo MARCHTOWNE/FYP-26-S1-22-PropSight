@@ -136,6 +136,20 @@ ALTER TABLE IF EXISTS saved_predictions
 ALTER TABLE IF EXISTS saved_predictions
     ADD COLUMN IF NOT EXISTS block TEXT NOT NULL DEFAULT '';
 
+-- Public reviews submitted from landing/review page
+CREATE TABLE IF NOT EXISTS reviews (
+    id          BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    name        TEXT NOT NULL CHECK (char_length(name) <= 80),
+    role        TEXT NOT NULL CHECK (char_length(role) <= 80),
+    rating      INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+    content     TEXT NOT NULL CHECK (char_length(content) BETWEEN 20 AND 1200),
+    created_at  TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+    is_approved BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviews_public_quality
+    ON reviews (is_approved, rating, created_at DESC);
+
 -- ── 5. Model Versions Table ───────────────────────────────────
 
 CREATE TABLE IF NOT EXISTS model_versions (
@@ -714,4 +728,32 @@ LANGUAGE SQL STABLE AS $$
     JOIN flat_types ft ON tx.flat_type_id = ft.id
     ORDER BY tx.year DESC, tx.month_num DESC
     LIMIT 20;
+$$;
+
+-- Public random high-quality reviews for landing page
+CREATE OR REPLACE FUNCTION rpc_public_reviews(
+    p_limit INTEGER DEFAULT 5,
+    p_min_rating INTEGER DEFAULT 4
+)
+RETURNS TABLE(
+    id BIGINT,
+    name TEXT,
+    role TEXT,
+    rating INTEGER,
+    content TEXT,
+    created_at TIMESTAMP WITH TIME ZONE
+)
+LANGUAGE SQL STABLE AS $$
+    SELECT
+        r.id,
+        r.name,
+        r.role,
+        r.rating,
+        r.content,
+        r.created_at
+    FROM reviews r
+    WHERE r.is_approved = TRUE
+      AND r.rating >= GREATEST(1, LEAST(p_min_rating, 5))
+    ORDER BY random()
+    LIMIT GREATEST(1, LEAST(p_limit, 20));
 $$;

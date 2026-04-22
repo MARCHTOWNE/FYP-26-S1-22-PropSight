@@ -2284,70 +2284,11 @@
                 <h2 class="hero-title" style="font-size: 3.5rem;">Trusted by Singaporeans.</h2>
                 <p class="hero-subtitle mx-auto">Hear how PropSight is helping buyers, sellers, and agents make
                     data-driven decisions.</p>
+                <a href="/review" class="btn btn-outline-custom rounded-pill mt-3"><i class="bi bi-pencil-square"></i> Share Your Experience</a>
             </div>
 
             <div class="testimonial-container">
-                <div class="testimonial-slider" id="slider">
-                    <div class="testimonial-card">
-                        <div class="quote-icon">"</div>
-                        <div class="stars">★★★★★</div>
-                        <p class="testimonial-text">"The ML prediction was incredibly accurate. It gave us the
-                            confidence to negotiate and make an offer $15,000 lower than the asking price. We secured
-                            the flat!"</p>
-                        <div class="user-profile">
-                            <img src="https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                alt="Sarah L." class="user-avatar">
-                            <div>
-                                <h5 class="user-name">Sarah Lim</h5>
-                                <span class="user-role">First-time Buyer</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="testimonial-card">
-                        <div class="quote-icon">"</div>
-                        <div class="stars">★★★★★</div>
-                        <p class="testimonial-text">"The XAI feature is an absolute game-changer. Explaining to my
-                            clients exactly WHY a flat is priced higher due to MRT proximity makes my job so much
-                            easier."</p>
-                        <div class="user-profile">
-                            <img src="https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                alt="David C." class="user-avatar">
-                            <div>
-                                <h5 class="user-name">David Chen</h5>
-                                <span class="user-role">Senior Property Agent</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="testimonial-card">
-                        <div class="quote-icon">"</div>
-                        <div class="stars">★★★★★</div>
-                        <p class="testimonial-text">"The interactive heatmap helped us discover undervalued towns we
-                            hadn't even considered. The side-by-side property comparison tool is simply brilliant."</p>
-                        <div class="user-profile">
-                            <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                alt="Mark & Emily" class="user-avatar">
-                            <div>
-                                <h5 class="user-name">Mark & Emily</h5>
-                                <span class="user-role">HDB Upgraders</span>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="testimonial-card">
-                        <div class="quote-icon">"</div>
-                        <div class="stars">★★★★★</div>
-                        <p class="testimonial-text">"As a market analyst, the historical transaction charts and
-                            predictive models provide a level of quantitative rigor that standard listing sites
-                            completely lack."</p>
-                        <div class="user-profile">
-                            <img src="https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?ixlib=rb-1.2.1&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-                                alt="James W." class="user-avatar">
-                            <div>
-                                <h5 class="user-name">James Wong</h5>
-                                <span class="user-role">Real Estate Analyst</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <div class="testimonial-slider" id="slider"></div>
 
                 <div class="slider-controls reveal stagger-1">
                     <button class="slider-btn" id="slide-left"><i class="bi bi-arrow-left"></i></button>
@@ -2704,19 +2645,71 @@
         setInterval(pollLandingStats, 600000);
 
         const slider = document.getElementById('slider');
+
+        function escapeHtml(value) {
+            return String(value == null ? '' : value).replace(/[&<>"']/g, function (ch) {
+                return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+            });
+        }
+
+        function buildInitialAvatar(name) {
+            const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+            const initials = (parts[0] ? parts[0][0] : '') + (parts[1] ? parts[1][0] : '');
+            return (initials || 'PS').toUpperCase();
+        }
+
+        function renderReviewCards(reviews) {
+            if (!slider) return;
+            slider.innerHTML = '';
+            if (!Array.isArray(reviews) || !reviews.length) {
+                slider.innerHTML = '<div class="testimonial-card"><div class="quote-icon">"</div><div class="stars">★★★★★</div><p class="testimonial-text">"Be the first to share your PropSight story."</p><div class="user-profile"><div class="user-avatar d-flex align-items-center justify-content-center bg-dark text-white fw-bold">PS</div><div><h5 class="user-name">PropSight User</h5><span class="user-role">Community</span></div></div></div>';
+                return;
+            }
+
+            reviews.forEach(function (review) {
+                const rating = Math.max(1, Math.min(5, Number(review.rating) || 5));
+                const stars = '★★★★★'.slice(0, rating) + '☆☆☆☆☆'.slice(0, 5 - rating);
+                const name = escapeHtml(review.name || 'Anonymous');
+                const role = escapeHtml(review.role || 'User');
+                const content = escapeHtml(review.content || '');
+                const initials = escapeHtml(buildInitialAvatar(name));
+
+                const card = document.createElement('div');
+                card.className = 'testimonial-card';
+                card.innerHTML = '<div class="quote-icon">"</div>'
+                    + '<div class="stars">' + stars + '</div>'
+                    + '<p class="testimonial-text">"' + content + '"</p>'
+                    + '<div class="user-profile">'
+                    + '<div class="user-avatar d-flex align-items-center justify-content-center bg-dark text-white fw-bold">' + initials + '</div>'
+                    + '<div><h5 class="user-name">' + name + '</h5><span class="user-role">' + role + '</span></div>'
+                    + '</div>';
+                slider.appendChild(card);
+            });
+        }
+
+        function fetchPublicReviews() {
+            fetch('/api/public/reviews')
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (reviews) { renderReviewCards(reviews); })
+                .catch(function () { renderReviewCards([]); });
+        }
+        fetchPublicReviews();
+
         let isDown = false, startX, scrollLeft;
-        slider.addEventListener('mousedown', (e) => { isDown = true; slider.style.scrollBehavior = 'auto'; startX = e.pageX - slider.offsetLeft; scrollLeft = slider.scrollLeft; });
-        slider.addEventListener('mouseleave', () => { isDown = false; });
-        slider.addEventListener('mouseup', () => { isDown = false; slider.style.scrollBehavior = 'smooth'; });
-        slider.addEventListener('mousemove', (e) => {
-            if (!isDown) return;
-            e.preventDefault();
-            const x = e.pageX - slider.offsetLeft;
-            const walk = (x - startX) * 2;
-            slider.scrollLeft = scrollLeft - walk;
-        });
-        document.getElementById('slide-left').addEventListener('click', () => { slider.style.scrollBehavior = 'smooth'; slider.scrollLeft -= slider.offsetWidth * 0.8; });
-        document.getElementById('slide-right').addEventListener('click', () => { slider.style.scrollBehavior = 'smooth'; slider.scrollLeft += slider.offsetWidth * 0.8; });
+        if (slider) {
+            slider.addEventListener('mousedown', (e) => { isDown = true; slider.style.scrollBehavior = 'auto'; startX = e.pageX - slider.offsetLeft; scrollLeft = slider.scrollLeft; });
+            slider.addEventListener('mouseleave', () => { isDown = false; });
+            slider.addEventListener('mouseup', () => { isDown = false; slider.style.scrollBehavior = 'smooth'; });
+            slider.addEventListener('mousemove', (e) => {
+                if (!isDown) return;
+                e.preventDefault();
+                const x = e.pageX - slider.offsetLeft;
+                const walk = (x - startX) * 2;
+                slider.scrollLeft = scrollLeft - walk;
+            });
+        }
+        document.getElementById('slide-left').addEventListener('click', () => { if (slider) { slider.style.scrollBehavior = 'smooth'; slider.scrollLeft -= slider.offsetWidth * 0.8; } });
+        document.getElementById('slide-right').addEventListener('click', () => { if (slider) { slider.style.scrollBehavior = 'smooth'; slider.scrollLeft += slider.offsetWidth * 0.8; } });
     </script>
 </body>
 
